@@ -1,0 +1,11 @@
+{
+  "app": {
+    "bundleName": "com.xmax.xlab",
+    "vendor": "xmax.ai",
+    "versionCode": 1000000,
+    "versionName": "0.1.0",
+    "buildVersion": "1",
+    "icon": "$media:layered_image",
+    "label": "$string:app_name"
+  }
+}

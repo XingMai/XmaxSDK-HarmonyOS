@@ -1,0 +1,278 @@
+import { common } from '@kit.AbilityKit';
+import { EncodingController } from '../../transport/encoding/EncodingController';
+import { EncodingControlling } from '../../transport/encoding/EncodingControlling';
+import { AudioFrame } from '../../foundation/media/audio/AudioFrame';
+import { AudioProvider } from '../../foundation/media/audio/AudioProvider';
+import { AudioProviding } from '../../foundation/media/audio/AudioProviding';
+import {
+  XmaxError,
+  XmaxErrorCode
+} from '../../foundation/errors/XmaxError';
+import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
+import { PermissionProvider } from '../../foundation/permissions/PermissionProvider';
+import { PermissionProviding } from '../../foundation/permissions/PermissionProviding';
+import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
+import { VideoFrame } from '../../foundation/media/video/VideoFrame';
+import { MediaSourceConfiguration } from '../../media/MediaSourceConfiguration';
+import { MediaSourceController } from '../../media/MediaSourceController';
+import { MediaSourceControlling } from '../../media/MediaSourceControlling';
+import { LocalVideoPreviewController } from '../../rendering/video/LocalVideoPreviewController';
+import {
+  LocalVideoPreviewControlling,
+  PreviewRelease
+} from '../../rendering/video/LocalVideoPreviewControlling';
+import {
+  VideoRenderBinding,
+  VideoRenderRegistry
+} from '../../rendering/video/VideoRenderRegistry';
+import { MediaService } from '../../service/media/MediaService';
+import { MediaServicing } from '../../service/media/MediaServicing';
+import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
+import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
+import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
+import { StreamControlling } from '../../transport/stream/StreamControlling';
+import { StreamId } from '../../transport/stream/StreamId';
+
+/** 协调本地视频文件、音轨、编码、传输和预览资源。 */
+export class XmaxRealtimeVideoManager {
+
+  // 基础层组件
+  private readonly rtcProvider: RtcProviding;
+  private readonly audioProvider: AudioProviding;
+  private readonly permissionProvider: PermissionProviding;
+
+  // 服务层组件
+  private readonly mediaService: MediaServicing;
+
+  // 业务层组件
+  private readonly mediaSourceController: MediaSourceControlling;
+  private readonly encodingController: EncodingControlling;
+  private readonly streamController: StreamControlling;
+  private readonly localVideoPreviewController: LocalVideoPreviewControlling;
+
+  // 本地资源
+  private activeTrack: RealtimeVideoTrack | null = null;
+
+  /**
+   * 创建视频媒体 Manager。
+   *
+   * @param context 申请音频相关权限所需的页面上下文。
+   * @param rtcProvider 外部媒体源和本地渲染使用的 RTC 基础能力。
+   * @param streamController 接收并推送本地视频和音频帧的传输组件。
+   * @param errorListener 持续媒体输出错误监听器。
+   */
+  constructor(
+    context: common.UIAbilityContext,
+    rtcProvider: RtcProviding,
+    streamController: StreamControlling,
+    errorListener: (error: XmaxError) => void
+  ) {
+    // 基础层组件
+    this.rtcProvider = rtcProvider;
+    this.audioProvider = new AudioProvider();
+    this.permissionProvider = new PermissionProvider(context);
+
+    // 服务层组件
+    this.mediaService = new MediaService();
+
+    // 业务层组件
+    this.streamController = streamController;
+    this.localVideoPreviewController = new LocalVideoPreviewController(
+      this.mediaService
+    );
+    this.mediaSourceController = new MediaSourceController(
+      this.mediaService,
+      this.audioProvider,
+      (frame: VideoFrame): void => {
+        this.localVideoPreviewController.captureFirstFrame(frame);
+        this.streamController.pushLocalVideoFrame(frame);
+      },
+      (frame: AudioFrame): void => {
+        this.streamController.pushLocalAudioFrame(frame);
+      },
+      (message: string): void => {
+        errorListener(new XmaxError(
+          XmaxErrorCode.MEDIA_ERROR,
+          message
+        ));
+      }
+    );
+    this.encodingController = new EncodingController(rtcProvider);
+  }
+
+  /** @returns 当前活动的本地视频轨道；尚未创建时返回空值。 */
+  get currentTrack(): RealtimeVideoTrack | null {
+    return this.activeTrack;
+  }
+
+  /** @returns 当前视频文件是否包含并输出音轨。 */
+  get hasAudio(): boolean {
+    return this.mediaSourceController.hasAudio;
+  }
+
+  /**
+   * 从本地视频文件创建媒体流。
+   *
+   * @param filePath 本地视频文件路径。
+   * @param videoFormat 可选的视频输出格式；未传入时根据文件信息计算。
+   * @returns 创建完成后的本地视频媒体流。
+   */
+  async createLocalVideoStream(
+    filePath: string,
+    videoFormat?: RealtimeVideoFormat
+  ): Promise<RealtimeMediaStream> {
+    if (this.activeTrack !== null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Stop the current local video stream before creating another one'
+      );
+    }
+
+    return this.createStream(
+      filePath,
+      videoFormat
+    );
+  }
+
+  /**
+   * 停止视频和音频帧输出并释放预览资源。
+   *
+   * @returns 停止操作完成后的 Promise。
+   */
+  async stopLocalVideoStream(): Promise<void> {
+    const track: RealtimeVideoTrack | null = this.activeTrack;
+    const hasAudio: boolean = this.mediaSourceController.hasAudio;
+    this.activeTrack = null;
+    await this.mediaSourceController.stop();
+    await this.localVideoPreviewController.reset();
+
+    if (hasAudio) {
+      try {
+        this.rtcProvider.stopExternalAudioSource();
+      } catch (error) {
+        const reason: string = error instanceof Error ? error.message : String(error);
+        XmaxLogger.error(
+          `停止外部音频源失败\n└─ 原因：${reason}`,
+          'Audio'
+        );
+      }
+    }
+
+    if (track !== null) {
+      VideoRenderRegistry.unregister(track);
+      this.rtcProvider.unbindLocalVideo();
+    }
+  }
+
+  /**
+   * 将本地视频时间线重置到起点并重新开始帧输出。
+   *
+   * @returns 重启操作完成后的 Promise。
+   */
+  async restartForGeneration(): Promise<void> {
+    if (this.activeTrack !== null) {
+      await this.mediaSourceController.restart();
+    }
+  }
+
+  /**
+   * 将当前本地视频预览冻结在首帧。
+   *
+   * @returns 解除冻结并恢复预览的回调；没有活动轨道时返回空操作。
+   */
+  freezePreview(): PreviewRelease {
+    const track: RealtimeVideoTrack | null = this.activeTrack;
+    if (track === null) {
+      return (): void => {};
+    }
+
+    return this.localVideoPreviewController.freeze(track);
+  }
+
+  /**
+   * 准备文件媒体来源并装配权限、编码、传输和预览资源。
+   *
+   * @param filePath 本地视频文件路径。
+   * @param videoFormat 可选的视频输出格式。
+   * @returns 完成底层资源装配后的本地视频媒体流。
+   */
+  private async createStream(
+    filePath: string,
+    videoFormat?: RealtimeVideoFormat
+  ): Promise<RealtimeMediaStream> {
+    let track: RealtimeVideoTrack | null = null;
+
+    try {
+      const sourceConfiguration: MediaSourceConfiguration =
+        await this.mediaSourceController.prepare(
+          filePath,
+          videoFormat
+        );
+      const resolvedFormat: RealtimeVideoFormat = sourceConfiguration.videoFormat;
+      track = new RealtimeVideoTrack('video0', resolvedFormat);
+      this.localVideoPreviewController.configure(resolvedFormat);
+
+      if (sourceConfiguration.hasAudio) {
+        await this.permissionProvider.ensureMicrophonePermission();
+      }
+
+      this.encodingController.configure(resolvedFormat);
+      this.rtcProvider.useExternalVideoSource();
+      if (sourceConfiguration.hasAudio) {
+        this.rtcProvider.startExternalAudioSource();
+      }
+
+      this.registerPreview(track);
+      await this.mediaSourceController.start();
+      this.activeTrack = track;
+
+      return new RealtimeMediaStream(StreamId.LOCAL, track);
+    } catch (error) {
+      const hasAudio: boolean = this.mediaSourceController.hasAudio;
+      await this.mediaSourceController.stop();
+      await this.localVideoPreviewController.reset();
+
+      if (hasAudio) {
+        try {
+          this.rtcProvider.stopExternalAudioSource();
+        } catch (audioError) {
+          const reason: string = audioError instanceof Error ?
+            audioError.message : String(audioError);
+          XmaxLogger.error(
+            `外部音频源启动回滚失败\n└─ 原因：${reason}`,
+            'Audio'
+          );
+        }
+      }
+
+      if (track !== null) {
+        VideoRenderRegistry.unregister(track);
+      }
+
+      throw XmaxError.from(error);
+    }
+  }
+
+  /**
+   * 为本地视频轨道注册 RTC 预览绑定。
+   *
+   * @param track 需要显示的本地视频轨道。
+   * @returns 无返回值。
+   */
+  private registerPreview(track: RealtimeVideoTrack): void {
+    VideoRenderRegistry.register(track, new VideoRenderBinding(
+      this.rtcProvider.renderLibraryName(),
+      (
+        viewId: string,
+        contentMode: VideoContentMode
+      ): void => {
+        this.rtcProvider.bindLocalVideo(viewId, contentMode);
+      },
+      (_viewId: string): void => {
+        this.rtcProvider.unbindLocalVideo();
+      }
+    ));
+  }
+
+}

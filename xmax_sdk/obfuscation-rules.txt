@@ -1,0 +1,4 @@
+# Keep the public API exported by Index.ets stable for HAR consumers.
+-keep
+./Index.ets
+

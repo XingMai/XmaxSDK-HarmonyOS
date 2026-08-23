@@ -1,0 +1,1 @@
+# Add application-specific obfuscation rules here when release obfuscation is enabled.

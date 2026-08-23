@@ -1,0 +1,11 @@
+**/build/
+**/oh_modules/
+**/.hvigor/
+**/.cxx/
+node_modules/
+.idea/
+local.properties
+.DS_Store
+*.har
+!xmax_sdk/libs/volcenginertc-3.60.1.3100.har
+xmax_sdk/oh-package-lock.json5

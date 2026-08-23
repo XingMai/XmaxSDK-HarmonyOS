@@ -1,0 +1,7 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/RealtimePlayground",
+    "modules/xlstorage/StoragePage"
+  ]
+}

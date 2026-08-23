@@ -1,0 +1,26 @@
+{
+  "name": "@xmax/sdk",
+  "version": "1.0.0",
+  "description": "Xmax realtime generation SDK for HarmonyOS",
+  "keywords": [
+    "ai",
+    "xmax",
+    "harmonyos",
+    "arkts",
+    "realtime",
+    "sdk"
+  ],
+  "main": "Index.ets",
+  "artifactType": "original",
+  "author": {
+    "name": "xmax.ai",
+    "email": "sdk@xmax.ai"
+  },
+  "homepage": "https://xmax.ai",
+  "repository": "https://github.com/XingMai/XmaxSDK-Harmony",
+  "license": "MIT",
+  "dependencies": {
+    "@bytertc/volcenginertc": "file:./libs/volcenginertc-3.60.1.3100.har",
+    "@tencentcloud/cos": "1.2.4"
+  }
+}

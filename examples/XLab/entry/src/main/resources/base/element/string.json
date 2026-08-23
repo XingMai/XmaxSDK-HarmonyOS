@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "XLab HarmonyOS example application"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "XLab main ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "XLab"
+    },
+    {
+      "name": "reason_camera",
+      "value": "实时生成需要使用摄像头采集本地视频"
+    },
+    {
+      "name": "reason_microphone",
+      "value": "实时生成需要传输本地视频中的音频"
+    }
+  ]
+}

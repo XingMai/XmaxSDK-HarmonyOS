@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "0.1.0",
+  "description": "XLab HarmonyOS entry module",
+  "main": "",
+  "author": "xmax.ai",
+  "license": "MIT",
+  "dependencies": {
+    "@xmax/sdk": "file:../../../xmax_sdk"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "module": {
+    "name": "xmax_sdk",
+    "type": "har",
+    "description": "Xmax realtime generation SDK for HarmonyOS",
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ],
+    "metadata": [
+      {
+        "name": "UseTsHar",
+        "value": "true"
+      }
+    ]
+  }
+}
+
