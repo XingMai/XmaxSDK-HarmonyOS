@@ -1,0 +1,2 @@
+*.ets linguist-language=TypeScript
+*.ets linguist-detectable=true

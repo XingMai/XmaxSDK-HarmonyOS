@@ -7,7 +7,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-Native HarmonyOS SDK, providing access to Xmax's real-time interactive video generation models. It enables low-latency, high-fidelity video transformation using live inputs, touch gestures, reference images and prompts. With this SDK, you can leverage these novel capabilities to build your own apps in just a few lines of code.
+Native HarmonyOS SDK, providing access to Xmax's real-time interactive video generation models. It enables low-latency, high-fidelity video transformation (e.g., virtual try-on, character replacement, and mixed-reality companions) using live video streams, reference images, and user interactions. With this SDK, you can leverage these novel capabilities to build your own apps in just a few lines of code.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
