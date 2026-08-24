@@ -1,4 +1,3 @@
-import { image } from '@kit.ImageKit';
 import { ImageSize } from './ImageSize';
 import { ProcessedImage } from './ProcessedImage';
 
@@ -43,18 +42,6 @@ export interface MediaServicing {
     source: ArrayBuffer | string,
     maximumSize: ImageSize
   ): Promise<ProcessedImage>;
-
-  /**
-   * 居中裁剪并缩放 PixelMap，使其填满指定尺寸。
-   *
-   * @param pixelMap 需要处理的 PixelMap。
-   * @param targetSize 目标尺寸。
-   * @returns 处理完成后的 Promise。
-   */
-  resizePixelMapToFill(
-    pixelMap: image.PixelMap,
-    targetSize: ImageSize
-  ): Promise<void>;
 
   /**
    * 按指定质量将图片压缩为 JPEG。

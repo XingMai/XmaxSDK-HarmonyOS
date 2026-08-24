@@ -2,6 +2,8 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
+import { ImageProvider } from '../../foundation/media/image/ImageProvider';
+import { ImageProviding } from '../../foundation/media/image/ImageProviding';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { RtcProviding } from '../../foundation/rtc/RtcProviding';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
@@ -26,6 +28,7 @@ export class XmaxRealtimeImageManager {
 
   // 基础层组件
   private readonly rtcProvider: RtcProviding;
+  private readonly imageProvider: ImageProviding;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -52,6 +55,7 @@ export class XmaxRealtimeImageManager {
   ) {
     // 基础层组件
     this.rtcProvider = rtcProvider;
+    this.imageProvider = new ImageProvider();
 
     // 服务层组件
     this.mediaService = new MediaService();
@@ -59,6 +63,7 @@ export class XmaxRealtimeImageManager {
     // 业务层组件
     this.streamController = streamController;
     this.imageSourceController = new ImageSourceController(
+      this.imageProvider,
       this.mediaService,
       (frame: VideoFrame): void => {
         this.streamController.pushLocalVideoFrame(frame);

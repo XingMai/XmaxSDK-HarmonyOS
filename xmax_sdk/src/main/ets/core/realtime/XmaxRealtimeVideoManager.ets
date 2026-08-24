@@ -9,6 +9,8 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
+import { ImageProvider } from '../../foundation/media/image/ImageProvider';
+import { ImageProviding } from '../../foundation/media/image/ImageProviding';
 import { PermissionProvider } from '../../foundation/permissions/PermissionProvider';
 import { PermissionProviding } from '../../foundation/permissions/PermissionProviding';
 import { RtcProviding } from '../../foundation/rtc/RtcProviding';
@@ -40,6 +42,7 @@ export class XmaxRealtimeVideoManager {
   // 基础层组件
   private readonly rtcProvider: RtcProviding;
   private readonly audioProvider: AudioProviding;
+  private readonly imageProvider: ImageProviding;
   private readonly permissionProvider: PermissionProviding;
 
   // 服务层组件
@@ -71,6 +74,7 @@ export class XmaxRealtimeVideoManager {
     // 基础层组件
     this.rtcProvider = rtcProvider;
     this.audioProvider = new AudioProvider();
+    this.imageProvider = new ImageProvider();
     this.permissionProvider = new PermissionProvider(context);
 
     // 服务层组件
@@ -79,7 +83,7 @@ export class XmaxRealtimeVideoManager {
     // 业务层组件
     this.streamController = streamController;
     this.localVideoPreviewController = new LocalVideoPreviewController(
-      this.mediaService
+      this.imageProvider
     );
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,

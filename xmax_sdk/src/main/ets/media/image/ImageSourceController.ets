@@ -4,6 +4,7 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
+import { ImageProviding } from '../../foundation/media/image/ImageProviding';
 import { BufferVideoFrame } from '../../foundation/media/video/BufferVideoFrame';
 import { VideoFormat } from '../../foundation/media/video/VideoFormat';
 import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
@@ -23,6 +24,9 @@ const DEFAULT_IMAGE_FRAME_RATE: number = 24;
 /** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
 export class ImageSourceController implements ImageSourceControlling {
 
+  // 基础层组件
+  private readonly imageProvider: ImageProviding;
+
   // 服务层组件
   private readonly mediaService: MediaServicing;
 
@@ -41,15 +45,20 @@ export class ImageSourceController implements ImageSourceControlling {
   /**
    * 创建图片源 Controller。
    *
+   * @param imageProvider 提供 PixelMap 裁剪缩放能力的图片 Provider。
    * @param mediaService 提供图片尺寸处理能力的媒体 Service。
    * @param frameListener 视频帧输出监听器。
    * @param errorListener 图片源错误监听器。
    */
   constructor(
+    imageProvider: ImageProviding,
     mediaService: MediaServicing,
     frameListener: ImageSourceFrameListener,
     errorListener: ImageSourceErrorListener
   ) {
+    // 基础层组件
+    this.imageProvider = imageProvider;
+
     // 服务层组件
     this.mediaService = mediaService;
 
@@ -108,9 +117,10 @@ export class ImageSourceController implements ImageSourceControlling {
         desiredPixelFormat: image.PixelMapFormat.RGBA_8888
       });
 
-      await this.mediaService.resizePixelMapToFill(
+      await this.imageProvider.resizePixelMapToFill(
         pixelMap,
-        new ImageSize(resolvedFormat.width, resolvedFormat.height)
+        resolvedFormat.width,
+        resolvedFormat.height
       );
 
       const resizedInfo: image.ImageInfo = await pixelMap.getImageInfo();

@@ -135,60 +135,6 @@ export class MediaService implements MediaServicing {
   }
 
   /**
-   * 居中裁剪并缩放 PixelMap，使其完整填满目标尺寸。
-   *
-   * @param pixelMap 需要处理的 PixelMap。
-   * @param targetSize 目标尺寸。
-   * @returns 处理完成后的 Promise。
-   */
-  async resizePixelMapToFill(
-    pixelMap: image.PixelMap,
-    targetSize: ImageSize
-  ): Promise<void> {
-    try {
-      const info: image.ImageInfo = await pixelMap.getImageInfo();
-      const sourceWidth: number = info.size.width;
-      const sourceHeight: number = info.size.height;
-      const targetAspectRatio: number = targetSize.width / targetSize.height;
-      const sourceAspectRatio: number = sourceWidth / sourceHeight;
-
-      let cropWidth: number = sourceWidth;
-      let cropHeight: number = sourceHeight;
-      if (sourceAspectRatio > targetAspectRatio) {
-        cropWidth = Math.max(
-          Math.floor(sourceHeight * targetAspectRatio),
-          1
-        );
-      } else if (sourceAspectRatio < targetAspectRatio) {
-        cropHeight = Math.max(
-          Math.floor(sourceWidth / targetAspectRatio),
-          1
-        );
-      }
-
-      if (cropWidth !== sourceWidth || cropHeight !== sourceHeight) {
-        await pixelMap.crop({
-          x: Math.floor((sourceWidth - cropWidth) / 2),
-          y: Math.floor((sourceHeight - cropHeight) / 2),
-          size: {
-            width: cropWidth,
-            height: cropHeight
-          }
-        });
-      }
-
-      if (cropWidth !== targetSize.width || cropHeight !== targetSize.height) {
-        await pixelMap.scale(
-          targetSize.width / cropWidth,
-          targetSize.height / cropHeight
-        );
-      }
-    } catch (error) {
-      throw XmaxError.from(error);
-    }
-  }
-
-  /**
    * 按指定质量将图片重新编码为 JPEG。
    *
    * @param source 图片二进制数据或本地文件路径。

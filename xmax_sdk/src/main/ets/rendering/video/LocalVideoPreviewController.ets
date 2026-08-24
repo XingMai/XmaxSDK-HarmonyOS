@@ -1,11 +1,11 @@
 import { image } from '@kit.ImageKit';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
+import { ImageProviding } from '../../foundation/media/image/ImageProviding';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { ImageSize } from '../../service/media/ImageSize';
-import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import {
@@ -17,8 +17,8 @@ import { VideoRenderRegistry } from './VideoRenderRegistry';
 /** 缓存本地视频首帧，并在等待远端结果时提供冻结预览。 */
 export class LocalVideoPreviewController implements LocalVideoPreviewControlling {
 
-  // 服务层组件
-  private readonly mediaService: MediaServicing;
+  // 基础层组件
+  private readonly imageProvider: ImageProviding;
 
   // 预览资源
   private previewFrame: image.PixelMap | null = null;
@@ -33,10 +33,10 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
   /**
    * 创建本地视频预览 Controller。
    *
-   * @param mediaService 提供图像缩放能力的媒体 Service。
+   * @param imageProvider 提供 PixelMap 裁剪缩放能力的图片 Provider。
    */
-  constructor(mediaService: MediaServicing) {
-    this.mediaService = mediaService;
+  constructor(imageProvider: ImageProviding) {
+    this.imageProvider = imageProvider;
   }
 
   /**
@@ -196,9 +196,10 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
 
       const targetSize: ImageSize | null = this.targetSize;
       if (targetSize !== null) {
-        await this.mediaService.resizePixelMapToFill(
+        await this.imageProvider.resizePixelMapToFill(
           pixelMap,
-          targetSize
+          targetSize.width,
+          targetSize.height
         );
       }
 
