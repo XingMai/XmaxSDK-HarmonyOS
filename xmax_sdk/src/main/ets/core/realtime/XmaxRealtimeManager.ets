@@ -250,16 +250,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 更新本地视频格式。
-   *
-   * @param videoFormat 本地视频格式。
-   * @returns 格式更新完成后的 Promise。
-   */
-  async updateVideoFormat(videoFormat: RealtimeVideoFormat): Promise<void> {
-    await this.observeError(this.mediaManager.updateVideoFormat(videoFormat));
-  }
-
-  /**
    * 从本地视频文件创建并启动媒体流。
    *
    * @param filePath 本地视频文件路径。

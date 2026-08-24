@@ -91,14 +91,6 @@ export interface XmaxRealtimeManaging {
   switchCamera(): Promise<RealtimeMediaStream>;
 
   /**
-   * 更新本地视频格式。
-   *
-   * @param videoFormat 本地视频格式。
-   * @returns 格式更新完成后的 Promise。
-   */
-  updateVideoFormat(videoFormat: RealtimeVideoFormat): Promise<void>;
-
-  /**
    * 从设备中的视频文件创建本地媒体流。
    *
    * @param filePath 本地视频文件路径。

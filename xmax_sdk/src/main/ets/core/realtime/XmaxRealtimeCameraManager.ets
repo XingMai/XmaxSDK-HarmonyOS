@@ -188,30 +188,6 @@ export class XmaxRealtimeCameraManager {
   }
 
   /**
-   * 更新相机流的视频编码格式。
-   *
-   * @param videoFormat 新的视频输出格式。
-   * @returns 格式更新完成后的 Promise。
-   */
-  async updateVideoFormat(videoFormat: RealtimeVideoFormat): Promise<void> {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
-    if (track === null) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Local camera preview is not started');
-    }
-
-    const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(videoFormat);
-    const currentFormat: RealtimeVideoFormat | undefined = track.videoFormat;
-    if (currentFormat?.width === resolvedFormat.width &&
-      currentFormat.height === resolvedFormat.height &&
-      currentFormat.fps === resolvedFormat.fps) {
-      return;
-    }
-
-    this.encodingController.configure(resolvedFormat);
-    updateRealtimeVideoTrackFormat(track, resolvedFormat);
-  }
-
-  /**
    * 完成相机权限检查、采集启动和预览注册。
    *
    * @param videoFormat 相机流使用的视频输出格式。

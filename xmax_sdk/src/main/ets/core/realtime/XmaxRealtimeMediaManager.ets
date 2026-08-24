@@ -151,16 +151,6 @@ export class XmaxRealtimeMediaManager {
   }
 
   /**
-   * 更新当前相机流的视频输出格式。
-   *
-   * @param videoFormat 新的视频输出格式。
-   * @returns 格式更新完成后的 Promise。
-   */
-  updateVideoFormat(videoFormat: RealtimeVideoFormat): Promise<void> {
-    return this.cameraManager.updateVideoFormat(videoFormat);
-  }
-
-  /**
    * 创建视频文件媒体来源并取得本地媒体所有权。
    *
    * @param filePath 本地视频文件路径。
