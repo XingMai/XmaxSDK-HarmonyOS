@@ -211,7 +211,23 @@ const referencePath = uploadedImage.url;
 
 Pass `referencePath` to `RealtimeContext` as shown in step 3.
 
-### 6. Run your application
+### 6. Observe state and errors
+
+Use the realtime listeners to monitor the session lifecycle and diagnose issues:
+
+```ts
+/** Observes realtime connection and generation state changes. */
+realtimeManager.setStateListener((state) => {
+  console.info(`Xmax realtime state: ${state.connectionState}, session: ${state.sessionId}, task: ${state.taskId}`);
+});
+
+/** Reports errors raised by the realtime pipeline. */
+realtimeManager.setErrorListener((error) => {
+  console.error(`Xmax realtime error: ${error.code} ${error.message}`);
+});
+```
+
+### 7. Run your application
 
 Declare the required permissions in your application module's `module.json5`:
 
