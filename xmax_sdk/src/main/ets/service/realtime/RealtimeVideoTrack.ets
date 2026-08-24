@@ -1,4 +1,5 @@
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
+import { resolveStateTarget } from '../../foundation/state/StateTargetResolver';
 import { RealtimeVideoFormat } from './RealtimeVideoFormat';
 
 class RealtimeVideoTrackMetadata {
@@ -22,12 +23,12 @@ export class RealtimeVideoTrack {
 
   /** @returns 当前视频轨道使用的视频格式。 */
   get videoFormat(): RealtimeVideoFormat | undefined {
-    return metadataByTrack.get(this)?.videoFormat;
+    return metadataByTrack.get(resolveStateTarget(this))?.videoFormat;
   }
 
   /** @returns 本地相机轨道当前使用的摄像头位置。 */
   get position(): CameraPosition | undefined {
-    return metadataByTrack.get(this)?.position;
+    return metadataByTrack.get(resolveStateTarget(this))?.position;
   }
 
   constructor(
@@ -48,7 +49,8 @@ export function updateRealtimeVideoTrackFormat(
   track: RealtimeVideoTrack,
   videoFormat: RealtimeVideoFormat
 ): void {
-  const metadata: RealtimeVideoTrackMetadata | undefined = metadataByTrack.get(track);
+  const metadata: RealtimeVideoTrackMetadata | undefined =
+    metadataByTrack.get(resolveStateTarget(track));
   if (metadata !== undefined) {
     metadata.videoFormat = videoFormat;
   }
@@ -59,7 +61,8 @@ export function updateRealtimeVideoTrackPosition(
   track: RealtimeVideoTrack,
   position: CameraPosition
 ): void {
-  const metadata: RealtimeVideoTrackMetadata | undefined = metadataByTrack.get(track);
+  const metadata: RealtimeVideoTrackMetadata | undefined =
+    metadataByTrack.get(resolveStateTarget(track));
   if (metadata !== undefined) {
     metadata.position = position;
   }

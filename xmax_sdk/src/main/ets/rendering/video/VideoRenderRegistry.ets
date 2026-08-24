@@ -1,5 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
+import { resolveStateTarget } from '../../foundation/state/StateTargetResolver';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { CameraPreviewRatio } from './CameraPreviewRatio';
 
@@ -96,26 +97,26 @@ export class VideoRenderRegistry {
     track: RealtimeVideoTrack,
     binding: VideoRenderBinding
   ): void {
-    VideoRenderRegistry.bindings.set(track, binding);
+    VideoRenderRegistry.bindings.set(resolveStateTarget(track), binding);
   }
 
   static unregister(track: RealtimeVideoTrack): void {
-    VideoRenderRegistry.bindings.delete(track);
+    VideoRenderRegistry.bindings.delete(resolveStateTarget(track));
   }
 
   static libraryName(track: RealtimeVideoTrack): string {
-    return VideoRenderRegistry.bindings.get(track)?.libraryName ?? '';
+    return VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.libraryName ?? '';
   }
 
   static cameraPreviewRatio(track: RealtimeVideoTrack): CameraPreviewRatio | undefined {
-    return VideoRenderRegistry.bindings.get(track)?.cameraPreviewRatio();
+    return VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.cameraPreviewRatio();
   }
 
   static setPreviewFrame(
     track: RealtimeVideoTrack,
     frame?: image.PixelMap
   ): void {
-    VideoRenderRegistry.bindings.get(track)?.setPreviewFrame(frame);
+    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.setPreviewFrame(frame);
   }
 
   static attach(
@@ -125,7 +126,7 @@ export class VideoRenderRegistry {
     previewRatioListener: CameraPreviewRatioListener,
     previewFrameListener: PreviewFrameListener
   ): void {
-    VideoRenderRegistry.bindings.get(track)?.attach(
+    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.attach(
       viewId,
       contentMode,
       previewRatioListener,
@@ -138,13 +139,16 @@ export class VideoRenderRegistry {
     viewId: string,
     contentMode: VideoContentMode
   ): void {
-    VideoRenderRegistry.bindings.get(track)?.setContentMode(viewId, contentMode);
+    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.setContentMode(
+      viewId,
+      contentMode
+    );
   }
 
   static detach(
     track: RealtimeVideoTrack,
     viewId: string
   ): void {
-    VideoRenderRegistry.bindings.get(track)?.detach(viewId);
+    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.detach(viewId);
   }
 }
