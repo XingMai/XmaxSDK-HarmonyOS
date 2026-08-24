@@ -35,9 +35,9 @@ Native HarmonyOS SDK, providing access to Xmax's real-time interactive video gen
 
 ### Manual Installation
 
-XmaxSDK depends on the Volcano Engine RTC SDK for HarmonyOS. Because the RTC SDK has not yet been published to the official OHPM Registry, it must currently be integrated manually.
+XmaxSDK relies on the VolcEngine RTC SDK for HarmonyOS. As the RTC SDK is not yet available in the official OHPM Registry, manual integration is currently required.
 
-Download [`VolcEngineRTCToB-Release.har`](http://tosv.byted.org/obj/rtcsdk/3.60.15.1950/full/Release/harmony/har/VolcEngineRTCToB-Release.har), and refer to the [ByteRTC HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for additional setup details.
+Download [`VolcEngineRTCToB-Release.har`](http://tosv.byted.org/obj/rtcsdk/3.60.15.1950/full/Release/harmony/har/VolcEngineRTCToB-Release.har) and refer to the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for complete setup details.
 
 Add both HAR files to the `libs` directory of your application module:
 
@@ -56,7 +56,7 @@ Add XmaxSDK to the module-level `oh-package.json5`:
 }
 ```
 
-In the project-level `oh-package.json5`, override the ByteRTC dependency with the local HAR supplied by Volcano Engine:
+In the project-level `oh-package.json5` file, override the VolcEngine dependency using the provided local HAR package:
 
 ```json5
 {
@@ -253,8 +253,8 @@ A runnable example is available in [`examples/XLab`](./examples/XLab). Before ru
 
 ## Dependencies
 
-- ByteRTC provides real-time audio and video transport
-- Tencent Cloud COS SDK provides object storage and file transfer
+- **VolcEngine RTC SDK**: Handles real-time audio and video transmission.
+- **Tencent Cloud COS SDK**: Provides object storage and file transfer services.
 
 <br>
 
