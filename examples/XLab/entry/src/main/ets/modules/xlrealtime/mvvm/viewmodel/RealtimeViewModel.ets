@@ -54,6 +54,8 @@ export class RealtimeViewModel {
   private submittedPrompt: string = '';
   private localVideoPath: string = '';
   private localImagePath: string = '';
+  private moxReferenceSourcePath: string = '';
+  private moxReferenceRemoteUrl: string = '';
 
   constructor(categories: ReferenceCategory[] = ReferenceDataSource.categories()) {
     this.state = new RealtimeViewState(categories);
@@ -225,6 +227,8 @@ export class RealtimeViewModel {
     this.realtimeManager = null;
     this.localVideoPath = '';
     this.localImagePath = '';
+    this.moxReferenceSourcePath = '';
+    this.moxReferenceRemoteUrl = '';
     this.state.localVideoTrack = null;
     this.state.remoteVideoTrack = null;
     this.connecting = false;
@@ -479,13 +483,17 @@ export class RealtimeViewModel {
         const selectedReference: Reference | undefined = this.selectedReferenceItem?.reference;
         const usesPrompt: boolean = this.generationInputMode === GenerationInputMode.PROMPT;
         const usesMox: boolean = this.generationInputMode === GenerationInputMode.MOX;
-        const referencePath: string | undefined = usesPrompt ?
-          this.promptReference?.remoteUrl : usesMox ? undefined : selectedReference?.remoteUrl;
         const prompt: string = usesPrompt || usesMox ? this.submittedPrompt :
           this.generationPrompt(selectedReference?.categoryId ?? '');
-        const shouldGenerate: boolean = usesPrompt || usesMox ?
-          prompt.length > 0 : referencePath !== undefined;
         try {
+          const referencePath: string | undefined = usesPrompt ?
+            this.promptReference?.remoteUrl : usesMox ?
+              await this.resolveMoxReferencePath() : selectedReference?.remoteUrl;
+          if (revision !== this.generationRevision) {
+            continue;
+          }
+          const shouldGenerate: boolean = usesPrompt || usesMox ?
+            prompt.length > 0 : referencePath !== undefined;
           if (shouldGenerate) {
             this.state.isMoxGenerationActive = usesMox;
             if (manager.currentState.connectionState === RealtimeConnectionState.CONNECTED) {
@@ -537,6 +545,8 @@ export class RealtimeViewModel {
     if (isImage) {
       this.localImagePath = resolvedPath;
       this.localVideoPath = '';
+      this.moxReferenceSourcePath = '';
+      this.moxReferenceRemoteUrl = '';
     } else {
       this.localVideoPath = resolvedPath;
       this.localImagePath = '';
@@ -595,6 +605,31 @@ export class RealtimeViewModel {
       default:
         return '';
     }
+  }
+
+  private async resolveMoxReferencePath(): Promise<string | undefined> {
+    const sourcePath: string = this.localImagePath.trim();
+    if (sourcePath.length === 0) {
+      return undefined;
+    }
+    if (this.moxReferenceSourcePath === sourcePath &&
+      this.moxReferenceRemoteUrl.length > 0) {
+      return this.moxReferenceRemoteUrl;
+    }
+
+    const uploader: ReferenceUploading | null = this.referenceUploader;
+    if (uploader === null) {
+      throw new Error('参考图上传尚未就绪');
+    }
+
+    this.state.isGenerationStarting = true;
+    const remoteUrl: string = await uploader.uploadReference(sourcePath);
+    if (this.localImagePath.trim() !== sourcePath) {
+      return undefined;
+    }
+    this.moxReferenceSourcePath = sourcePath;
+    this.moxReferenceRemoteUrl = remoteUrl;
+    return remoteUrl;
   }
 
   private async stopLocalInput(
