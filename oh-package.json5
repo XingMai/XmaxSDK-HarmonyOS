@@ -2,6 +2,8 @@
   "modelVersion": "6.1.1",
   "description": "XmaxSDK for HarmonyOS",
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "overrides": {
+    "@bytertc/volcenginertc": "file:./xmax_sdk/libs/VolcEngineRTCToB-Release.har"
+  }
 }
-

@@ -2,5 +2,8 @@
   "modelVersion": "6.1.1",
   "description": "XLab HarmonyOS example application",
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "overrides": {
+    "@bytertc/volcenginertc": "file:../../xmax_sdk/libs/VolcEngineRTCToB-Release.har"
+  }
 }

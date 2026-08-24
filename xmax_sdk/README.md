@@ -35,18 +35,36 @@ Native HarmonyOS SDK, providing access to Xmax's real-time interactive video gen
 
 ### Manual Installation
 
-Add the provided `xmaxsdk-1.0.0.har` to the `libs` directory of your application module:
+XmaxSDK depends on the Volcano Engine RTC SDK for HarmonyOS. Because the RTC SDK has not yet been published to the official OHPM Registry, it must currently be integrated manually.
+
+Download [`VolcEngineRTCToB-Release.har`](http://tosv.byted.org/obj/rtcsdk/3.60.15.1950/full/Release/harmony/har/VolcEngineRTCToB-Release.har), and refer to the [ByteRTC HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for additional setup details.
+
+Add both HAR files to the `libs` directory of your application module:
 
 ```text
 entry/libs/xmaxsdk-1.0.0.har
+entry/libs/VolcEngineRTCToB-Release.har
 ```
 
-Then add the local HAR dependency to the module-level `oh-package.json5`:
+Add XmaxSDK to the module-level `oh-package.json5`:
 
 ```json5
 {
   "dependencies": {
     "@xmax/sdk": "file:./libs/xmaxsdk-1.0.0.har"
+  }
+}
+```
+
+In the project-level `oh-package.json5`, override the ByteRTC dependency with the local HAR supplied by Volcano Engine:
+
+```json5
+{
+  "modelVersion": "6.1.1",
+  "dependencies": {},
+  "devDependencies": {},
+  "overrides": {
+    "@bytertc/volcenginertc": "file:./entry/libs/VolcEngineRTCToB-Release.har"
   }
 }
 ```
@@ -227,7 +245,7 @@ X2.0 is the latest model available to the public, which is highly optimized for 
 
 ## Example Project
 
-A runnable example is available in [`examples/XLab`](./examples/XLab). Configure your signing configuration in DevEco Studio, then run the `entry` target.
+A runnable example is available in [`examples/XLab`](./examples/XLab). Before running it, download the HarmonyOS ByteRTC SDK above and place `VolcEngineRTCToB-Release.har` in `xmax_sdk/libs`. Configure your signing configuration in DevEco Studio, then run the `entry` target.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 

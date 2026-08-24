@@ -20,7 +20,7 @@
   "repository": "https://github.com/XingMai/XmaxSDK-Harmony",
   "license": "MIT",
   "dependencies": {
-    "@bytertc/volcenginertc": "file:./libs/volcenginertc-3.60.1.3100.har",
+    "@bytertc/volcenginertc": "3.60.13100",
     "@tencentcloud/cos": "1.2.4"
   }
 }
