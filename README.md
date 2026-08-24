@@ -126,6 +126,7 @@ Store each stream's `videoTrack` in component state, then render it with `XmaxVi
 
 ```ts
 import {
+  RealtimeConnectionState,
   RealtimeVideoTrack,
   VideoContentMode,
   XmaxVideoView
@@ -134,6 +135,9 @@ import {
 /** Stores the local preview and generated video tracks in reactive component state. */
 @State private localVideoTrack: RealtimeVideoTrack | null = null;
 @State private remoteVideoTrack: RealtimeVideoTrack | null = null;
+
+/** Tracks when the generated remote video is ready to be presented. */
+@State private connectionState: RealtimeConnectionState = RealtimeConnectionState.IDLE;
 
 /** Extracts the renderable tracks after the realtime connection is established. */
 this.localVideoTrack = localStream.videoTrack ?? null;
@@ -151,8 +155,9 @@ build() {
       })
     }
 
-    /** Renders the generated remote video as a full-bleed camera output. */
-    if (this.remoteVideoTrack !== null) {
+    /** Keeps the local preview visible until realtime generation is ready. */
+    if (this.remoteVideoTrack !== null &&
+      this.connectionState === RealtimeConnectionState.GENERATING) {
       XmaxVideoView({
         track: this.remoteVideoTrack,
         contentMode: VideoContentMode.FILL
@@ -213,11 +218,12 @@ Pass `referencePath` to `RealtimeContext` as shown in step 3.
 
 ### 6. Observe state and errors
 
-Use the realtime listeners to monitor the session lifecycle and diagnose issues:
+Register the realtime listeners immediately after creating the manager and before calling `connect()`. Use them to control presentation state and diagnose issues:
 
 ```ts
 /** Observes realtime connection and generation state changes. */
 realtimeManager.setStateListener((state) => {
+  this.connectionState = state.connectionState;
   console.info(`Xmax realtime state: ${state.connectionState}, session: ${state.sessionId}, task: ${state.taskId}`);
 });
 
