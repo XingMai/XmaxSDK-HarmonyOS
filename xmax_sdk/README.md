@@ -253,16 +253,12 @@ A runnable example is available in [`examples/XLab`](./examples/XLab). Before ru
 
 ## Dependencies
 
-- **VolcEngine RTC SDK**: Handles real-time audio and video transmission.
-- **Tencent Cloud COS SDK**: Provides object storage and file transfer services.
-
-<br>
+- **VolcEngine RTC SDK**: handles real-time audio and video transmission.
+- **Tencent Cloud COS SDK**: provides object storage and file transfer services.
 
 ## License
 
 XmaxSDK is available under the MIT License. See [LICENSE](./LICENSE) for details.
-
-<br>
 
 ## Contact Us
 
