@@ -7,7 +7,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-Native HarmonyOS SDK, providing access to Xmax's real-time interactive video generation models. It enables low-latency, high-fidelity video transformation (such as virtual try-on, character replacement, and mixed-reality companions) using live video streams, reference images, and user interactions. With this SDK, you can leverage these novel capabilities to build your own apps in just a few lines of code.
+Native HarmonyOS SDK, providing access to real-time interactive video generation models from Xmax. It enables low-latency, high-fidelity video transformation (such as virtual try-on, character replacement, and mixed-reality companions) using live video streams, reference images, and user interactions. With this SDK, you can leverage these novel capabilities to build your own apps in just a few lines of code.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
@@ -311,7 +311,7 @@ X2.0 is the latest model available to the public, which is highly optimized for 
 
 ## Example Project
 
-A runnable example is available in [`examples/XLab`](./examples/XLab). Before running it, download the HarmonyOS ByteRTC SDK above and place `VolcEngineRTCToB-Release.har` in `xmax_sdk/libs`. Configure your signing configuration in DevEco Studio, then run the `entry` target.
+A runnable example is available in [`examples/XLab`](https://github.com/XingMai/XmaxSDK-HarmonyOS/tree/main/examples/XLab). Screenshots of the example app are shown below.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
