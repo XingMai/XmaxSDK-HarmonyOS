@@ -21,7 +21,11 @@ import { MediaService } from '../../service/media/MediaService';
 import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
+import {
+  RealtimeVideoTrack,
+  updateRealtimeVideoTrackFormat,
+  updateRealtimeVideoTrackPosition
+} from '../../service/realtime/RealtimeVideoTrack';
 import { StreamId } from '../../transport/stream/StreamId';
 
 const CAMERA_REPLACEMENT_DELAY_MS: number = 150;
@@ -129,8 +133,8 @@ export class XmaxRealtimeCameraManager {
       setTimeout(resolve, CAMERA_REPLACEMENT_DELAY_MS);
     });
 
-    track.videoFormat = resolvedFormat;
-    track.position = position;
+    updateRealtimeVideoTrackFormat(track, resolvedFormat);
+    updateRealtimeVideoTrackPosition(track, position);
 
     return new RealtimeMediaStream(StreamId.LOCAL, track);
   }
@@ -178,7 +182,7 @@ export class XmaxRealtimeCameraManager {
       CameraPosition.BACK : CameraPosition.FRONT;
 
     this.rtcProvider.switchCamera(nextPosition);
-    currentTrack.position = nextPosition;
+    updateRealtimeVideoTrackPosition(currentTrack, nextPosition);
 
     return new RealtimeMediaStream(StreamId.LOCAL, currentTrack);
   }
@@ -204,7 +208,7 @@ export class XmaxRealtimeCameraManager {
     }
 
     this.encodingController.configure(resolvedFormat);
-    track.videoFormat = resolvedFormat;
+    updateRealtimeVideoTrackFormat(track, resolvedFormat);
   }
 
   /**

@@ -20,7 +20,10 @@ import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessio
 import { RealtimeSessionService } from '../../service/realtime/RealtimeSessionService';
 import { RealtimeSessionServicing } from '../../service/realtime/RealtimeSessionServicing';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
+import {
+  RealtimeVideoTrack,
+  updateRealtimeVideoTrackFormat
+} from '../../service/realtime/RealtimeVideoTrack';
 import { RoomControlling } from '../../transport/room/RoomControlling';
 import { StreamControlling } from '../../transport/stream/StreamControlling';
 import { StreamId } from '../../transport/stream/StreamId';
@@ -95,7 +98,7 @@ export class XmaxRealtimeConnectionManager {
   updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat): void {
     const track: RealtimeVideoTrack | null = this.activeRemoteTrack;
     if (track !== null) {
-      track.videoFormat = videoFormat;
+      updateRealtimeVideoTrackFormat(track, videoFormat);
     }
   }
 
