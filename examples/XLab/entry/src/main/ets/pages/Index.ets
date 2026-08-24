@@ -872,7 +872,7 @@ struct Index {
               .width(36)
               .color('#18FFFFFF')
 
-            Text('Copyright © 2026 XMAX AI, Inc. All rights reserved.')
+            Text('Copyright © 2026 XMAX.AI PTE.LTD All rights reserved.')
               .margin({ top: 18 })
               .fontSize(9)
               .fontColor('#4FFFFFFF')
