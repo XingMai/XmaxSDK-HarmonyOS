@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
 import {
   AudioChannel,
   AudioFrameType,
@@ -104,14 +105,15 @@ export class RtcProvider implements RtcProviding {
     const lease: RtcEngineLease = await RtcEngineProvider.acquire(this.context);
     const engine: RTCEngine = lease.engine;
 
-    engine.on('onSEIMessageReceived', (key: RemoteStreamKey, message: string): void => {
+    engine.on('onSEIMessageReceived', (key: RemoteStreamKey, message: ArrayBuffer): void => {
       if (this.engine !== engine || key.room_id !== this.activeRoomId) {
         return;
       }
 
       const stream = new RemoteStream(key.room_id, key.user_id);
+      const decodedMessage: string = util.TextDecoder.create().decodeToString(new Uint8Array(message));
       this.remoteStreamKeys.set(stream.key(), key);
-      this.listener?.onSeiMessageReceived(stream, message);
+      this.listener?.onSeiMessageReceived(stream, decodedMessage);
     });
     engine.on('onSysStats', (stats: SysStats): void => {
       if (this.engine !== engine) {
@@ -833,7 +835,7 @@ export class RtcProvider implements RtcProviding {
           }
         }
       );
-      const result: number = room.joinRoom(token, userInfo, configuration);
+      const result: number = room.joinRoom(token, userInfo, true, configuration);
       if (result < 0 && !settled) {
         settled = true;
         clearTimeout(timerId);

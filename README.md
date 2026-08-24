@@ -37,7 +37,9 @@ Native HarmonyOS SDK, providing access to Xmax's real-time interactive video gen
 
 XmaxSDK relies on the VolcEngine RTC SDK for HarmonyOS. As the RTC SDK is not yet available in the official OHPM Registry, manual integration is currently required.
 
-Download [`VolcEngineRTCToB-Release.har`](http://tosv.byted.org/obj/rtcsdk/3.60.15.1950/full/Release/harmony/har/VolcEngineRTCToB-Release.har) and refer to the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for complete setup details.
+Download [`xmaxsdk-1.0.0.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.0/xmaxsdk-1.0.0.har) from GitHub Releases.
+
+Download [`VolcEngineRTCToB-Release.har`](https://internal-api-drive-stream.larkoffice.com/space/api/box/stream/download/all/KbvIbn6kgosW7gxs8vEcMbRynib/?mount_node_token=S5rndZVwPov3gOxHdy6ctuCznSc&mount_point=docx_file) and refer to the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for complete setup details.
 
 Add both HAR files to the `libs` directory of your application module:
 
@@ -208,6 +210,54 @@ const referencePath = uploadedImage.url;
 ```
 
 Pass `referencePath` to `RealtimeContext` as shown in step 3.
+
+### 6. Run your application
+
+Declare the required permissions in your application module's `module.json5`:
+
+```json5
+{
+  "module": {
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      },
+      {
+        "name": "ohos.permission.CAMERA",
+        "reason": "$string:reason_camera",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ]
+  }
+}
+```
+
+Replace `EntryAbility` with the UIAbility that uses XmaxSDK if your application uses a different ability name.
+
+Define the permission reason in `resources/base/element/string.json`:
+
+```json
+{
+  "string": [
+    {
+      "name": "reason_camera",
+      "value": "Camera access is required for realtime video input."
+    }
+  ]
+}
+```
+
+If your input uses audio, also declare `ohos.permission.MICROPHONE` with its own permission reason and `usedScene` configuration.
+
+Configure signing in DevEco Studio under **File > Project Structure > Signing Configs**, select the `entry` target, and run your application on a HarmonyOS device.
 
 <br>
 
