@@ -35,11 +35,10 @@ Native HarmonyOS SDK, providing access to real-time interactive video generation
 
 ### Manual Installation
 
-XmaxSDK relies on the VolcEngine RTC SDK for HarmonyOS. As the RTC SDK is not yet available in the official OHPM Registry, manual integration is currently required.
+XmaxSDK relies on the VolcEngine RTC SDK for HarmonyOS. Since the RTC SDK is not yet available in the official OHPM Registry, manual integration is currently required.
 
-Download [`xmaxsdk-1.0.0.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.0/xmaxsdk-1.0.0.har) from GitHub Releases.
-
-Download [`VolcEngineRTCToB-Release.har`](https://internal-api-drive-stream.larkoffice.com/space/api/box/stream/download/all/KbvIbn6kgosW7gxs8vEcMbRynib/?mount_node_token=S5rndZVwPov3gOxHdy6ctuCznSc&mount_point=docx_file) and refer to the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof) for complete setup details.
+- Download Xmax SDK [`xmaxsdk-1.0.0.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.0/xmaxsdk-1.0.0.har) from GitHub Releases.
+- Download VolcEngine RTC SDK from the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof?from=from_copylink).
 
 Add both HAR files to the `libs` directory of your application module:
 
@@ -95,28 +94,39 @@ import {
   XmaxConfiguration
 } from '@xmax/sdk';
 
-/** Gets the HarmonyOS UIAbility context required by the SDK. */
+// Gets the HarmonyOS UIAbility context required by the SDK.
 const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
 
-/** Configures the SDK with your Xmax API Key. */
+// Configures the SDK with your Xmax API Key.
 const xmaxConfiguration = new XmaxConfiguration('YOUR_XMAX_API_KEY');
 
-/** Creates an Xmax client using the SDK configuration and application context. */
+// Creates an Xmax client using the SDK configuration and application context.
 const client = new XmaxClient(xmaxConfiguration, context);
 
-/** Selects the X2.0 model and creates its realtime configuration. */
+// Selects the X2.0 model and creates its realtime configuration.
 const model = RealtimeModels.realtime(RealtimeModel.X2_0);
 const realtimeConfiguration = new RealtimeConfiguration(model);
 
-/** Creates a realtime manager using the selected model configuration. */
+// Creates a realtime manager using the selected model configuration.
 const realtimeManager = client.createRealtimeManager(realtimeConfiguration);
 
-/** Creates a local camera stream at 832 × 1472 and 24 fps using the front camera. */
+// Observes realtime connection and generation state changes.
+realtimeManager.setStateListener((state) => {
+  this.connectionState = state.connectionState;
+  console.info(`Xmax realtime state: ${state.connectionState}, session: ${state.sessionId}, task: ${state.taskId}`);
+});
+
+// Reports errors raised by the realtime pipeline.
+realtimeManager.setErrorListener((error) => {
+  console.error(`Xmax realtime error: ${error.code} ${error.message}`);
+});
+
+// Creates a local camera stream at 832 × 1472 and 24 fps using the front camera.
 const videoFormat = new RealtimeVideoFormat(832, 1472, 24);
 const cameraPosition = CameraPosition.FRONT;
 const localStream = await realtimeManager.createLocalCameraStream(videoFormat, cameraPosition);
 
-/** Connects the local input stream and returns the generated remote stream. */
+// Connects the local input stream and returns the generated remote stream.
 const remoteStream = await realtimeManager.connect(localStream);
 ```
 
@@ -132,14 +142,14 @@ import {
   XmaxVideoView
 } from '@xmax/sdk';
 
-/** Stores the local preview and generated video tracks in reactive component state. */
+// Stores the local preview and generated video tracks in reactive component state.
 @State private localVideoTrack: RealtimeVideoTrack | null = null;
 @State private remoteVideoTrack: RealtimeVideoTrack | null = null;
 
-/** Tracks when the generated remote video is ready to be presented. */
+// Tracks when the generated remote video is ready to be presented.
 @State private connectionState: RealtimeConnectionState = RealtimeConnectionState.IDLE;
 
-/** Extracts the renderable tracks after the realtime connection is established. */
+// Extracts the renderable tracks after the realtime connection is established.
 this.localVideoTrack = localStream.videoTrack ?? null;
 this.remoteVideoTrack = remoteStream.videoTrack ?? null;
 ```
@@ -147,7 +157,7 @@ this.remoteVideoTrack = remoteStream.videoTrack ?? null;
 ```ts
 build() {
   Stack() {
-    /** Renders the local input as a full-bleed camera preview. */
+    // Renders the local input as a full-bleed camera preview.
     if (this.localVideoTrack !== null) {
       XmaxVideoView({
         track: this.localVideoTrack,
@@ -155,7 +165,7 @@ build() {
       })
     }
 
-    /** Keeps the local preview visible until realtime generation is ready. */
+    // Keeps the local preview visible until realtime generation is ready.
     if (this.remoteVideoTrack !== null &&
       this.connectionState === RealtimeConnectionState.GENERATING) {
       XmaxVideoView({
@@ -182,7 +192,7 @@ const prompt = '视频中角色替换成参考图中角色';
 const referencePath = 'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg';
 const generationContext = new RealtimeContext(prompt, referencePath);
 
-/** Starts generation using the prepared context. */
+// Starts generation using the prepared context.
 await realtimeManager.startGeneration(generationContext);
 ```
 
@@ -195,45 +205,28 @@ await realtimeManager.startGeneration(generationContext);
  */
 await realtimeManager.stopGeneration();
 
-/** Disconnects from the realtime session when it is no longer needed. */
+// Disconnects from the realtime session when it is no longer needed.
 await realtimeManager.disconnect();
 ```
 
 ### 5. Upload a reference image
 
 ```ts
-/** Creates a storage manager from the configured Xmax client. */
+// Creates a storage manager from the configured Xmax client.
 const storageManager = client.createStorageManager();
 
-/** Uploads an on-device image to Xmax object storage. */
+// Uploads an on-device image to Xmax object storage.
 const imageFilePath = 'YOUR_LOCAL_IMAGE_FILE_PATH';
 const contentType = 'image/jpeg';
 const uploadedImage = await storageManager.uploadImageFile(imageFilePath, contentType);
 
-/** Uses the returned remote URL as referencePath in RealtimeContext. */
+// Uses the returned remote URL as referencePath in RealtimeContext.
 const referencePath = uploadedImage.url;
 ```
 
 Pass `referencePath` to `RealtimeContext` as shown in step 3.
 
-### 6. Observe state and errors
-
-Register the realtime listeners before starting the session to observe connection, generation, and error updates:
-
-```ts
-/** Observes realtime connection and generation state changes. */
-realtimeManager.setStateListener((state) => {
-  this.connectionState = state.connectionState;
-  console.info(`Xmax realtime state: ${state.connectionState}, session: ${state.sessionId}, task: ${state.taskId}`);
-});
-
-/** Reports errors raised by the realtime pipeline. */
-realtimeManager.setErrorListener((error) => {
-  console.error(`Xmax realtime error: ${error.code} ${error.message}`);
-});
-```
-
-### 7. Run your application
+### 6. Run your application
 
 Declare the required permissions in your application module's `module.json5`:
 
@@ -288,20 +281,20 @@ Configure signing in DevEco Studio under **File > Project Structure > Signing Co
 Create a real-time stream from a local image:
 
 ```ts
-/** Creates a local realtime input stream from an on-device image. */
+// Creates a local realtime input stream from an on-device image.
 const imageStream = await realtimeManager.createLocalImageStream(imageFilePath);
 
-/** Connects the image input and returns the generated remote stream. */
+// Connects the image input and returns the generated remote stream.
 const imageRemoteStream = await realtimeManager.connect(imageStream);
 ```
 
 Create a real-time stream from a local video:
 
 ```ts
-/** Creates a local realtime input stream from a pre-recorded video. */
+// Creates a local realtime input stream from a pre-recorded video.
 const videoStream = await realtimeManager.createLocalVideoStream(videoFilePath);
 
-/** Connects the video input and returns the generated remote stream. */
+// Connects the video input and returns the generated remote stream.
 const videoRemoteStream = await realtimeManager.connect(videoStream);
 ```
 
