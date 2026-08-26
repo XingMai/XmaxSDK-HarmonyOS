@@ -1,19 +1,19 @@
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { RoomEvent } from './RoomEvent';
 
 const HEARTBEAT_INTERVAL_MS: number = 10000;
 
 export class RoomHeartbeat {
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 运行状态
   private timerId: number = -1;
   private userId: string = '';
 
-  constructor(rtcProvider: RtcProviding) {
-    this.rtcProvider = rtcProvider;
+  constructor(rtcManager: RtcManaging) {
+    this.rtcManager = rtcManager;
   }
 
   start(userId: string): void {
@@ -26,7 +26,7 @@ export class RoomHeartbeat {
       }
 
       try {
-        this.rtcProvider.sendRoomMessage(RoomEvent.heartbeat(this.userId));
+        this.rtcManager.sendRoomMessage(RoomEvent.heartbeat(this.userId));
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(

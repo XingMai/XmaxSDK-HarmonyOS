@@ -1,7 +1,7 @@
 import { image } from '@kit.ImageKit';
 
 /** 定义 SDK 内部使用的平台图片处理能力。 */
-export interface ImageProviding {
+export interface ImageManaging {
 
   /**
    * 居中裁剪并缩放 PixelMap，使其完整填满目标尺寸。

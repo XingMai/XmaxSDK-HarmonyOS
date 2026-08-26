@@ -5,7 +5,7 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
@@ -41,7 +41,7 @@ class ActiveLocalMediaSource {
 export class XmaxRealtimeMediaManager {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 本地媒体组件
   private readonly cameraManager: XmaxRealtimeCameraManager;
@@ -55,32 +55,32 @@ export class XmaxRealtimeMediaManager {
    * 创建本地媒体协调 Manager。
    *
    * @param context 相机和媒体权限所需的页面上下文。
-   * @param rtcProvider 本地媒体来源共享的 RTC 基础能力。
+   * @param rtcManager 本地媒体来源共享的 RTC 基础能力。
    * @param streamController 接收外部视频和音频帧的传输组件。
    * @param errorListener 持续媒体输出错误监听器。
    */
   constructor(
     context: common.UIAbilityContext,
-    rtcProvider: RtcProviding,
+    rtcManager: RtcManaging,
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
+    this.rtcManager = rtcManager;
 
     // 本地媒体组件
     this.cameraManager = new XmaxRealtimeCameraManager(
       context,
-      rtcProvider
+      rtcManager
     );
     this.videoManager = new XmaxRealtimeVideoManager(
       context,
-      rtcProvider,
+      rtcManager,
       streamController,
       errorListener
     );
     this.imageManager = new XmaxRealtimeImageManager(
-      rtcProvider,
+      rtcManager,
       streamController,
       errorListener
     );
@@ -375,7 +375,7 @@ export class XmaxRealtimeMediaManager {
     create: LocalMediaCreation
   ): Promise<RealtimeMediaStream> {
     try {
-      await this.rtcProvider.initialize();
+      await this.rtcManager.initialize();
       this.ensureCreationActive(source);
 
       const stream: RealtimeMediaStream = await create();
@@ -493,7 +493,7 @@ export class XmaxRealtimeMediaManager {
    */
   private async destroyRtcSafely(message: string): Promise<void> {
     try {
-      await this.rtcProvider.destroy();
+      await this.rtcManager.destroy();
     } catch (error) {
       const reason: string = error instanceof Error ?
         error.message : String(error);

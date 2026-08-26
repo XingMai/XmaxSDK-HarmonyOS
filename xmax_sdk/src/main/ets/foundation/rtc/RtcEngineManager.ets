@@ -41,7 +41,7 @@ class RtcEngineRequest {
 }
 
 /** 管理全局 RTC Engine 的独占创建、租用和销毁。 */
-export class RtcEngineProvider {
+export class RtcEngineManager {
 
   // RTC 资源
   private static activeLease: RtcEngineLease | null = null;
@@ -58,30 +58,30 @@ export class RtcEngineProvider {
   static async acquire(
     context: common.UIAbilityContext
   ): Promise<RtcEngineLease> {
-    while (RtcEngineProvider.activeLease !== null ||
-      RtcEngineProvider.initializationPromise !== null ||
-      RtcEngineProvider.destructionPromise !== null) {
-      await RtcEngineProvider.waitForAvailability();
+    while (RtcEngineManager.activeLease !== null ||
+      RtcEngineManager.initializationPromise !== null ||
+      RtcEngineManager.destructionPromise !== null) {
+      await RtcEngineManager.waitForAvailability();
     }
 
     const initializationPromise: Promise<RTCEngine> =
-      RtcEngineProvider.create(context);
-    RtcEngineProvider.initializationPromise = initializationPromise;
+      RtcEngineManager.create(context);
+    RtcEngineManager.initializationPromise = initializationPromise;
 
     try {
       const engine: RTCEngine = await initializationPromise;
       const lease = new RtcEngineLease(engine);
-      RtcEngineProvider.activeLease = lease;
+      RtcEngineManager.activeLease = lease;
 
       return lease;
     } catch (error) {
       throw XmaxError.from(error);
     } finally {
-      if (RtcEngineProvider.initializationPromise === initializationPromise) {
-        RtcEngineProvider.initializationPromise = null;
+      if (RtcEngineManager.initializationPromise === initializationPromise) {
+        RtcEngineManager.initializationPromise = null;
       }
-      if (RtcEngineProvider.activeLease === null) {
-        RtcEngineProvider.notifyNextRequest();
+      if (RtcEngineManager.activeLease === null) {
+        RtcEngineManager.notifyNextRequest();
       }
     }
   }
@@ -93,22 +93,22 @@ export class RtcEngineProvider {
    * @returns Engine 销毁完成后的 Promise。
    */
   static async release(lease: RtcEngineLease): Promise<void> {
-    if (RtcEngineProvider.activeLease !== lease) {
+    if (RtcEngineManager.activeLease !== lease) {
       return;
     }
 
-    RtcEngineProvider.activeLease = null;
+    RtcEngineManager.activeLease = null;
     const destructionPromise: Promise<void> =
-      RtcEngineProvider.destroy(lease.engine);
-    RtcEngineProvider.destructionPromise = destructionPromise;
+      RtcEngineManager.destroy(lease.engine);
+    RtcEngineManager.destructionPromise = destructionPromise;
 
     try {
       await destructionPromise;
     } finally {
-      if (RtcEngineProvider.destructionPromise === destructionPromise) {
-        RtcEngineProvider.destructionPromise = null;
+      if (RtcEngineManager.destructionPromise === destructionPromise) {
+        RtcEngineManager.destructionPromise = null;
       }
-      RtcEngineProvider.notifyNextRequest();
+      RtcEngineManager.notifyNextRequest();
     }
   }
 
@@ -119,7 +119,7 @@ export class RtcEngineProvider {
    */
   private static waitForAvailability(): Promise<void> {
     return new Promise<void>((resolve): void => {
-      RtcEngineProvider.requests.push(new RtcEngineRequest(resolve));
+      RtcEngineManager.requests.push(new RtcEngineRequest(resolve));
     });
   }
 
@@ -130,7 +130,7 @@ export class RtcEngineProvider {
    */
   private static notifyNextRequest(): void {
     const request: RtcEngineRequest | undefined =
-      RtcEngineProvider.requests.shift();
+      RtcEngineManager.requests.shift();
     if (request !== undefined) {
       request.resolve();
     }

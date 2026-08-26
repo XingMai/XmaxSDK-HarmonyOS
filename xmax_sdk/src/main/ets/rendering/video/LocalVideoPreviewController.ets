@@ -1,6 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { ImageProviding } from '../../foundation/media/image/ImageProviding';
+import { ImageManaging } from '../../foundation/media/image/ImageManaging';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
@@ -18,7 +18,7 @@ import { VideoRenderRegistry } from './VideoRenderRegistry';
 export class LocalVideoPreviewController implements LocalVideoPreviewControlling {
 
   // 基础层组件
-  private readonly imageProvider: ImageProviding;
+  private readonly imageManager: ImageManaging;
 
   // 预览资源
   private previewFrame: image.PixelMap | null = null;
@@ -33,10 +33,10 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
   /**
    * 创建本地视频预览 Controller。
    *
-   * @param imageProvider 提供 PixelMap 裁剪缩放能力的图片 Provider。
+   * @param imageManager 提供 PixelMap 裁剪缩放能力的图片 Manager。
    */
-  constructor(imageProvider: ImageProviding) {
-    this.imageProvider = imageProvider;
+  constructor(imageManager: ImageManaging) {
+    this.imageManager = imageManager;
   }
 
   /**
@@ -196,7 +196,7 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
 
       const targetSize: ImageSize | null = this.targetSize;
       if (targetSize !== null) {
-        await this.imageProvider.resizePixelMapToFill(
+        await this.imageManager.resizePixelMapToFill(
           pixelMap,
           targetSize.width,
           targetSize.height

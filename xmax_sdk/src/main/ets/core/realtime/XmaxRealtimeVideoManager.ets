@@ -2,18 +2,18 @@ import { common } from '@kit.AbilityKit';
 import { EncodingController } from '../../transport/encoding/EncodingController';
 import { EncodingControlling } from '../../transport/encoding/EncodingControlling';
 import { AudioFrame } from '../../foundation/media/audio/AudioFrame';
-import { AudioProvider } from '../../foundation/media/audio/AudioProvider';
-import { AudioProviding } from '../../foundation/media/audio/AudioProviding';
+import { AudioManager } from '../../foundation/media/audio/AudioManager';
+import { AudioManaging } from '../../foundation/media/audio/AudioManaging';
 import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { ImageProvider } from '../../foundation/media/image/ImageProvider';
-import { ImageProviding } from '../../foundation/media/image/ImageProviding';
-import { PermissionProvider } from '../../foundation/permissions/PermissionProvider';
-import { PermissionProviding } from '../../foundation/permissions/PermissionProviding';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { ImageManager } from '../../foundation/media/image/ImageManager';
+import { ImageManaging } from '../../foundation/media/image/ImageManaging';
+import { PermissionManager } from '../../foundation/permissions/PermissionManager';
+import { PermissionManaging } from '../../foundation/permissions/PermissionManaging';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { MediaSourceConfiguration } from '../../media/MediaSourceConfiguration';
@@ -40,10 +40,10 @@ import { StreamId } from '../../transport/stream/StreamId';
 export class XmaxRealtimeVideoManager {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
-  private readonly audioProvider: AudioProviding;
-  private readonly imageProvider: ImageProviding;
-  private readonly permissionProvider: PermissionProviding;
+  private readonly rtcManager: RtcManaging;
+  private readonly audioManager: AudioManaging;
+  private readonly imageManager: ImageManaging;
+  private readonly permissionManager: PermissionManaging;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -61,21 +61,21 @@ export class XmaxRealtimeVideoManager {
    * 创建视频媒体 Manager。
    *
    * @param context 申请音频相关权限所需的页面上下文。
-   * @param rtcProvider 外部媒体源和本地渲染使用的 RTC 基础能力。
+   * @param rtcManager 外部媒体源和本地渲染使用的 RTC 基础能力。
    * @param streamController 接收并推送本地视频和音频帧的传输组件。
    * @param errorListener 持续媒体输出错误监听器。
    */
   constructor(
     context: common.UIAbilityContext,
-    rtcProvider: RtcProviding,
+    rtcManager: RtcManaging,
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
-    this.audioProvider = new AudioProvider();
-    this.imageProvider = new ImageProvider();
-    this.permissionProvider = new PermissionProvider(context);
+    this.rtcManager = rtcManager;
+    this.audioManager = new AudioManager();
+    this.imageManager = new ImageManager();
+    this.permissionManager = new PermissionManager(context);
 
     // 服务层组件
     this.mediaService = new MediaService();
@@ -83,11 +83,11 @@ export class XmaxRealtimeVideoManager {
     // 业务层组件
     this.streamController = streamController;
     this.localVideoPreviewController = new LocalVideoPreviewController(
-      this.imageProvider
+      this.imageManager
     );
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,
-      this.audioProvider,
+      this.audioManager,
       (frame: VideoFrame): void => {
         this.localVideoPreviewController.captureFirstFrame(frame);
         this.streamController.pushLocalVideoFrame(frame);
@@ -102,7 +102,7 @@ export class XmaxRealtimeVideoManager {
         ));
       }
     );
-    this.encodingController = new EncodingController(rtcProvider);
+    this.encodingController = new EncodingController(rtcManager);
   }
 
   /** @returns 当前活动的本地视频轨道；尚未创建时返回空值。 */
@@ -153,7 +153,7 @@ export class XmaxRealtimeVideoManager {
 
     if (hasAudio) {
       try {
-        this.rtcProvider.stopExternalAudioSource();
+        this.rtcManager.stopExternalAudioSource();
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(
@@ -165,7 +165,7 @@ export class XmaxRealtimeVideoManager {
 
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
-      this.rtcProvider.unbindLocalVideo();
+      this.rtcManager.unbindLocalVideo();
     }
   }
 
@@ -218,13 +218,13 @@ export class XmaxRealtimeVideoManager {
       this.localVideoPreviewController.configure(resolvedFormat);
 
       if (sourceConfiguration.hasAudio) {
-        await this.permissionProvider.ensureMicrophonePermission();
+        await this.permissionManager.ensureMicrophonePermission();
       }
 
       this.encodingController.configure(resolvedFormat);
-      this.rtcProvider.useExternalVideoSource();
+      this.rtcManager.useExternalVideoSource();
       if (sourceConfiguration.hasAudio) {
-        this.rtcProvider.startExternalAudioSource();
+        this.rtcManager.startExternalAudioSource();
       }
 
       this.registerPreview(track);
@@ -239,7 +239,7 @@ export class XmaxRealtimeVideoManager {
 
       if (hasAudio) {
         try {
-          this.rtcProvider.stopExternalAudioSource();
+          this.rtcManager.stopExternalAudioSource();
         } catch (audioError) {
           const reason: string = audioError instanceof Error ?
             audioError.message : String(audioError);
@@ -266,15 +266,15 @@ export class XmaxRealtimeVideoManager {
    */
   private registerPreview(track: RealtimeVideoTrack): void {
     VideoRenderRegistry.register(track, new VideoRenderBinding(
-      this.rtcProvider.renderLibraryName(),
+      this.rtcManager.renderLibraryName(),
       (
         viewId: string,
         contentMode: VideoContentMode
       ): void => {
-        this.rtcProvider.bindLocalVideo(viewId, contentMode);
+        this.rtcManager.bindLocalVideo(viewId, contentMode);
       },
       (_viewId: string): void => {
-        this.rtcProvider.unbindLocalVideo();
+        this.rtcManager.unbindLocalVideo();
       }
     ));
   }

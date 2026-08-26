@@ -1,5 +1,5 @@
 import { RemoteStream } from '../../foundation/rtc/RemoteStream';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { RemoteVideoControlling } from './RemoteVideoControlling';
 
@@ -7,7 +7,7 @@ import { RemoteVideoControlling } from './RemoteVideoControlling';
 export class RemoteVideoController implements RemoteVideoControlling {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 渲染资源
   private remoteStream: RemoteStream | null = null;
@@ -17,10 +17,10 @@ export class RemoteVideoController implements RemoteVideoControlling {
   /**
    * 创建远端视频渲染 Controller。
    *
-   * @param rtcProvider 提供远端视频绑定能力的 RTC Provider。
+   * @param rtcManager 提供远端视频绑定能力的 RTC Manager。
    */
-  constructor(rtcProvider: RtcProviding) {
-    this.rtcProvider = rtcProvider;
+  constructor(rtcManager: RtcManaging) {
+    this.rtcManager = rtcManager;
   }
 
   /**
@@ -32,7 +32,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
   setRemoteStream(stream: RemoteStream | null): void {
     const previousStream: RemoteStream | null = this.remoteStream;
     if (previousStream !== null && previousStream !== stream) {
-      this.rtcProvider.unbindRemoteVideo(previousStream);
+      this.rtcManager.unbindRemoteVideo(previousStream);
     }
 
     this.remoteStream = stream;
@@ -40,7 +40,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
       return;
     }
 
-    this.rtcProvider.bindRemoteVideo(
+    this.rtcManager.bindRemoteVideo(
       stream,
       this.remoteViewId,
       this.remoteContentMode
@@ -63,7 +63,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
 
     const stream: RemoteStream | null = this.remoteStream;
     if (stream !== null) {
-      this.rtcProvider.bindRemoteVideo(stream, viewId, contentMode);
+      this.rtcManager.bindRemoteVideo(stream, viewId, contentMode);
     }
   }
 
@@ -80,7 +80,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
 
     const stream: RemoteStream | null = this.remoteStream;
     if (stream !== null) {
-      this.rtcProvider.unbindRemoteVideo(stream);
+      this.rtcManager.unbindRemoteVideo(stream);
     }
 
     this.remoteViewId = '';
@@ -98,7 +98,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
     this.remoteContentMode = VideoContentMode.FIT;
 
     if (stream !== null) {
-      this.rtcProvider.unbindRemoteVideo(stream);
+      this.rtcManager.unbindRemoteVideo(stream);
     }
   }
 }

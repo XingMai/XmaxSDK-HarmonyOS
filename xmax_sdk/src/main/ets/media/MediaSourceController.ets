@@ -1,7 +1,7 @@
 import { fileIo } from '@kit.CoreFileKit';
 import { media } from '@kit.MediaKit';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
-import { AudioProviding } from '../foundation/media/audio/AudioProviding';
+import { AudioManaging } from '../foundation/media/audio/AudioManaging';
 import {
   XmaxError,
   XmaxErrorCode
@@ -64,7 +64,7 @@ class MediaSourceMetadata {
 export class MediaSourceController implements MediaSourceControlling {
 
   // 基础层组件
-  private readonly audioProvider: AudioProviding;
+  private readonly audioManager: AudioManaging;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -80,20 +80,20 @@ export class MediaSourceController implements MediaSourceControlling {
    * 创建媒体源 Controller。
    *
    * @param mediaService 提供模型输入尺寸计算能力的媒体 Service。
-   * @param audioProvider 提供外部音频播放和推送能力的音频 Provider。
+   * @param audioManager 提供外部音频播放和推送能力的音频 Manager。
    * @param videoFrameListener 视频帧输出监听器。
    * @param audioFrameListener 音频帧输出监听器。
    * @param errorListener 媒体源错误监听器。
    */
   constructor(
     mediaService: MediaServicing,
-    audioProvider: AudioProviding,
+    audioManager: AudioManaging,
     videoFrameListener: VideoSourceFrameListener,
     audioFrameListener: MediaSourceAudioFrameListener,
     errorListener: VideoSourceErrorListener
   ) {
     // 基础层组件
-    this.audioProvider = audioProvider;
+    this.audioManager = audioManager;
 
     // 服务层组件
     this.mediaService = mediaService;
@@ -105,7 +105,7 @@ export class MediaSourceController implements MediaSourceControlling {
     );
     this.audioSourceController = new AudioSourceController(
       (frame: AudioFrame): void => {
-        this.audioProvider.write(frame);
+        this.audioManager.write(frame);
         audioFrameListener(frame);
       },
       errorListener
@@ -176,7 +176,7 @@ export class MediaSourceController implements MediaSourceControlling {
     const metadata: MediaSourceMetadata = this.requireMetadata();
 
     if (metadata.hasAudio) {
-      await this.audioProvider.start();
+      await this.audioManager.start();
     }
 
     const timeline = new MediaTimeline(0, metadata.durationUs);
@@ -188,7 +188,7 @@ export class MediaSourceController implements MediaSourceControlling {
     } catch (error) {
       this.videoSourceController.stop();
       this.audioSourceController.stop();
-      await this.audioProvider.stop();
+      await this.audioManager.stop();
       throw XmaxError.from(error);
     }
   }
@@ -202,14 +202,14 @@ export class MediaSourceController implements MediaSourceControlling {
     const metadata: MediaSourceMetadata = this.requireMetadata();
 
     if (metadata.hasAudio) {
-      await this.audioProvider.start();
+      await this.audioManager.start();
     }
 
     const timeline = new MediaTimeline(0, metadata.durationUs);
     this.videoSourceController.restart(timeline);
     if (metadata.hasAudio) {
       this.audioSourceController.restart(timeline);
-      await this.audioProvider.flush();
+      await this.audioManager.flush();
     }
   }
 
@@ -250,7 +250,7 @@ export class MediaSourceController implements MediaSourceControlling {
    */
   private async stopAudioPlayback(): Promise<void> {
     try {
-      await this.audioProvider.stop();
+      await this.audioManager.stop();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(

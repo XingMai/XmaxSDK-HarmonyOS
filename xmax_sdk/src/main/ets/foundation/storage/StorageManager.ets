@@ -19,7 +19,7 @@ import {
 } from '../errors/XmaxError';
 import { XmaxLogger } from '../logging/XmaxLogger';
 import { DownloadedFile } from './DownloadedFile';
-import { StorageProviding } from './StorageProviding';
+import { StorageManaging } from './StorageManaging';
 import { StorageConfiguration } from './StorageConfiguration';
 import { StorageProgressListener } from './StorageProgressListener';
 import { StoredFile } from './StoredFile';
@@ -46,12 +46,12 @@ class UploadOutcome {
 }
 
 /** 封装第三方对象存储的文件上传和 HTTP 文件下载能力。 */
-export class StorageProvider implements StorageProviding {
+export class StorageManager implements StorageManaging {
 
   private readonly context: common.Context;
 
   /**
-   * 创建存储 Provider。
+   * 创建存储 Manager。
    *
    * @param context 第三方存储客户端使用的平台上下文。
    */

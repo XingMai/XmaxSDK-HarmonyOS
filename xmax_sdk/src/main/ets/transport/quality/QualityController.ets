@@ -1,5 +1,5 @@
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import {
   RtcQualityLevel,
   RtcQualityListener
@@ -27,10 +27,10 @@ export class QualityController implements QualityControlling, RtcQualityListener
   /**
    * 创建质量监控 Controller。
    *
-   * @param rtcProvider 提供质量事件的 RTC Provider。
+   * @param rtcManager 提供质量事件的 RTC Manager。
    */
-  constructor(rtcProvider: RtcProviding) {
-    rtcProvider.setQualityListener(this);
+  constructor(rtcManager: RtcManaging) {
+    rtcManager.setQualityListener(this);
   }
 
   /**

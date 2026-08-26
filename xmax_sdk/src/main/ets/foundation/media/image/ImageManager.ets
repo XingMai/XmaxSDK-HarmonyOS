@@ -3,10 +3,10 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../../errors/XmaxError';
-import { ImageProviding } from './ImageProviding';
+import { ImageManaging } from './ImageManaging';
 
 /** 使用 HarmonyOS ImageKit 提供 SDK 内部图片处理能力。 */
-export class ImageProvider implements ImageProviding {
+export class ImageManager implements ImageManaging {
 
   /**
    * 居中裁剪并缩放 PixelMap，使其完整填满目标尺寸。

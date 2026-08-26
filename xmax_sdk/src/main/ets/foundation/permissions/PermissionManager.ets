@@ -8,18 +8,18 @@ import {
   XmaxErrorCode
 } from '../errors/XmaxError';
 import { XmaxLogger } from '../logging/XmaxLogger';
-import { PermissionProviding } from './PermissionProviding';
+import { PermissionManaging } from './PermissionManaging';
 
 const CAMERA_PERMISSION: Permissions = 'ohos.permission.CAMERA';
 const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE';
 
 /** 检查并申请 SDK 使用相机和麦克风所需的平台权限。 */
-export class PermissionProvider implements PermissionProviding {
+export class PermissionManager implements PermissionManaging {
 
   private readonly context: common.UIAbilityContext;
 
   /**
-   * 创建权限 Provider。
+   * 创建权限 Manager。
    *
    * @param context 用于检查和申请权限的页面上下文。
    */

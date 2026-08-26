@@ -11,7 +11,7 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { DownloadedFile } from '../../foundation/storage/DownloadedFile';
-import { StorageProviding } from '../../foundation/storage/StorageProviding';
+import { StorageManaging } from '../../foundation/storage/StorageManaging';
 import { StorageConfiguration } from '../../foundation/storage/StorageConfiguration';
 import { StorageCredential } from '../../foundation/storage/StorageCredential';
 import { StorageProgressListener } from '../../foundation/storage/StorageProgressListener';
@@ -29,7 +29,7 @@ class TemporaryStorageConfiguration {
    * 创建临时存储配置。
    *
    * @param prefix 上传对象使用的路径前缀。
-   * @param configuration 基础层存储 Provider 使用的配置。
+   * @param configuration 基础层存储 Manager 使用的配置。
    */
   constructor(
     prefix: string,
@@ -54,20 +54,20 @@ export class StorageService implements StorageServicing {
   private readonly apiService: ApiServicing;
 
   // 基础层组件
-  private readonly storageProvider: StorageProviding;
+  private readonly storageManager: StorageManaging;
 
   /**
    * 创建存储 Service。
    *
    * @param apiService 提供临时凭证和图片安全检查请求能力的 API Service。
-   * @param storageProvider 提供文件上传和下载能力的存储 Provider。
+   * @param storageManager 提供文件上传和下载能力的存储 Manager。
    */
   constructor(
     apiService: ApiServicing,
-    storageProvider: StorageProviding
+    storageManager: StorageManaging
   ) {
     this.apiService = apiService;
-    this.storageProvider = storageProvider;
+    this.storageManager = storageManager;
   }
 
   /**
@@ -210,7 +210,7 @@ export class StorageService implements StorageServicing {
     progress?: StorageProgressListener
   ): Promise<DownloadedFile> {
     this.validateDownload(remoteUrl, destinationPath);
-    return this.storageProvider.download(remoteUrl, destinationPath, progress);
+    return this.storageManager.download(remoteUrl, destinationPath, progress);
   }
 
   /**
@@ -227,7 +227,7 @@ export class StorageService implements StorageServicing {
     progress?: StorageProgressListener
   ): Promise<DownloadedFile> {
     this.validateDownload(remoteUrl, destinationPath);
-    return this.storageProvider.download(remoteUrl, destinationPath, progress);
+    return this.storageManager.download(remoteUrl, destinationPath, progress);
   }
 
   /**
@@ -272,7 +272,7 @@ export class StorageService implements StorageServicing {
         await this.fetchStorageConfiguration();
       const objectKey: string = this.makeObjectKey(temporary.prefix, safeName);
 
-      const stored: StoredFile = await this.storageProvider.upload(
+      const stored: StoredFile = await this.storageManager.upload(
         source,
         objectKey,
         contentType.trim(),

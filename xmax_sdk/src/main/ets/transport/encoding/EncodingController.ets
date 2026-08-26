@@ -1,4 +1,4 @@
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoEncodingConfiguration } from '../../foundation/rtc/VideoEncodingConfiguration';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { EncodingControlling } from './EncodingControlling';
@@ -7,15 +7,15 @@ import { EncodingControlling } from './EncodingControlling';
 export class EncodingController implements EncodingControlling {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   /**
    * 创建视频编码 Controller。
    *
-   * @param rtcProvider 提供视频编码配置能力的 RTC Provider。
+   * @param rtcManager 提供视频编码配置能力的 RTC Manager。
    */
-  constructor(rtcProvider: RtcProviding) {
-    this.rtcProvider = rtcProvider;
+  constructor(rtcManager: RtcManaging) {
+    this.rtcManager = rtcManager;
   }
 
   /**
@@ -27,7 +27,7 @@ export class EncodingController implements EncodingControlling {
   configure(videoFormat: RealtimeVideoFormat): void {
     videoFormat.validate();
 
-    this.rtcProvider.configureVideoEncoding(new VideoEncodingConfiguration(
+    this.rtcManager.configureVideoEncoding(new VideoEncodingConfiguration(
       videoFormat.width,
       videoFormat.height,
       videoFormat.fps

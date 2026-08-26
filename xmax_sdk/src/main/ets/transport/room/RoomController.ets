@@ -4,7 +4,7 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RoomJoinConfiguration } from '../../foundation/rtc/RoomJoinConfiguration';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessionConnection';
@@ -23,7 +23,7 @@ interface LoggedRoomEvent {
 export class RoomController implements RoomControlling {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 传输层组件
   private readonly heartbeat: RoomHeartbeat;
@@ -34,11 +34,11 @@ export class RoomController implements RoomControlling {
   /**
    * 创建房间 Controller。
    *
-   * @param rtcProvider 提供房间连接和消息发送能力的 RTC Provider。
+   * @param rtcManager 提供房间连接和消息发送能力的 RTC Manager。
    */
-  constructor(rtcProvider: RtcProviding) {
-    this.rtcProvider = rtcProvider;
-    this.heartbeat = new RoomHeartbeat(rtcProvider);
+  constructor(rtcManager: RtcManaging) {
+    this.rtcManager = rtcManager;
+    this.heartbeat = new RoomHeartbeat(rtcManager);
   }
 
   /**
@@ -57,7 +57,7 @@ export class RoomController implements RoomControlling {
     this.heartbeat.stop();
     this.localUserId = '';
 
-    await this.rtcProvider.joinRoom(new RoomJoinConfiguration(
+    await this.rtcManager.joinRoom(new RoomJoinConfiguration(
       connection.roomId,
       connection.userId,
       connection.token
@@ -76,7 +76,7 @@ export class RoomController implements RoomControlling {
     this.heartbeat.stop();
     this.localUserId = '';
 
-    await this.rtcProvider.leaveRoom();
+    await this.rtcManager.leaveRoom();
   }
 
   /**
@@ -161,7 +161,7 @@ export class RoomController implements RoomControlling {
       return;
     }
 
-    this.rtcProvider.sendRoomMessage(RoomEvent.tracks(
+    this.rtcManager.sendRoomMessage(RoomEvent.tracks(
       this.requireUserId(),
       taskId,
       points
@@ -175,7 +175,7 @@ export class RoomController implements RoomControlling {
    * @returns 无返回值。
    */
   private send(message: string): void {
-    this.rtcProvider.sendRoomMessage(message);
+    this.rtcManager.sendRoomMessage(message);
     XmaxLogger.debug(this.formatSignalLog(message), 'Room');
   }
 

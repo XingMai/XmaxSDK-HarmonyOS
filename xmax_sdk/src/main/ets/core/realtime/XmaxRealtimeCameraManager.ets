@@ -7,9 +7,9 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
-import { PermissionProvider } from '../../foundation/permissions/PermissionProvider';
-import { PermissionProviding } from '../../foundation/permissions/PermissionProviding';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { PermissionManager } from '../../foundation/permissions/PermissionManager';
+import { PermissionManaging } from '../../foundation/permissions/PermissionManaging';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { CameraPreviewRatio } from '../../rendering/video/CameraPreviewRatio';
 import {
@@ -34,8 +34,8 @@ const CAMERA_REPLACEMENT_DELAY_MS: number = 150;
 export class XmaxRealtimeCameraManager {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
-  private readonly permissionProvider: PermissionProviding;
+  private readonly rtcManager: RtcManaging;
+  private readonly permissionManager: PermissionManaging;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -50,21 +50,21 @@ export class XmaxRealtimeCameraManager {
    * 创建相机媒体 Manager。
    *
    * @param context 申请相机权限所需的页面上下文。
-   * @param rtcProvider 相机采集和本地渲染使用的 RTC 基础能力。
+   * @param rtcManager 相机采集和本地渲染使用的 RTC 基础能力。
    */
   constructor(
     context: common.UIAbilityContext,
-    rtcProvider: RtcProviding
+    rtcManager: RtcManaging
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
-    this.permissionProvider = new PermissionProvider(context);
+    this.rtcManager = rtcManager;
+    this.permissionManager = new PermissionManager(context);
 
     // 服务层组件
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.encodingController = new EncodingController(rtcProvider);
+    this.encodingController = new EncodingController(rtcManager);
   }
 
   /** @returns 当前活动的本地相机视频轨道；尚未创建时返回空值。 */
@@ -119,10 +119,10 @@ export class XmaxRealtimeCameraManager {
       videoFormat
     );
 
-    this.rtcProvider.stopVideoCapture();
+    this.rtcManager.stopVideoCapture();
     this.encodingController.configure(resolvedFormat);
-    this.rtcProvider.switchCamera(position);
-    this.rtcProvider.startVideoCapture(
+    this.rtcManager.switchCamera(position);
+    this.rtcManager.startVideoCapture(
       resolvedFormat.width,
       resolvedFormat.height,
       resolvedFormat.fps
@@ -150,11 +150,11 @@ export class XmaxRealtimeCameraManager {
 
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
-      this.rtcProvider.unbindLocalVideo();
+      this.rtcManager.unbindLocalVideo();
     }
 
     try {
-      this.rtcProvider.stopVideoCapture();
+      this.rtcManager.stopVideoCapture();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
@@ -181,7 +181,7 @@ export class XmaxRealtimeCameraManager {
     const nextPosition: CameraPosition = position === CameraPosition.FRONT ?
       CameraPosition.BACK : CameraPosition.FRONT;
 
-    this.rtcProvider.switchCamera(nextPosition);
+    this.rtcManager.switchCamera(nextPosition);
     updateRealtimeVideoTrackPosition(currentTrack, nextPosition);
 
     return new RealtimeMediaStream(StreamId.LOCAL, currentTrack);
@@ -206,25 +206,25 @@ export class XmaxRealtimeCameraManager {
     );
 
     try {
-      await this.permissionProvider.ensureCameraPermission();
+      await this.permissionManager.ensureCameraPermission();
       this.encodingController.configure(resolvedFormat);
-      this.rtcProvider.switchCamera(position);
-      this.rtcProvider.startVideoCapture(
+      this.rtcManager.switchCamera(position);
+      this.rtcManager.startVideoCapture(
         resolvedFormat.width,
         resolvedFormat.height,
         resolvedFormat.fps
       );
 
       VideoRenderRegistry.register(track, new VideoRenderBinding(
-        this.rtcProvider.renderLibraryName(),
+        this.rtcManager.renderLibraryName(),
         (
           viewId: string,
           contentMode: VideoContentMode
         ): void => {
-          this.rtcProvider.bindLocalVideo(viewId, contentMode);
+          this.rtcManager.bindLocalVideo(viewId, contentMode);
         },
         (_viewId: string): void => {
-          this.rtcProvider.unbindLocalVideo();
+          this.rtcManager.unbindLocalVideo();
         },
         CameraPreviewRatio.FILL
       ));
@@ -235,7 +235,7 @@ export class XmaxRealtimeCameraManager {
       VideoRenderRegistry.unregister(track);
 
       try {
-        this.rtcProvider.stopVideoCapture();
+        this.rtcManager.stopVideoCapture();
       } catch (stopError) {
         const reason: string = stopError instanceof Error ?
           stopError.message : String(stopError);

@@ -3,7 +3,7 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { InteractionControlling } from '../../media/interaction/InteractionControlling';
 import { TrajectoryBinding } from '../../rendering/trajectory/TrajectoryBinding';
@@ -38,7 +38,7 @@ type ConnectionHeartbeatFailureHandler = (
 export class XmaxRealtimeConnectionManager {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 服务层组件
   private readonly sessionService: RealtimeSessionServicing;
@@ -56,7 +56,7 @@ export class XmaxRealtimeConnectionManager {
   /**
    * 创建实时连接 Manager。
    *
-   * @param rtcProvider RTC 引擎和渲染库等基础能力。
+   * @param rtcManager RTC 引擎和渲染库等基础能力。
    * @param apiService 创建、心跳和关闭服务端会话的网络服务。
    * @param interactionController 远端轨迹交互使用的业务组件。
    * @param roomController RTC 房间生命周期和房间消息组件。
@@ -64,7 +64,7 @@ export class XmaxRealtimeConnectionManager {
    * @param streamController 本地发布、远端订阅和媒体传输组件。
    */
   constructor(
-    rtcProvider: RtcProviding,
+    rtcManager: RtcManaging,
     apiService: ApiServicing,
     interactionController: InteractionControlling,
     roomController: RoomControlling,
@@ -72,7 +72,7 @@ export class XmaxRealtimeConnectionManager {
     streamController: StreamControlling
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
+    this.rtcManager = rtcManager;
 
     // 服务层组件
     this.sessionService = new RealtimeSessionService(apiService);
@@ -153,7 +153,7 @@ export class XmaxRealtimeConnectionManager {
         videoFormat
       );
       VideoRenderRegistry.register(remoteTrack, new VideoRenderBinding(
-        this.rtcProvider.renderLibraryName(),
+        this.rtcManager.renderLibraryName(),
         (
           viewId: string,
           contentMode: VideoContentMode

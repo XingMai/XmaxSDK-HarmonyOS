@@ -41,9 +41,9 @@ import { RemoteStream } from './RemoteStream';
 import { RoomJoinConfiguration } from './RoomJoinConfiguration';
 import {
   RtcEngineLease,
-  RtcEngineProvider
-} from './RtcEngineProvider';
-import { RtcProviding } from './RtcProviding';
+  RtcEngineManager
+} from './RtcEngineManager';
+import { RtcManaging } from './RtcManaging';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
 import { RtcQualityListener } from './RtcQualityListener';
@@ -54,7 +54,7 @@ import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 const JOIN_TIMEOUT_MS: number = 15000;
 
 /** 封装第三方 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
-export class RtcProvider implements RtcProviding {
+export class RtcManager implements RtcManaging {
 
   // 平台资源
   private readonly context: common.UIAbilityContext;
@@ -75,7 +75,7 @@ export class RtcProvider implements RtcProviding {
   private activeRoomId: string = '';
 
   /**
-   * 创建 RTC Provider。
+   * 创建 RTC Manager。
    *
    * @param context 创建 RTC Engine 使用的平台上下文。
    */
@@ -102,7 +102,7 @@ export class RtcProvider implements RtcProviding {
       return;
     }
 
-    const lease: RtcEngineLease = await RtcEngineProvider.acquire(this.context);
+    const lease: RtcEngineLease = await RtcEngineManager.acquire(this.context);
     const engine: RTCEngine = lease.engine;
 
     engine.on('onSEIMessageReceived', (key: RemoteStreamKey, message: ArrayBuffer): void => {
@@ -162,7 +162,7 @@ export class RtcProvider implements RtcProviding {
           engine.off('onSysStats');
           engine.off('onPerformanceAlarms');
         } finally {
-          await RtcEngineProvider.release(lease);
+          await RtcEngineManager.release(lease);
         }
       }
     }

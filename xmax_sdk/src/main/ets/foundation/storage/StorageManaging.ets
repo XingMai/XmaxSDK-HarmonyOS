@@ -4,7 +4,7 @@ import { StorageProgressListener } from './StorageProgressListener';
 import { StoredFile } from './StoredFile';
 
 /** 定义基础文件上传和下载能力。 */
-export interface StorageProviding {
+export interface StorageManaging {
 
   /**
    * 上传二进制数据或本地文件到存储服务。

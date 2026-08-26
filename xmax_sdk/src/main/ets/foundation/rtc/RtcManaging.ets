@@ -9,7 +9,7 @@ import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
 /** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
-export interface RtcProviding {
+export interface RtcManaging {
 
   /**
    * 初始化 RTC 引擎。

@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { DownloadedFile } from '../../foundation/storage/DownloadedFile';
-import { StorageProvider } from '../../foundation/storage/StorageProvider';
+import { StorageManager } from '../../foundation/storage/StorageManager';
 import { StorageProgressListener } from '../../foundation/storage/StorageProgressListener';
 import { StoredFile } from '../../foundation/storage/StoredFile';
 import { ApiServicing } from '../../service/network/ApiServicing';
@@ -33,7 +33,7 @@ export class XmaxStorageManager implements XmaxStorageManaging {
     // 服务层组件
     this.storageService = new StorageService(
       apiService,
-      new StorageProvider(context)
+      new StorageManager(context)
     );
   }
 

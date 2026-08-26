@@ -2,10 +2,10 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
-import { ImageProvider } from '../../foundation/media/image/ImageProvider';
-import { ImageProviding } from '../../foundation/media/image/ImageProviding';
+import { ImageManager } from '../../foundation/media/image/ImageManager';
+import { ImageManaging } from '../../foundation/media/image/ImageManaging';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { ImageSourceController } from '../../media/image/ImageSourceController';
 import { ImageSourceControlling } from '../../media/image/ImageSourceControlling';
@@ -27,8 +27,8 @@ import { StreamId } from '../../transport/stream/StreamId';
 export class XmaxRealtimeImageManager {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
-  private readonly imageProvider: ImageProviding;
+  private readonly rtcManager: RtcManaging;
+  private readonly imageManager: ImageManaging;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -44,18 +44,18 @@ export class XmaxRealtimeImageManager {
   /**
    * 创建图片媒体 Manager。
    *
-   * @param rtcProvider 外部视频源和本地渲染使用的 RTC 基础能力。
+   * @param rtcManager 外部视频源和本地渲染使用的 RTC 基础能力。
    * @param streamController 接收并推送图片视频帧的传输组件。
    * @param errorListener 持续图片帧输出错误监听器。
    */
   constructor(
-    rtcProvider: RtcProviding,
+    rtcManager: RtcManaging,
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
-    this.imageProvider = new ImageProvider();
+    this.rtcManager = rtcManager;
+    this.imageManager = new ImageManager();
 
     // 服务层组件
     this.mediaService = new MediaService();
@@ -63,7 +63,7 @@ export class XmaxRealtimeImageManager {
     // 业务层组件
     this.streamController = streamController;
     this.imageSourceController = new ImageSourceController(
-      this.imageProvider,
+      this.imageManager,
       this.mediaService,
       (frame: VideoFrame): void => {
         this.streamController.pushLocalVideoFrame(frame);
@@ -75,7 +75,7 @@ export class XmaxRealtimeImageManager {
         ));
       }
     );
-    this.encodingController = new EncodingController(rtcProvider);
+    this.encodingController = new EncodingController(rtcManager);
   }
 
   /** @returns 当前活动的本地图片视频轨道；尚未创建时返回空值。 */
@@ -119,7 +119,7 @@ export class XmaxRealtimeImageManager {
 
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
-      this.rtcProvider.unbindLocalVideo();
+      this.rtcManager.unbindLocalVideo();
     }
   }
 
@@ -145,7 +145,7 @@ export class XmaxRealtimeImageManager {
       track = new RealtimeVideoTrack('video0', resolvedFormat);
 
       this.encodingController.configure(resolvedFormat);
-      this.rtcProvider.useExternalVideoSource();
+      this.rtcManager.useExternalVideoSource();
 
       this.registerPreview(track);
       this.imageSourceController.start();
@@ -171,15 +171,15 @@ export class XmaxRealtimeImageManager {
    */
   private registerPreview(track: RealtimeVideoTrack): void {
     VideoRenderRegistry.register(track, new VideoRenderBinding(
-      this.rtcProvider.renderLibraryName(),
+      this.rtcManager.renderLibraryName(),
       (
         viewId: string,
         contentMode: VideoContentMode
       ): void => {
-        this.rtcProvider.bindLocalVideo(viewId, contentMode);
+        this.rtcManager.bindLocalVideo(viewId, contentMode);
       },
       (_viewId: string): void => {
-        this.rtcProvider.unbindLocalVideo();
+        this.rtcManager.unbindLocalVideo();
       }
     ));
   }

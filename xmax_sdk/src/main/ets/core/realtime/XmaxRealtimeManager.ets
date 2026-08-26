@@ -5,8 +5,8 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
-import { RtcProvider } from '../../foundation/rtc/RtcProvider';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManager } from '../../foundation/rtc/RtcManager';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { InteractionController } from '../../media/interaction/InteractionController';
 import { InteractionControlling } from '../../media/interaction/InteractionControlling';
 import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
@@ -46,7 +46,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   readonly options: RealtimeConfiguration;
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 业务层组件
   private readonly interactionController: InteractionControlling;
@@ -84,37 +84,37 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.options = options;
 
     // 基础层组件
-    this.rtcProvider = new RtcProvider(context);
+    this.rtcManager = new RtcManager(context);
 
     // 业务层组件
-    this.roomController = new RoomController(this.rtcProvider);
+    this.roomController = new RoomController(this.rtcManager);
     this.interactionController = new InteractionController((
       taskId: string,
       points: RealtimePoint[]
     ): void => {
       this.roomController.sendTracks(taskId, points);
     });
-    this.remoteVideoController = new RemoteVideoController(this.rtcProvider);
+    this.remoteVideoController = new RemoteVideoController(this.rtcManager);
     this.streamController = new StreamController(
-      this.rtcProvider,
+      this.rtcManager,
       (stream): void => {
         this.remoteVideoController.setRemoteStream(stream);
       }
     );
-    this.qualityController = new QualityController(this.rtcProvider);
+    this.qualityController = new QualityController(this.rtcManager);
 
     // 实时管理组件
     this.errorManager = new XmaxRealtimeErrorManager();
     this.mediaManager = new XmaxRealtimeMediaManager(
       context,
-      this.rtcProvider,
+      this.rtcManager,
       this.streamController,
       (error: XmaxError): void => {
         this.errorManager.handle(error);
       }
     );
     this.connectionManager = new XmaxRealtimeConnectionManager(
-      this.rtcProvider,
+      this.rtcManager,
       apiService,
       this.interactionController,
       this.roomController,

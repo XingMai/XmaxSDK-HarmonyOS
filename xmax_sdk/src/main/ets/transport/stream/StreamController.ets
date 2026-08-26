@@ -5,7 +5,7 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { RemoteStream } from '../../foundation/rtc/RemoteStream';
-import { RtcProviding } from '../../foundation/rtc/RtcProviding';
+import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { RtcEventListener } from '../../foundation/rtc/RtcEventListener';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { StreamControlling } from './StreamControlling';
@@ -35,7 +35,7 @@ class GenerationTask {
 export class StreamController implements StreamControlling, RtcEventListener {
 
   // 基础层组件
-  private readonly rtcProvider: RtcProviding;
+  private readonly rtcManager: RtcManaging;
 
   // 远端流监听器
   private readonly remoteStreamListener: RemoteStreamListener;
@@ -56,20 +56,20 @@ export class StreamController implements StreamControlling, RtcEventListener {
   /**
    * 创建媒体流 Controller。
    *
-   * @param rtcProvider 提供媒体流传输能力的 RTC Provider。
+   * @param rtcManager 提供媒体流传输能力的 RTC Manager。
    * @param remoteStreamListener 远端生成流变更监听器。
    */
   constructor(
-    rtcProvider: RtcProviding,
+    rtcManager: RtcManaging,
     remoteStreamListener: RemoteStreamListener
   ) {
     // 基础层组件
-    this.rtcProvider = rtcProvider;
+    this.rtcManager = rtcManager;
 
     // 远端流监听器
     this.remoteStreamListener = remoteStreamListener;
 
-    this.rtcProvider.setEventListener(this);
+    this.rtcManager.setEventListener(this);
   }
 
   /**
@@ -94,9 +94,9 @@ export class StreamController implements StreamControlling, RtcEventListener {
    * @returns 无返回值。
    */
   publishLocalStream(includeAudio: boolean): void {
-    this.rtcProvider.publishLocalVideo();
+    this.rtcManager.publishLocalVideo();
     if (includeAudio) {
-      this.rtcProvider.publishLocalAudio();
+      this.rtcManager.publishLocalAudio();
       this.localAudioPublished = true;
     }
   }
@@ -113,9 +113,9 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     if (enabled) {
-      this.rtcProvider.publishLocalAudio();
+      this.rtcManager.publishLocalAudio();
     } else {
-      this.rtcProvider.unpublishLocalAudio();
+      this.rtcManager.unpublishLocalAudio();
     }
 
     this.localAudioPublished = enabled;
@@ -128,7 +128,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
    * @returns 无返回值。
    */
   pushLocalVideoFrame(frame: VideoFrame): void {
-    this.rtcProvider.pushExternalVideoFrame(
+    this.rtcManager.pushExternalVideoFrame(
       frame,
       this.currentTask?.seiData
     );
@@ -145,7 +145,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
 
-    this.rtcProvider.pushExternalAudioFrame(frame);
+    this.rtcManager.pushExternalAudioFrame(frame);
   }
 
   /**
@@ -199,8 +199,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
   resetRoom(): void {
     this.stopGeneration();
     this.localAudioPublished = false;
-    this.rtcProvider.unpublishLocalVideo();
-    this.rtcProvider.unpublishLocalAudio();
+    this.rtcManager.unpublishLocalVideo();
+    this.rtcManager.unpublishLocalAudio();
     this.roomId = '';
     this.botName = '';
   }
@@ -225,7 +225,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
 
-    this.rtcProvider.subscribeRemoteVideo(userId, true);
+    this.rtcManager.subscribeRemoteVideo(userId, true);
   }
 
   /**

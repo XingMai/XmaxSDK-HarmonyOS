@@ -1,10 +1,10 @@
 import { audio } from '@kit.AudioKit';
 import { XmaxLogger } from '../../logging/XmaxLogger';
 import { AudioFrame } from './AudioFrame';
-import { AudioProviding } from './AudioProviding';
+import { AudioManaging } from './AudioManaging';
 
 /** 使用平台音频渲染器播放本地 PCM 音频帧。 */
-export class AudioProvider implements AudioProviding {
+export class AudioManager implements AudioManaging {
 
   // 平台资源
   private renderer: audio.AudioRenderer | null = null;

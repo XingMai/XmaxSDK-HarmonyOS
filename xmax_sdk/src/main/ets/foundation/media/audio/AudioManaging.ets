@@ -1,7 +1,7 @@
 import { AudioFrame } from './AudioFrame';
 
 /** 定义本地 PCM 音频播放能力。 */
-export interface AudioProviding {
+export interface AudioManaging {
 
   /**
    * 创建并启动本地 PCM 音频播放器。
