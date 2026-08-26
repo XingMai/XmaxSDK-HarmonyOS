@@ -14,7 +14,7 @@ import { XmaxRealtimeManager } from './realtime/XmaxRealtimeManager';
 import { XmaxStorageManaging } from './storage/XmaxStorageManaging';
 import { XmaxStorageManager } from './storage/XmaxStorageManager';
 
-/** SDK 的统一入口，负责创建实时、存储和媒体服务组件。 */
+/** SDK 的统一入口，负责创建实时、存储和媒体业务组件。 */
 export class XmaxClient {
 
   /** 客户端使用的全局配置。 */
@@ -77,9 +77,9 @@ export class XmaxClient {
   }
 
   /**
-   * 创建媒体处理服务。
+   * 创建媒体业务规则服务。
    *
-   * @returns 可用于选择和处理媒体文件的媒体服务。
+   * @returns 可用于计算模型输入尺寸的媒体服务。
    */
   createMediaService(): MediaServicing {
     return new MediaService();
