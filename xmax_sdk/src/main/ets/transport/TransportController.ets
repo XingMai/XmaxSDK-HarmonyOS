@@ -114,13 +114,11 @@ export class TransportController implements TransportControlling {
   /** @inheritdoc */
   updateGeneration(
     taskId: string,
-    conditionVersion: number,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ): void {
     this.roomController.changeGenerationCondition(
       taskId,
-      conditionVersion,
       videoFormat,
       context
     );

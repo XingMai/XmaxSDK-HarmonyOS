@@ -45,19 +45,16 @@ class ChangeConditionRoomEvent {
   params: GenerationParameters;
   user_id: string;
   uid: string;
-  condition_version: number;
 
   constructor(
     userId: string,
     taskId: string,
-    conditionVersion: number,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ) {
     this.params = new GenerationParameters(videoFormat, context);
     this.user_id = userId;
     this.uid = taskId;
-    this.condition_version = conditionVersion;
   }
 }
 
@@ -114,14 +111,12 @@ export class RoomEvent {
   static changeCondition(
     userId: string,
     taskId: string,
-    conditionVersion: number,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ): string {
     return JSON.stringify(new ChangeConditionRoomEvent(
       userId,
       taskId,
-      conditionVersion,
       videoFormat,
       context
     ));

@@ -104,21 +104,18 @@ export class RoomController implements RoomControlling {
    * 发送实时生成条件变更信令。
    *
    * @param taskId 生成任务标识。
-   * @param conditionVersion 条件版本。
    * @param videoFormat 生成视频格式。
    * @param context 新的实时生成上下文。
    * @returns 无返回值。
    */
   changeGenerationCondition(
     taskId: string,
-    conditionVersion: number,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ): void {
     this.send(RoomEvent.changeCondition(
       this.requireUserId(),
       taskId,
-      conditionVersion,
       videoFormat,
       context
     ));

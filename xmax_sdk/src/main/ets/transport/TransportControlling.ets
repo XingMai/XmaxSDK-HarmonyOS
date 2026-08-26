@@ -97,14 +97,12 @@ export interface TransportControlling {
    * 发送生成条件变更信令。
    *
    * @param taskId 当前生成任务的唯一标识。
-   * @param conditionVersion 单调递增的条件版本号。
    * @param videoFormat 当前本地媒体使用的视频格式。
    * @param context 更新后的生成条件上下文。
    * @returns 无返回值。
    */
   updateGeneration(
     taskId: string,
-    conditionVersion: number,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ): void;

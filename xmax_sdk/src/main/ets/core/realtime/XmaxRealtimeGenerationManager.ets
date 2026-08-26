@@ -24,9 +24,6 @@ export class XmaxRealtimeGenerationManager {
   // 生成资源
   private currentContext: RealtimeContext | null = null;
 
-  // 运行状态
-  private conditionVersion: number = 0;
-
   /**
    * 创建生成流程 Manager。
    *
@@ -71,8 +68,6 @@ export class XmaxRealtimeGenerationManager {
       videoFormat,
       resolvedContext
     );
-    this.conditionVersion = 0;
-
     try {
       await onGenerationStarted();
       await confirmation;
@@ -106,10 +101,8 @@ export class XmaxRealtimeGenerationManager {
       return;
     }
 
-    this.conditionVersion++;
     this.transportController.updateGeneration(
       taskId,
-      this.conditionVersion,
       videoFormat,
       context
     );
