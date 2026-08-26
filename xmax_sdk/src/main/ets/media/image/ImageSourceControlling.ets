@@ -1,3 +1,4 @@
+import { image } from '@kit.ImageKit';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
@@ -8,14 +9,14 @@ export type ImageSourceErrorListener = (message: string) => void;
 export interface ImageSourceControlling {
 
   /**
-   * 准备本地图片和输出格式。
+   * 准备图片和输出格式。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
    * @returns 图片实际使用的视频输出格式。
    */
   prepare(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeVideoFormat>;
 

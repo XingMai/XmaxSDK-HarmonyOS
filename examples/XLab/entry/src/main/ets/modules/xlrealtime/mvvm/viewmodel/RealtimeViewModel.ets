@@ -28,7 +28,7 @@ enum GenerationInputMode {
   MOX = 'mox'
 }
 
-type LocalMediaReplacement = (
+type LocalMediaCreation = (
   manager: XmaxRealtimeManaging,
   filePath: string
 ) => Promise<RealtimeMediaStream>;
@@ -47,7 +47,7 @@ export class RealtimeViewModel {
   private realtimeManager: XmaxRealtimeManaging | null = null;
   private connecting: boolean = false;
   private switchingCamera: boolean = false;
-  private replacingLocalMedia: boolean = false;
+  private changingLocalMedia: boolean = false;
   private generationUpdating: boolean = false;
   private generationRevision: number = 0;
   private generationInputMode: GenerationInputMode = GenerationInputMode.REFERENCE;
@@ -195,27 +195,27 @@ export class RealtimeViewModel {
     }
   }
 
-  async replaceLocalVideo(filePath: string): Promise<void> {
-    await this.replaceLocalMedia(
+  async changeLocalVideo(filePath: string): Promise<void> {
+    await this.changeLocalMedia(
       filePath,
       false,
       (
         manager: XmaxRealtimeManaging,
         resolvedPath: string
       ): Promise<RealtimeMediaStream> =>
-        manager.replaceLocalVideoStream(resolvedPath)
+        manager.createLocalVideoStream(resolvedPath)
     );
   }
 
-  async replaceLocalImage(filePath: string): Promise<void> {
-    await this.replaceLocalMedia(
+  async changeLocalImage(filePath: string): Promise<void> {
+    await this.changeLocalMedia(
       filePath,
       true,
       (
         manager: XmaxRealtimeManaging,
         resolvedPath: string
       ): Promise<RealtimeMediaStream> =>
-        manager.replaceLocalImageStream(resolvedPath)
+        manager.createLocalImageStream(resolvedPath)
     );
   }
 
@@ -233,7 +233,7 @@ export class RealtimeViewModel {
     this.state.remoteVideoTrack = null;
     this.connecting = false;
     this.switchingCamera = false;
-    this.replacingLocalMedia = false;
+    this.changingLocalMedia = false;
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
     if (manager !== null) {
@@ -453,7 +453,7 @@ export class RealtimeViewModel {
 
   private scheduleGenerationUpdate(): void {
     this.generationRevision++;
-    if (this.switchingCamera || this.replacingLocalMedia) {
+    if (this.switchingCamera || this.changingLocalMedia) {
       return;
     }
 
@@ -475,7 +475,7 @@ export class RealtimeViewModel {
       while (true) {
         const revision: number = this.generationRevision;
         const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-        if (manager === null || this.switchingCamera || this.replacingLocalMedia ||
+        if (manager === null || this.switchingCamera || this.changingLocalMedia ||
           (manager.currentState.connectionState !== RealtimeConnectionState.CONNECTED &&
             manager.currentState.connectionState !== RealtimeConnectionState.GENERATING)) {
           return;
@@ -523,36 +523,33 @@ export class RealtimeViewModel {
     }
   }
 
-  private async replaceLocalMedia(
+  private async changeLocalMedia(
     filePath: string,
     isImage: boolean,
-    replacement: LocalMediaReplacement
+    creation: LocalMediaCreation
   ): Promise<void> {
     const resolvedPath: string = filePath.trim();
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     if (resolvedPath.length === 0 || manager === null || this.connecting ||
-      this.switchingCamera || this.replacingLocalMedia) {
+      this.switchingCamera || this.changingLocalMedia) {
       return;
     }
 
+    const connectionState: RealtimeConnectionState =
+      manager.currentState.connectionState;
+    const shouldReconnect: boolean =
+      connectionState === RealtimeConnectionState.CONNECTED ||
+        connectionState === RealtimeConnectionState.GENERATING;
     const shouldRestartGeneration: boolean = this.state.isGenerationStarting ||
-      manager.currentState.connectionState === RealtimeConnectionState.GENERATING;
-    const remoteVideoTrack: RealtimeVideoTrack | null = this.state.remoteVideoTrack;
-    this.replacingLocalMedia = true;
-    const replacementRevision: number = ++this.generationRevision;
+      connectionState === RealtimeConnectionState.GENERATING;
+    const previousVideoPath: string = this.localVideoPath;
+    const previousImagePath: string = this.localImagePath;
+    this.changingLocalMedia = true;
+    const changeRevision: number = ++this.generationRevision;
     this.state.errorMessage = '';
 
-    if (isImage) {
-      this.localImagePath = resolvedPath;
-      this.localVideoPath = '';
-      this.moxReferenceSourcePath = '';
-      this.moxReferenceRemoteUrl = '';
-    } else {
-      this.localVideoPath = resolvedPath;
-      this.localImagePath = '';
-    }
-
-    let replaced: boolean = false;
+    let changed: boolean = false;
+    let stream: RealtimeMediaStream | null = null;
     try {
       if (shouldRestartGeneration) {
         this.state.isGenerationStarting = true;
@@ -561,7 +558,15 @@ export class RealtimeViewModel {
       this.state.localVideoTrack = null;
       this.state.remoteVideoTrack = null;
 
-      const stream: RealtimeMediaStream = await replacement(manager, resolvedPath);
+      if (shouldReconnect) {
+        await manager.disconnect();
+      }
+      await this.stopLocalInput(
+        manager,
+        previousVideoPath,
+        previousImagePath
+      );
+      stream = await creation(manager, resolvedPath);
       if (this.realtimeManager !== manager) {
         await this.stopLocalInput(
           manager,
@@ -572,22 +577,34 @@ export class RealtimeViewModel {
       }
 
       this.state.localVideoTrack = stream.videoTrack ?? null;
-      this.state.remoteVideoTrack = remoteVideoTrack;
-      replaced = true;
+      if (shouldReconnect) {
+        const remoteStream: RealtimeMediaStream = await manager.connect(stream);
+        this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;
+      }
+      if (isImage) {
+        this.localImagePath = resolvedPath;
+        this.localVideoPath = '';
+        this.moxReferenceSourcePath = '';
+        this.moxReferenceRemoteUrl = '';
+      } else {
+        this.localVideoPath = resolvedPath;
+        this.localImagePath = '';
+      }
+      changed = true;
     } catch (error) {
       if (this.realtimeManager === manager) {
-        this.state.localVideoTrack = null;
-        this.state.remoteVideoTrack = remoteVideoTrack;
+        this.state.localVideoTrack = stream?.videoTrack ?? null;
+        this.state.remoteVideoTrack = null;
         this.state.isGenerationStarting = false;
         this.presentError(error);
       }
     } finally {
-      this.replacingLocalMedia = false;
+      this.changingLocalMedia = false;
     }
 
     const generationChanged: boolean =
-      this.generationRevision !== replacementRevision;
-    if (replaced && (shouldRestartGeneration || generationChanged)) {
+      this.generationRevision !== changeRevision;
+    if (changed && (shouldRestartGeneration || generationChanged)) {
       this.scheduleGenerationUpdate();
     }
   }

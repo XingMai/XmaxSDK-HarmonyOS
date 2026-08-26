@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import {
   XmaxError,
   XmaxErrorCode
@@ -189,17 +190,17 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 将当前本地媒体来源替换为相机流。
+   * 更新当前相机流的采集格式与摄像头位置。
    *
    * @param videoFormat 相机流使用的视频输出格式。
    * @param position 初始摄像头位置；默认使用前置摄像头。
-   * @returns 替换完成后的本地相机媒体流。
+   * @returns 更新完成后的本地相机媒体流。
    */
   async replaceLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition = CameraPosition.FRONT
   ): Promise<RealtimeMediaStream> {
-    return this.replaceLocalStream(
+    return this.updateLocalCameraStream(
       (): Promise<RealtimeMediaStream> =>
         this.mediaController.replaceLocalCameraStream(videoFormat, position)
     );
@@ -264,23 +265,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 将当前本地媒体来源替换为视频文件流。
-   *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式；未传入时根据文件信息计算。
-   * @returns 替换完成后的本地视频媒体流。
-   */
-  async replaceLocalVideoStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream> {
-    return this.replaceLocalStream(
-      (): Promise<RealtimeMediaStream> =>
-        this.mediaController.replaceLocalVideoStream(filePath, videoFormat)
-    );
-  }
-
-  /**
    * 停止本地视频文件流并释放对应预览资源。
    *
    * @returns 停止操作完成后的 Promise。
@@ -298,14 +282,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 从本地图片文件创建持续输出帧的媒体流。
+   * 从图片输入创建持续输出帧的媒体流。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 可选的视频输出格式；未传入时根据图片信息计算。
    * @returns 当前 Manager 持有的本地图片媒体流。
    */
   async createLocalImageStream(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
@@ -317,26 +301,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     return this.observeError(this.mediaController.createLocalImageStream(
-      filePath,
+      source,
       videoFormat
     ));
-  }
-
-  /**
-   * 将当前本地媒体来源替换为图片文件流。
-   *
-   * @param filePath 本地图片文件路径。
-   * @param videoFormat 可选的视频输出格式；未传入时根据图片信息计算。
-   * @returns 替换完成后的本地图片媒体流。
-   */
-  async replaceLocalImageStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream> {
-    return this.replaceLocalStream(
-      (): Promise<RealtimeMediaStream> =>
-        this.mediaController.replaceLocalImageStream(filePath, videoFormat)
-    );
   }
 
   /**
@@ -528,31 +495,31 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 在允许的生命周期状态下替换本地媒体来源并同步连接配置。
+   * 在允许的生命周期状态下更新相机来源并同步连接配置。
    *
-   * @param replacement 创建新本地媒体流的操作。
-   * @returns 替换完成后的本地媒体流。
+   * @param update 更新相机媒体流的操作。
+   * @returns 更新完成后的本地相机媒体流。
    */
-  private async replaceLocalStream(
-    replacement: () => Promise<RealtimeMediaStream>
+  private async updateLocalCameraStream(
+    update: () => Promise<RealtimeMediaStream>
   ): Promise<RealtimeMediaStream> {
     if (this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local media replacement is unavailable while realtime is transitioning'
+        'Local camera update is unavailable while realtime is transitioning'
       ));
     }
     if (this.connectionManager.currentSessionId.length > 0) {
       await this.stopGeneration();
     }
 
-    const stream: RealtimeMediaStream = await this.observeError(replacement());
+    const stream: RealtimeMediaStream = await this.observeError(update());
     const videoFormat: RealtimeVideoFormat | undefined = stream.videoTrack?.videoFormat;
     if (videoFormat === undefined) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.RTC_ERROR,
-        'The replacement local media stream does not contain a video format'
+        'The updated local camera stream does not contain a video format'
       ));
     }
 

@@ -7,8 +7,6 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { ImageManager } from '../../foundation/media/image/ImageManager';
-import { ImageManaging } from '../../foundation/media/image/ImageManaging';
 import { PermissionManager } from '../../foundation/permissions/PermissionManager';
 import { PermissionManaging } from '../../foundation/permissions/PermissionManaging';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
@@ -40,7 +38,6 @@ export class VideoController {
   // 基础层组件
   private readonly rtcManager: RtcManaging;
   private readonly audioManager: AudioManaging;
-  private readonly imageManager: ImageManaging;
   private readonly permissionManager: PermissionManaging;
 
   // 服务层组件
@@ -71,7 +68,6 @@ export class VideoController {
     // 基础层组件
     this.rtcManager = rtcManager;
     this.audioManager = new AudioManager();
-    this.imageManager = new ImageManager();
     this.permissionManager = new PermissionManager(context);
 
     // 服务层组件
@@ -79,9 +75,7 @@ export class VideoController {
 
     // 业务层组件
     this.transportController = transportController;
-    this.localVideoPreviewController = new LocalVideoPreviewController(
-      this.imageManager
-    );
+    this.localVideoPreviewController = new LocalVideoPreviewController();
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,
       this.audioManager,

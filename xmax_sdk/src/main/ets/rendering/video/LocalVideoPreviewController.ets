@@ -1,6 +1,5 @@
 import { image } from '@kit.ImageKit';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { ImageManaging } from '../../foundation/media/image/ImageManaging';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
@@ -17,9 +16,6 @@ import { VideoRenderRegistry } from './VideoRenderRegistry';
 /** 缓存本地视频首帧，并在等待远端结果时提供冻结预览。 */
 export class LocalVideoPreviewController implements LocalVideoPreviewControlling {
 
-  // 基础层组件
-  private readonly imageManager: ImageManaging;
-
   // 预览资源
   private previewFrame: image.PixelMap | null = null;
   private capturePromise: Promise<void> | null = null;
@@ -29,15 +25,6 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
   // 运行状态
   private captureVersion: number = 0;
   private freezeVersion: number = 0;
-
-  /**
-   * 创建本地视频预览 Controller。
-   *
-   * @param imageManager 提供 PixelMap 裁剪缩放能力的图片 Manager。
-   */
-  constructor(imageManager: ImageManaging) {
-    this.imageManager = imageManager;
-  }
 
   /**
    * 配置冻结预览的目标尺寸。
@@ -196,7 +183,7 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
 
       const targetSize: ImageSize | null = this.targetSize;
       if (targetSize !== null) {
-        await this.imageManager.resizePixelMapToFill(
+        await this.resizePixelMapToFill(
           pixelMap,
           targetSize.width,
           targetSize.height
@@ -208,6 +195,52 @@ export class LocalVideoPreviewController implements LocalVideoPreviewControlling
       await pixelMap.release();
       const reason: string = error instanceof Error ? error.message : String(error);
       throw new Error(reason);
+    }
+  }
+
+  /**
+   * 居中裁剪并缩放冻结预览，使其填满目标尺寸。
+   *
+   * @param pixelMap 由当前 Controller 持有的可编辑 PixelMap。
+   * @param targetWidth 目标预览宽度。
+   * @param targetHeight 目标预览高度。
+   * @returns 处理完成后的 Promise。
+   */
+  private async resizePixelMapToFill(
+    pixelMap: image.PixelMap,
+    targetWidth: number,
+    targetHeight: number
+  ): Promise<void> {
+    const info: image.ImageInfo = await pixelMap.getImageInfo();
+    const sourceWidth: number = info.size.width;
+    const sourceHeight: number = info.size.height;
+    const targetAspectRatio: number = targetWidth / targetHeight;
+    const sourceAspectRatio: number = sourceWidth / sourceHeight;
+
+    let cropWidth: number = sourceWidth;
+    let cropHeight: number = sourceHeight;
+    if (sourceAspectRatio > targetAspectRatio) {
+      cropWidth = Math.max(Math.floor(sourceHeight * targetAspectRatio), 1);
+    } else if (sourceAspectRatio < targetAspectRatio) {
+      cropHeight = Math.max(Math.floor(sourceWidth / targetAspectRatio), 1);
+    }
+
+    if (cropWidth !== sourceWidth || cropHeight !== sourceHeight) {
+      await pixelMap.crop({
+        x: Math.floor((sourceWidth - cropWidth) / 2),
+        y: Math.floor((sourceHeight - cropHeight) / 2),
+        size: {
+          width: cropWidth,
+          height: cropHeight
+        }
+      });
+    }
+
+    if (cropWidth !== targetWidth || cropHeight !== targetHeight) {
+      await pixelMap.scale(
+        targetWidth / cropWidth,
+        targetHeight / cropHeight
+      );
     }
   }
 

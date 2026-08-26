@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import {
   XmaxError,
   XmaxErrorCode
@@ -25,10 +26,10 @@ type LocalMediaController = CameraController |
   ImageController;
 type LocalMediaCreation = () => Promise<RealtimeMediaStream>;
 
-/** 记录当前本地媒体来源及其进行中的创建、替换和停止任务。 */
+/** 记录当前本地媒体来源及其进行中的创建、相机更新和停止任务。 */
 class ActiveLocalMediaSource {
 
-  controller: LocalMediaController;
+  readonly controller: LocalMediaController;
   operationPromise: Promise<RealtimeMediaStream> | null = null;
   stopPromise: Promise<void> | null = null;
 
@@ -149,20 +150,17 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 将当前本地媒体来源替换为相机流。
+   * 更新当前相机来源的采集参数。
    *
    * @param videoFormat 相机流使用的视频输出格式。
    * @param position 初始摄像头位置。
-   * @returns 替换完成后的本地相机媒体流。
+   * @returns 更新完成后的本地相机媒体流。
    */
   replaceLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition
   ): Promise<RealtimeMediaStream> {
-    return this.replaceSource(
-      this.cameraController,
-      (): Promise<RealtimeMediaStream> =>
-        this.cameraController.createLocalCameraStream(videoFormat, position),
+    return this.updateCameraSource(
       (): Promise<RealtimeMediaStream> =>
         this.cameraController.replaceLocalCameraStream(videoFormat, position)
     );
@@ -196,62 +194,26 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /**
-   * 将当前本地媒体来源替换为视频文件流。
-   *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式。
-   * @returns 替换完成后的本地视频媒体流。
-   */
-  replaceLocalVideoStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream> {
-    return this.replaceSource(
-      this.videoController,
-      (): Promise<RealtimeMediaStream> =>
-        this.videoController.createLocalVideoStream(filePath, videoFormat)
-    );
-  }
-
   /** @returns 当前视频文件来源停止完成后的 Promise。 */
   stopLocalVideoStream(): Promise<void> {
     return this.stopSource(this.videoController);
   }
 
   /**
-   * 创建图片文件媒体来源并取得本地媒体所有权。
+   * 创建图片媒体来源并取得本地媒体所有权。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 可选的视频输出格式。
    * @returns 创建完成后的本地图片媒体流。
    */
   createLocalImageStream(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
       this.imageController,
       (): Promise<RealtimeMediaStream> =>
-        this.imageController.createLocalImageStream(filePath, videoFormat)
-    );
-  }
-
-  /**
-   * 将当前本地媒体来源替换为图片文件流。
-   *
-   * @param filePath 本地图片文件路径。
-   * @param videoFormat 可选的视频输出格式。
-   * @returns 替换完成后的本地图片媒体流。
-   */
-  replaceLocalImageStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream> {
-    return this.replaceSource(
-      this.imageController,
-      (): Promise<RealtimeMediaStream> =>
-        this.imageController.createLocalImageStream(filePath, videoFormat)
+        this.imageController.createLocalImageStream(source, videoFormat)
     );
   }
 
@@ -324,23 +286,19 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 在当前来源空闲时启动媒体替换任务。
+   * 在当前相机来源空闲时启动采集参数更新任务。
    *
-   * @param controller 管理目标媒体类型的子 Controller。
-   * @param create 实际创建新本地媒体流的操作。
-   * @param replaceCurrent 同类型媒体来源原地替换操作。
-   * @returns 替换完成后的本地媒体流。
+   * @param update 实际更新相机来源的操作。
+   * @returns 更新完成后的本地媒体流。
    */
-  private async replaceSource(
-    controller: LocalMediaController,
-    create: LocalMediaCreation,
-    replaceCurrent?: LocalMediaCreation
+  private async updateCameraSource(
+    update: LocalMediaCreation
   ): Promise<RealtimeMediaStream> {
     const source: ActiveLocalMediaSource | null = this.activeSource;
-    if (source === null) {
+    if (source === null || source.controller !== this.cameraController) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
-        'Create a local media stream before replacing it'
+        'Create a local camera stream before updating it'
       );
     }
     if (source.operationPromise !== null || source.stopPromise !== null) {
@@ -350,44 +308,15 @@ export class MediaController implements MediaControlling {
       );
     }
 
-    const replacementPromise: Promise<RealtimeMediaStream> =
-      source.controller === controller && replaceCurrent !== undefined ?
-        replaceCurrent() : this.performReplace(source, controller, create);
-    source.operationPromise = replacementPromise;
+    const updatePromise: Promise<RealtimeMediaStream> = update();
+    source.operationPromise = updatePromise;
 
     try {
-      return await replacementPromise;
+      return await updatePromise;
     } finally {
-      if (source.operationPromise === replacementPromise) {
+      if (source.operationPromise === updatePromise) {
         source.operationPromise = null;
       }
-    }
-  }
-
-  /**
-   * 停止旧来源并创建新的本地媒体来源。
-   *
-   * @param source 当前活动来源记录。
-   * @param controller 管理目标媒体类型的子 Controller。
-   * @param create 实际创建新本地媒体流的操作。
-   * @returns 替换完成后的本地媒体流。
-   */
-  private async performReplace(
-    source: ActiveLocalMediaSource,
-    controller: LocalMediaController,
-    create: LocalMediaCreation
-  ): Promise<RealtimeMediaStream> {
-    try {
-      await this.stopController(source.controller);
-      this.ensureCreationActive(source);
-
-      source.controller = controller;
-      const stream: RealtimeMediaStream = await create();
-      this.ensureCreationActive(source);
-
-      return stream;
-    } catch (error) {
-      throw XmaxError.from(error);
     }
   }
 

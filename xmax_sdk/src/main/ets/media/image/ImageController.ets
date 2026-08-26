@@ -1,3 +1,4 @@
+import { image } from '@kit.ImageKit';
 import {
   XmaxError,
   XmaxErrorCode
@@ -80,14 +81,14 @@ export class ImageController {
   }
 
   /**
-   * 从本地图片文件创建持续输出帧的媒体流。
+   * 从图片输入创建持续输出帧的媒体流。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 可选的视频输出格式；未传入时根据图片信息计算。
    * @returns 创建完成后的本地图片媒体流。
    */
   async createLocalImageStream(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     if (this.activeTrack !== null) {
@@ -98,7 +99,7 @@ export class ImageController {
     }
 
     return this.createStream(
-      filePath,
+      source,
       videoFormat
     );
   }
@@ -122,12 +123,12 @@ export class ImageController {
   /**
    * 准备图片帧来源并装配编码、传输和预览资源。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 可选的视频输出格式。
    * @returns 完成底层资源装配后的本地图片媒体流。
    */
   private async createStream(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     let track: RealtimeVideoTrack | null = null;
@@ -135,7 +136,7 @@ export class ImageController {
     try {
       const resolvedFormat: RealtimeVideoFormat =
         await this.imageSourceController.prepare(
-          filePath,
+          source,
           videoFormat
         );
       track = new RealtimeVideoTrack('video0', resolvedFormat);

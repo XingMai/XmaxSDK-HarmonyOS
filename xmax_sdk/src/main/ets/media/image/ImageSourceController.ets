@@ -1,14 +1,14 @@
-import { fileIo } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
+import { DecodedImage } from '../../foundation/media/image/DecodedImage';
 import { ImageManaging } from '../../foundation/media/image/ImageManaging';
+import { ImageVideoFrameData } from '../../foundation/media/image/ImageVideoFrameData';
 import { BufferVideoFrame } from '../../foundation/media/video/BufferVideoFrame';
 import { VideoFormat } from '../../foundation/media/video/VideoFormat';
 import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
-import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { ImageSize } from '../../service/media/ImageSize';
 import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
@@ -45,7 +45,7 @@ export class ImageSourceController implements ImageSourceControlling {
   /**
    * 创建图片源 Controller。
    *
-   * @param imageManager 提供 PixelMap 裁剪缩放能力的图片 Manager。
+   * @param imageManager 提供图片解码能力的图片 Manager。
    * @param mediaService 提供图片尺寸处理能力的媒体 Service。
    * @param frameListener 视频帧输出监听器。
    * @param errorListener 图片源错误监听器。
@@ -68,14 +68,14 @@ export class ImageSourceController implements ImageSourceControlling {
   }
 
   /**
-   * 加载本地图片并准备可重复输出的视频帧数据。
+   * 加载图片并准备可重复输出的视频帧数据。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
    * @returns 图片实际使用的视频输出格式。
    */
   async prepare(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeVideoFormat> {
     if (this.framePlane !== null) {
@@ -84,60 +84,28 @@ export class ImageSourceController implements ImageSourceControlling {
         'Stop the current image source before preparing another image'
       );
     }
-    if (filePath.trim().length === 0) {
-      throw new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local image file path must not be empty'
-      );
-    }
-
-    const sourceFile: fileIo.File = fileIo.openSync(
-      filePath,
-      fileIo.OpenMode.READ_ONLY
-    );
-    let imageSource: image.ImageSource | undefined = undefined;
-    let pixelMap: image.PixelMap | null = null;
+    let decodedImage: DecodedImage | null = null;
 
     try {
-      imageSource = image.createImageSource(sourceFile.fd);
-      if (imageSource === undefined) {
-        throw new XmaxError(
-          XmaxErrorCode.API_ERROR,
-          'Failed to create image source from the selected file'
-        );
-      }
-
-      const info: image.ImageInfo = await imageSource.getImageInfo();
+      decodedImage = await this.decode(source);
       const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(
-        new ImageSize(info.size.width, info.size.height),
+        new ImageSize(decodedImage.width, decodedImage.height),
         videoFormat
       );
-      pixelMap = await imageSource.createPixelMap({
-        editable: true,
-        desiredPixelFormat: image.PixelMapFormat.RGBA_8888
-      });
-
-      await this.imageManager.resizePixelMapToFill(
-        pixelMap,
-        resolvedFormat.width,
-        resolvedFormat.height
-      );
-
-      const resizedInfo: image.ImageInfo = await pixelMap.getImageInfo();
-      const rowBytes: number = pixelMap.getBytesNumberPerRow();
-      const pixelBytes: number = pixelMap.getPixelBytesNumber();
-
-      const frameData: ArrayBuffer = new ArrayBuffer(pixelBytes);
-      await pixelMap.readPixelsToBuffer(frameData);
+      const frameData: ImageVideoFrameData =
+        await decodedImage.makeVideoFrameData(
+          resolvedFormat.width,
+          resolvedFormat.height
+        );
 
       this.frameFormat = new VideoFormat(
-        resizedInfo.size.width,
-        resizedInfo.size.height,
-        VideoPixelFormat.RGBA
+        frameData.width,
+        frameData.height,
+        frameData.pixelFormat
       );
       this.framePlane = new VideoFramePlane(
-        frameData,
-        rowBytes
+        frameData.data,
+        frameData.bytesPerRow
       );
       this.videoFormat = resolvedFormat;
 
@@ -145,20 +113,28 @@ export class ImageSourceController implements ImageSourceControlling {
     } catch (error) {
       throw XmaxError.from(error);
     } finally {
-      try {
-        if (pixelMap !== null) {
-          await pixelMap.release();
-        }
-      } finally {
-        try {
-          if (imageSource !== undefined) {
-            await imageSource.release();
-          }
-        } finally {
-          fileIo.closeSync(sourceFile);
-        }
+      if (decodedImage !== null) {
+        await decodedImage.release();
       }
     }
+  }
+
+  /**
+   * 将公开图片输入收敛为 SDK 内部已解码图片。
+   *
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
+   * @returns 由 SDK 持有的已解码图片。
+   */
+  private decode(
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap
+  ): Promise<DecodedImage> {
+    if (typeof source === 'string') {
+      return this.imageManager.decodeFile(source);
+    }
+    if (source instanceof ArrayBuffer || source instanceof Uint8Array) {
+      return this.imageManager.decode(source);
+    }
+    return this.imageManager.decodePixelMap(source);
   }
 
   /**

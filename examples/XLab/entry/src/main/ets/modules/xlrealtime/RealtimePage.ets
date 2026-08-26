@@ -258,9 +258,9 @@ export struct RealtimePage {
       }
 
       if (this.hasLocalImage()) {
-        await this.viewModel.replaceLocalImage(filePath);
+        await this.viewModel.changeLocalImage(filePath);
       } else {
-        await this.viewModel.replaceLocalVideo(filePath);
+        await this.viewModel.changeLocalVideo(filePath);
       }
     } catch (_error) {
       const mediaName: string = this.hasLocalImage() ? '图片' : '视频';

@@ -1,3 +1,4 @@
+import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
@@ -65,11 +66,11 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 将当前本地媒体流替换为相机流。
+   * 更新当前相机流的采集格式与摄像头位置。
    *
    * @param videoFormat 本地视频格式。
    * @param position 初始相机位置；未传入时使用前置相机。
-   * @returns 替换后的本地媒体流。
+   * @returns 更新后的本地相机媒体流。
    */
   replaceLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
@@ -103,18 +104,6 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 将当前本地媒体流替换为设备中的视频文件流。
-   *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
-   * @returns 替换后的本地媒体流。
-   */
-  replaceLocalVideoStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream>;
-
-  /**
    * 停止本地视频文件流并释放本地预览资源。
    *
    * @returns 停止完成后的 Promise。
@@ -122,26 +111,14 @@ export interface XmaxRealtimeManaging {
   stopLocalVideoStream(): Promise<void>;
 
   /**
-   * 从设备中的图片文件创建持续输出视频帧的本地媒体流。
+   * 从图片输入创建持续输出视频帧的本地媒体流。
    *
-   * @param filePath 本地图片文件路径。
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
    * @returns 可用于建立实时连接的本地媒体流。
    */
   createLocalImageStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream>;
-
-  /**
-   * 将当前本地媒体流替换为设备中的图片文件流。
-   *
-   * @param filePath 本地图片文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
-   * @returns 替换后的本地媒体流。
-   */
-  replaceLocalImageStream(
-    filePath: string,
+    source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream>;
 
