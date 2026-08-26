@@ -18,13 +18,11 @@ import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { EncodingController } from '../../transport/encoding/EncodingController';
-import { EncodingControlling } from '../../transport/encoding/EncodingControlling';
-import { StreamControlling } from '../../transport/stream/StreamControlling';
 import { StreamId } from '../../transport/stream/StreamId';
+import { TransportControlling } from '../../transport/TransportControlling';
 
 /** 协调本地图片解码、循环帧输出、编码和预览资源。 */
-export class XmaxRealtimeImageManager {
+export class ImageController {
 
   // 基础层组件
   private readonly rtcManager: RtcManaging;
@@ -35,22 +33,21 @@ export class XmaxRealtimeImageManager {
 
   // 业务层组件
   private readonly imageSourceController: ImageSourceControlling;
-  private readonly encodingController: EncodingControlling;
-  private readonly streamController: StreamControlling;
+  private readonly transportController: TransportControlling;
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
 
   /**
-   * 创建图片媒体 Manager。
+   * 创建图片媒体 Controller。
    *
    * @param rtcManager 外部视频源和本地渲染使用的 RTC 基础能力。
-   * @param streamController 接收并推送图片视频帧的传输组件。
+   * @param transportController 提供编码配置和视频帧传输能力的统一组件。
    * @param errorListener 持续图片帧输出错误监听器。
    */
   constructor(
     rtcManager: RtcManaging,
-    streamController: StreamControlling,
+    transportController: TransportControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
@@ -61,12 +58,12 @@ export class XmaxRealtimeImageManager {
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.streamController = streamController;
+    this.transportController = transportController;
     this.imageSourceController = new ImageSourceController(
       this.imageManager,
       this.mediaService,
       (frame: VideoFrame): void => {
-        this.streamController.pushLocalVideoFrame(frame);
+        this.transportController.pushLocalVideoFrame(frame);
       },
       (message: string): void => {
         errorListener(new XmaxError(
@@ -75,7 +72,6 @@ export class XmaxRealtimeImageManager {
         ));
       }
     );
-    this.encodingController = new EncodingController(rtcManager);
   }
 
   /** @returns 当前活动的本地图片视频轨道；尚未创建时返回空值。 */
@@ -144,7 +140,7 @@ export class XmaxRealtimeImageManager {
         );
       track = new RealtimeVideoTrack('video0', resolvedFormat);
 
-      this.encodingController.configure(resolvedFormat);
+      this.transportController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
 
       this.registerPreview(track);

@@ -2,93 +2,106 @@ import { common } from '@kit.AbilityKit';
 import {
   XmaxError,
   XmaxErrorCode
-} from '../../foundation/errors/XmaxError';
-import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
-import { RtcManaging } from '../../foundation/rtc/RtcManaging';
-import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
-import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
-import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { StreamControlling } from '../../transport/stream/StreamControlling';
-import { XmaxRealtimeCameraManager } from './XmaxRealtimeCameraManager';
-import { XmaxRealtimeImageManager } from './XmaxRealtimeImageManager';
-import { XmaxRealtimeVideoManager } from './XmaxRealtimeVideoManager';
+} from '../foundation/errors/XmaxError';
+import { XmaxLogger } from '../foundation/logging/XmaxLogger';
+import { CameraPosition } from '../foundation/media/camera/CameraPosition';
+import { RtcManaging } from '../foundation/rtc/RtcManaging';
+import { PreviewRelease } from '../rendering/video/LocalVideoPreviewControlling';
+import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
+import { RealtimePoint } from '../service/realtime/RealtimePoint';
+import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
+import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
+import { TransportControlling } from '../transport/TransportControlling';
+import { CameraController } from './camera/CameraController';
+import { ImageController } from './image/ImageController';
+import { InteractionController } from './interaction/InteractionController';
+import { InteractionControlling } from './interaction/InteractionControlling';
+import { InteractionFrame } from './interaction/InteractionFrame';
+import { MediaControlling } from './MediaControlling';
+import { VideoController } from './video/VideoController';
 
-type LocalMediaManager = XmaxRealtimeCameraManager |
-  XmaxRealtimeVideoManager |
-  XmaxRealtimeImageManager;
+type LocalMediaController = CameraController |
+  VideoController |
+  ImageController;
 type LocalMediaCreation = () => Promise<RealtimeMediaStream>;
 
 /** 记录当前本地媒体来源及其进行中的创建、替换和停止任务。 */
 class ActiveLocalMediaSource {
 
-  manager: LocalMediaManager;
+  controller: LocalMediaController;
   operationPromise: Promise<RealtimeMediaStream> | null = null;
   stopPromise: Promise<void> | null = null;
 
   /**
    * 创建活动媒体来源记录。
    *
-   * @param manager 实际管理当前媒体来源的子 Manager。
+   * @param controller 实际管理当前媒体来源的子 Controller。
    */
-  constructor(manager: LocalMediaManager) {
-    this.manager = manager;
+  constructor(controller: LocalMediaController) {
+    this.controller = controller;
   }
 }
 
 /** 统一协调相机、视频和图片三类本地媒体来源的所有权与生命周期。 */
-export class XmaxRealtimeMediaManager {
+export class MediaController implements MediaControlling {
 
   // 基础层组件
   private readonly rtcManager: RtcManaging;
 
   // 本地媒体组件
-  private readonly cameraManager: XmaxRealtimeCameraManager;
-  private readonly videoManager: XmaxRealtimeVideoManager;
-  private readonly imageManager: XmaxRealtimeImageManager;
+  private readonly cameraController: CameraController;
+  private readonly imageController: ImageController;
+  private readonly interactionController: InteractionControlling;
+  private readonly videoController: VideoController;
 
   // 本地媒体资源
   private activeSource: ActiveLocalMediaSource | null = null;
 
   /**
-   * 创建本地媒体协调 Manager。
+   * 创建媒体层统一 Controller。
    *
    * @param context 相机和媒体权限所需的页面上下文。
    * @param rtcManager 本地媒体来源共享的 RTC 基础能力。
-   * @param streamController 接收外部视频和音频帧的传输组件。
+   * @param transportController 提供编码配置和音视频帧传输能力的统一组件。
    * @param errorListener 持续媒体输出错误监听器。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
-    streamController: StreamControlling,
+    transportController: TransportControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
 
     // 本地媒体组件
-    this.cameraManager = new XmaxRealtimeCameraManager(
-      context,
-      rtcManager
-    );
-    this.videoManager = new XmaxRealtimeVideoManager(
+    this.cameraController = new CameraController(
       context,
       rtcManager,
-      streamController,
+      transportController
+    );
+    this.imageController = new ImageController(
+      rtcManager,
+      transportController,
       errorListener
     );
-    this.imageManager = new XmaxRealtimeImageManager(
+    this.interactionController = new InteractionController((
+      taskId: string,
+      points: RealtimePoint[]
+    ): void => {
+      transportController.sendTracks(taskId, points);
+    });
+    this.videoController = new VideoController(
+      context,
       rtcManager,
-      streamController,
+      transportController,
       errorListener
     );
   }
 
   /** @returns 当前活动的本地视频轨道；没有媒体来源时返回空值。 */
   get currentTrack(): RealtimeVideoTrack | null {
-    return this.activeSource?.manager.currentTrack ?? null;
+    return this.activeSource?.controller.currentTrack ?? null;
   }
 
   /** @returns 当前本地视频格式；没有活动轨道时返回空值。 */
@@ -98,8 +111,23 @@ export class XmaxRealtimeMediaManager {
 
   /** @returns 当前活动的视频文件来源是否包含音轨。 */
   get hasAudio(): boolean {
-    return this.activeSource?.manager === this.videoManager &&
-      this.videoManager.hasAudio;
+    return this.activeSource?.controller === this.videoController &&
+      this.videoController.hasAudio;
+  }
+
+  /** @inheritdoc */
+  start(taskId: string, videoFormat: RealtimeVideoFormat): void {
+    this.interactionController.start(taskId, videoFormat);
+  }
+
+  /** @inheritdoc */
+  stop(): void {
+    this.interactionController.stop();
+  }
+
+  /** @inheritdoc */
+  submit(frame: InteractionFrame): void {
+    this.interactionController.submit(frame);
   }
 
   /**
@@ -114,9 +142,9 @@ export class XmaxRealtimeMediaManager {
     position: CameraPosition
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
-      this.cameraManager,
+      this.cameraController,
       (): Promise<RealtimeMediaStream> =>
-        this.cameraManager.createLocalCameraStream(videoFormat, position)
+        this.cameraController.createLocalCameraStream(videoFormat, position)
     );
   }
 
@@ -132,22 +160,22 @@ export class XmaxRealtimeMediaManager {
     position: CameraPosition
   ): Promise<RealtimeMediaStream> {
     return this.replaceSource(
-      this.cameraManager,
+      this.cameraController,
       (): Promise<RealtimeMediaStream> =>
-        this.cameraManager.createLocalCameraStream(videoFormat, position),
+        this.cameraController.createLocalCameraStream(videoFormat, position),
       (): Promise<RealtimeMediaStream> =>
-        this.cameraManager.replaceLocalCameraStream(videoFormat, position)
+        this.cameraController.replaceLocalCameraStream(videoFormat, position)
     );
   }
 
   /** @returns 当前相机来源停止完成后的 Promise。 */
   stopLocalCameraStream(): Promise<void> {
-    return this.stopSource(this.cameraManager);
+    return this.stopSource(this.cameraController);
   }
 
   /** @returns 摄像头切换后的本地媒体流。 */
   switchCamera(): Promise<RealtimeMediaStream> {
-    return this.cameraManager.switchCamera();
+    return this.cameraController.switchCamera();
   }
 
   /**
@@ -162,9 +190,9 @@ export class XmaxRealtimeMediaManager {
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
-      this.videoManager,
+      this.videoController,
       (): Promise<RealtimeMediaStream> =>
-        this.videoManager.createLocalVideoStream(filePath, videoFormat)
+        this.videoController.createLocalVideoStream(filePath, videoFormat)
     );
   }
 
@@ -180,15 +208,15 @@ export class XmaxRealtimeMediaManager {
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     return this.replaceSource(
-      this.videoManager,
+      this.videoController,
       (): Promise<RealtimeMediaStream> =>
-        this.videoManager.createLocalVideoStream(filePath, videoFormat)
+        this.videoController.createLocalVideoStream(filePath, videoFormat)
     );
   }
 
   /** @returns 当前视频文件来源停止完成后的 Promise。 */
   stopLocalVideoStream(): Promise<void> {
-    return this.stopSource(this.videoManager);
+    return this.stopSource(this.videoController);
   }
 
   /**
@@ -203,9 +231,9 @@ export class XmaxRealtimeMediaManager {
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
-      this.imageManager,
+      this.imageController,
       (): Promise<RealtimeMediaStream> =>
-        this.imageManager.createLocalImageStream(filePath, videoFormat)
+        this.imageController.createLocalImageStream(filePath, videoFormat)
     );
   }
 
@@ -221,15 +249,15 @@ export class XmaxRealtimeMediaManager {
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
     return this.replaceSource(
-      this.imageManager,
+      this.imageController,
       (): Promise<RealtimeMediaStream> =>
-        this.imageManager.createLocalImageStream(filePath, videoFormat)
+        this.imageController.createLocalImageStream(filePath, videoFormat)
     );
   }
 
   /** @returns 当前图片来源停止完成后的 Promise。 */
   stopLocalImageStream(): Promise<void> {
-    return this.stopSource(this.imageManager);
+    return this.stopSource(this.imageController);
   }
 
   /**
@@ -245,29 +273,29 @@ export class XmaxRealtimeMediaManager {
 
   /** @returns 解除视频预览冻结的回调；非视频来源返回空操作。 */
   freezePreview(): PreviewRelease {
-    if (this.activeSource?.manager !== this.videoManager) {
+    if (this.activeSource?.controller !== this.videoController) {
       return (): void => {};
     }
 
-    return this.videoManager.freezePreview();
+    return this.videoController.freezePreview();
   }
 
   /** @returns 视频文件时间线重启完成后的 Promise。 */
   async restartForGeneration(): Promise<void> {
-    if (this.activeSource?.manager === this.videoManager) {
-      await this.videoManager.restartForGeneration();
+    if (this.activeSource?.controller === this.videoController) {
+      await this.videoController.restartForGeneration();
     }
   }
 
   /**
    * 在没有活动来源时创建新的本地媒体来源。
    *
-   * @param manager 管理目标媒体类型的子 Manager。
+   * @param controller 管理目标媒体类型的子 Controller。
    * @param create 实际创建本地媒体流的操作。
    * @returns 创建完成后的本地媒体流。
    */
   private async createSource(
-    manager: LocalMediaManager,
+    controller: LocalMediaController,
     create: LocalMediaCreation
   ): Promise<RealtimeMediaStream> {
     if (this.activeSource !== null) {
@@ -277,7 +305,7 @@ export class XmaxRealtimeMediaManager {
       );
     }
 
-    const source = new ActiveLocalMediaSource(manager);
+    const source = new ActiveLocalMediaSource(controller);
     this.activeSource = source;
 
     const creationPromise: Promise<RealtimeMediaStream> = this.performCreate(
@@ -298,13 +326,13 @@ export class XmaxRealtimeMediaManager {
   /**
    * 在当前来源空闲时启动媒体替换任务。
    *
-   * @param manager 管理目标媒体类型的子 Manager。
+   * @param controller 管理目标媒体类型的子 Controller。
    * @param create 实际创建新本地媒体流的操作。
    * @param replaceCurrent 同类型媒体来源原地替换操作。
    * @returns 替换完成后的本地媒体流。
    */
   private async replaceSource(
-    manager: LocalMediaManager,
+    controller: LocalMediaController,
     create: LocalMediaCreation,
     replaceCurrent?: LocalMediaCreation
   ): Promise<RealtimeMediaStream> {
@@ -323,8 +351,8 @@ export class XmaxRealtimeMediaManager {
     }
 
     const replacementPromise: Promise<RealtimeMediaStream> =
-      source.manager === manager && replaceCurrent !== undefined ?
-        replaceCurrent() : this.performReplace(source, manager, create);
+      source.controller === controller && replaceCurrent !== undefined ?
+        replaceCurrent() : this.performReplace(source, controller, create);
     source.operationPromise = replacementPromise;
 
     try {
@@ -340,20 +368,20 @@ export class XmaxRealtimeMediaManager {
    * 停止旧来源并创建新的本地媒体来源。
    *
    * @param source 当前活动来源记录。
-   * @param manager 管理目标媒体类型的子 Manager。
+   * @param controller 管理目标媒体类型的子 Controller。
    * @param create 实际创建新本地媒体流的操作。
    * @returns 替换完成后的本地媒体流。
    */
   private async performReplace(
     source: ActiveLocalMediaSource,
-    manager: LocalMediaManager,
+    controller: LocalMediaController,
     create: LocalMediaCreation
   ): Promise<RealtimeMediaStream> {
     try {
-      await this.stopManager(source.manager);
+      await this.stopController(source.controller);
       this.ensureCreationActive(source);
 
-      source.manager = manager;
+      source.controller = controller;
       const stream: RealtimeMediaStream = await create();
       this.ensureCreationActive(source);
 
@@ -398,12 +426,12 @@ export class XmaxRealtimeMediaManager {
   /**
    * 获取或创建指定媒体来源的停止任务。
    *
-   * @param manager 需要停止的媒体子 Manager。
+   * @param controller 需要停止的媒体子 Controller。
    * @returns 媒体来源停止完成后的 Promise。
    */
-  private stopSource(manager: LocalMediaManager): Promise<void> {
+  private stopSource(controller: LocalMediaController): Promise<void> {
     const source: ActiveLocalMediaSource | null = this.activeSource;
-    if (source === null || source.manager !== manager) {
+    if (source === null || source.controller !== controller) {
       return Promise.resolve();
     }
     if (source.stopPromise !== null) {
@@ -441,7 +469,7 @@ export class XmaxRealtimeMediaManager {
     }
 
     try {
-      await this.stopManager(source.manager);
+      await this.stopController(source.controller);
     } finally {
       await this.destroyRtcSafely('释放本地媒体 RTC 资源失败');
 
@@ -452,20 +480,20 @@ export class XmaxRealtimeMediaManager {
   }
 
   /**
-   * 将停止请求分发给当前媒体类型对应的子 Manager。
+   * 将停止请求分发给当前媒体类型对应的子 Controller。
    *
-   * @param manager 需要停止的媒体子 Manager。
-   * @returns 子 Manager 停止完成后的 Promise。
+   * @param controller 需要停止的媒体子 Controller。
+   * @returns 子 Controller 停止完成后的 Promise。
    */
-  private stopManager(manager: LocalMediaManager): Promise<void> {
-    if (manager === this.cameraManager) {
-      return this.cameraManager.stopLocalCameraStream();
+  private stopController(controller: LocalMediaController): Promise<void> {
+    if (controller === this.cameraController) {
+      return this.cameraController.stopLocalCameraStream();
     }
-    if (manager === this.videoManager) {
-      return this.videoManager.stopLocalVideoStream();
+    if (controller === this.videoController) {
+      return this.videoController.stopLocalVideoStream();
     }
 
-    return this.imageManager.stopLocalImageStream();
+    return this.imageController.stopLocalImageStream();
   }
 
   /**

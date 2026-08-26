@@ -3,11 +3,10 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
-import { InteractionControlling } from '../../media/interaction/InteractionControlling';
+import { MediaControlling } from '../../media/MediaControlling';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RoomControlling } from '../../transport/room/RoomControlling';
-import { StreamControlling } from '../../transport/stream/StreamControlling';
+import { TransportControlling } from '../../transport/TransportControlling';
 
 type GenerationValidity = () => void;
 type GenerationStartedHandler = () => Promise<void>;
@@ -19,9 +18,8 @@ const TASK_ID_ALPHABET: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst
 export class XmaxRealtimeGenerationManager {
 
   // 业务层组件
-  private readonly interactionController: InteractionControlling;
-  private readonly roomController: RoomControlling;
-  private readonly streamController: StreamControlling;
+  private readonly mediaController: MediaControlling;
+  private readonly transportController: TransportControlling;
 
   // 生成资源
   private currentContext: RealtimeContext | null = null;
@@ -32,19 +30,16 @@ export class XmaxRealtimeGenerationManager {
   /**
    * 创建生成流程 Manager。
    *
-   * @param interactionController 生成期间的交互行为组件。
-   * @param roomController 发送生成控制信令的房间组件。
-   * @param streamController 匹配生成任务和远端结果流的传输组件。
+   * @param mediaController 生成期间的统一媒体和交互组件。
+   * @param transportController 发送生成信令并匹配远端结果流的统一传输组件。
    */
   constructor(
-    interactionController: InteractionControlling,
-    roomController: RoomControlling,
-    streamController: StreamControlling
+    mediaController: MediaControlling,
+    transportController: TransportControlling
   ) {
     // 业务层组件
-    this.interactionController = interactionController;
-    this.roomController = roomController;
-    this.streamController = streamController;
+    this.mediaController = mediaController;
+    this.transportController = transportController;
   }
 
   /**
@@ -71,16 +66,19 @@ export class XmaxRealtimeGenerationManager {
     }
 
     const taskId: string = XmaxRealtimeGenerationManager.createTaskId();
-    const confirmation: Promise<void> = this.streamController.beginGeneration(taskId);
+    const confirmation: Promise<void> = this.transportController.beginGeneration(
+      taskId,
+      videoFormat,
+      resolvedContext
+    );
     this.conditionVersion = 0;
 
     try {
-      this.roomController.startGeneration(taskId, videoFormat, resolvedContext);
       await onGenerationStarted();
       await confirmation;
       ensureCurrent();
 
-      this.interactionController.start(taskId, videoFormat);
+      this.mediaController.start(taskId, videoFormat);
       this.currentContext = resolvedContext;
       return taskId;
     } catch (error) {
@@ -102,14 +100,14 @@ export class XmaxRealtimeGenerationManager {
     videoFormat: RealtimeVideoFormat,
     context?: RealtimeContext
   ): void {
-    this.interactionController.start(taskId, videoFormat);
+    this.mediaController.start(taskId, videoFormat);
 
     if (context === undefined) {
       return;
     }
 
     this.conditionVersion++;
-    this.roomController.changeGenerationCondition(
+    this.transportController.updateGeneration(
       taskId,
       this.conditionVersion,
       videoFormat,
@@ -125,10 +123,9 @@ export class XmaxRealtimeGenerationManager {
    * @returns 无返回值。
    */
   stop(taskId: string): void {
-    this.interactionController.stop();
+    this.mediaController.stop();
 
-    const stoppedTaskId: string = this.streamController.stopGeneration(taskId);
-    this.roomController.stopGeneration(stoppedTaskId);
+    this.transportController.stopGeneration(taskId);
   }
 
   /**

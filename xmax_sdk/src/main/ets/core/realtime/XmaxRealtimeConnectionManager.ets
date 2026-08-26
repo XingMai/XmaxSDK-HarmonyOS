@@ -5,7 +5,7 @@ import {
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
-import { InteractionControlling } from '../../media/interaction/InteractionControlling';
+import { MediaControlling } from '../../media/MediaControlling';
 import { TrajectoryBinding } from '../../rendering/trajectory/TrajectoryBinding';
 import { TrajectoryRegistry } from '../../rendering/trajectory/TrajectoryRegistry';
 import { RemoteVideoControlling } from '../../rendering/video/RemoteVideoControlling';
@@ -24,9 +24,8 @@ import {
   RealtimeVideoTrack,
   updateRealtimeVideoTrackFormat
 } from '../../service/realtime/RealtimeVideoTrack';
-import { RoomControlling } from '../../transport/room/RoomControlling';
-import { StreamControlling } from '../../transport/stream/StreamControlling';
 import { StreamId } from '../../transport/stream/StreamId';
+import { TransportControlling } from '../../transport/TransportControlling';
 
 type ConnectionValidity = () => boolean;
 type ConnectionHeartbeatFailureHandler = (
@@ -44,10 +43,11 @@ export class XmaxRealtimeConnectionManager {
   private readonly sessionService: RealtimeSessionServicing;
 
   // 业务层组件
-  private readonly interactionController: InteractionControlling;
-  private readonly roomController: RoomControlling;
+  private readonly mediaController: MediaControlling;
+  private readonly transportController: TransportControlling;
+
+  // 渲染层组件
   private readonly remoteVideoController: RemoteVideoControlling;
-  private readonly streamController: StreamControlling;
 
   // 连接资源
   private activeRemoteTrack: RealtimeVideoTrack | null = null;
@@ -58,18 +58,16 @@ export class XmaxRealtimeConnectionManager {
    *
    * @param rtcManager RTC 引擎和渲染库等基础能力。
    * @param apiService 创建、心跳和关闭服务端会话的网络服务。
-   * @param interactionController 远端轨迹交互使用的业务组件。
-   * @param roomController RTC 房间生命周期和房间消息组件。
+   * @param mediaController 远端轨迹交互使用的统一媒体组件。
    * @param remoteVideoController 远端视频绑定组件。
-   * @param streamController 本地发布、远端订阅和媒体传输组件。
+   * @param transportController RTC 房间、媒体流和信令的统一传输组件。
    */
   constructor(
     rtcManager: RtcManaging,
     apiService: ApiServicing,
-    interactionController: InteractionControlling,
-    roomController: RoomControlling,
+    mediaController: MediaControlling,
     remoteVideoController: RemoteVideoControlling,
-    streamController: StreamControlling
+    transportController: TransportControlling
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -78,10 +76,11 @@ export class XmaxRealtimeConnectionManager {
     this.sessionService = new RealtimeSessionService(apiService);
 
     // 业务层组件
-    this.interactionController = interactionController;
-    this.roomController = roomController;
+    this.mediaController = mediaController;
+    this.transportController = transportController;
+
+    // 渲染层组件
     this.remoteVideoController = remoteVideoController;
-    this.streamController = streamController;
   }
 
   /** @returns 当前活动的服务端会话标识；没有连接时返回空字符串。 */
@@ -134,16 +133,13 @@ export class XmaxRealtimeConnectionManager {
         );
       }
 
-      await this.roomController.join(
+      await this.transportController.connect(
         connection,
+        includeLocalAudio,
         (): void => {
           this.ensureCurrent(isCurrent);
         }
       );
-      this.ensureCurrent(isCurrent);
-
-      this.streamController.configureRoom(connection.roomId, connection.botName);
-      this.streamController.publishLocalStream(includeLocalAudio);
       this.ensureCurrent(isCurrent);
 
       this.sessionService.startHeartbeat(session.id, onHeartbeatFailure);
@@ -166,7 +162,7 @@ export class XmaxRealtimeConnectionManager {
       ));
       TrajectoryRegistry.register(
         remoteTrack,
-        new TrajectoryBinding(this.interactionController)
+        new TrajectoryBinding(this.mediaController)
       );
 
       this.activeSession = session;
@@ -231,21 +227,11 @@ export class XmaxRealtimeConnectionManager {
     }
 
     try {
-      this.streamController.resetRoom();
+      await this.transportController.disconnect();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `重置媒体传输失败\n└─ 原因：${reason}`,
-        'Realtime'
-      );
-    }
-
-    try {
-      await this.roomController.leave();
-    } catch (error) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      XmaxLogger.error(
-        `离开实时房间失败\n└─ 原因：${reason}`,
+        `释放 RTC 传输资源失败\n└─ 原因：${reason}`,
         'Realtime'
       );
     }
@@ -281,14 +267,12 @@ export class XmaxRealtimeConnectionManager {
       TrajectoryRegistry.unregister(remoteTrack);
     }
     this.remoteVideoController.reset();
-    this.streamController.resetRoom();
-
     try {
-      await this.roomController.leave();
+      await this.transportController.disconnect();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `连接回滚离开房间失败\n└─ 原因：${reason}`,
+        `连接回滚释放 RTC 传输资源失败\n└─ 原因：${reason}`,
         'Realtime'
       );
     }

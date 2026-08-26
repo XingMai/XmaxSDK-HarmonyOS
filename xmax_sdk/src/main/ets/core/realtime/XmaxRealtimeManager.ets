@@ -7,8 +7,8 @@ import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
 import { RtcManager } from '../../foundation/rtc/RtcManager';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
-import { InteractionController } from '../../media/interaction/InteractionController';
-import { InteractionControlling } from '../../media/interaction/InteractionControlling';
+import { MediaController } from '../../media/MediaController';
+import { MediaControlling } from '../../media/MediaControlling';
 import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
 import { RemoteVideoController } from '../../rendering/video/RemoteVideoController';
 import { RemoteVideoControlling } from '../../rendering/video/RemoteVideoControlling';
@@ -18,7 +18,6 @@ import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeNetworkQualityListener } from '../../service/realtime/RealtimeNetworkQuality';
 import { RealtimePerformanceAlarmListener } from '../../service/realtime/RealtimePerformanceAlarm';
-import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import {
   RealtimeConnectionState,
   RealtimeState,
@@ -26,18 +25,13 @@ import {
 } from '../../service/realtime/RealtimeState';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { QualityController } from '../../transport/quality/QualityController';
-import { QualityControlling } from '../../transport/quality/QualityControlling';
-import { RoomController } from '../../transport/room/RoomController';
-import { RoomControlling } from '../../transport/room/RoomControlling';
-import { StreamController } from '../../transport/stream/StreamController';
-import { StreamControlling } from '../../transport/stream/StreamControlling';
+import { TransportController } from '../../transport/TransportController';
+import { TransportControlling } from '../../transport/TransportControlling';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 import { XmaxRealtimeConnectionManager } from './XmaxRealtimeConnectionManager';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
 import { XmaxRealtimeGenerationManager } from './XmaxRealtimeGenerationManager';
 import { XmaxRealtimeManaging } from './XmaxRealtimeManaging';
-import { XmaxRealtimeMediaManager } from './XmaxRealtimeMediaManager';
 
 /** 实时生成业务公共入口，统一编排本地媒体、连接、生成和状态通知。 */
 export class XmaxRealtimeManager implements XmaxRealtimeManaging {
@@ -48,16 +42,17 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   // 基础层组件
   private readonly rtcManager: RtcManaging;
 
-  // 业务层组件
-  private readonly interactionController: InteractionControlling;
-  private readonly roomController: RoomControlling;
+  // 错误管理组件
+  private readonly errorManager: XmaxRealtimeErrorManager;
+
+  // 渲染层组件
   private readonly remoteVideoController: RemoteVideoControlling;
-  private readonly streamController: StreamControlling;
-  private readonly qualityController: QualityControlling;
+
+  // 业务层组件
+  private readonly transportController: TransportControlling;
+  private readonly mediaController: MediaControlling;
 
   // 实时管理组件
-  private readonly errorManager: XmaxRealtimeErrorManager;
-  private readonly mediaManager: XmaxRealtimeMediaManager;
   private readonly connectionManager: XmaxRealtimeConnectionManager;
   private readonly generationManager: XmaxRealtimeGenerationManager;
 
@@ -86,45 +81,39 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     // 基础层组件
     this.rtcManager = new RtcManager(context);
 
-    // 业务层组件
-    this.roomController = new RoomController(this.rtcManager);
-    this.interactionController = new InteractionController((
-      taskId: string,
-      points: RealtimePoint[]
-    ): void => {
-      this.roomController.sendTracks(taskId, points);
-    });
+    // 错误管理组件
+    this.errorManager = new XmaxRealtimeErrorManager();
+
+    // 渲染层组件
     this.remoteVideoController = new RemoteVideoController(this.rtcManager);
-    this.streamController = new StreamController(
+
+    // 业务层组件
+    this.transportController = new TransportController(
       this.rtcManager,
       (stream): void => {
         this.remoteVideoController.setRemoteStream(stream);
       }
     );
-    this.qualityController = new QualityController(this.rtcManager);
-
-    // 实时管理组件
-    this.errorManager = new XmaxRealtimeErrorManager();
-    this.mediaManager = new XmaxRealtimeMediaManager(
+    this.mediaController = new MediaController(
       context,
       this.rtcManager,
-      this.streamController,
+      this.transportController,
       (error: XmaxError): void => {
         this.errorManager.handle(error);
       }
     );
+
+    // 实时管理组件
     this.connectionManager = new XmaxRealtimeConnectionManager(
       this.rtcManager,
       apiService,
-      this.interactionController,
-      this.roomController,
+      this.mediaController,
       this.remoteVideoController,
-      this.streamController
+      this.transportController
     );
     this.generationManager = new XmaxRealtimeGenerationManager(
-      this.interactionController,
-      this.roomController,
-      this.streamController
+      this.mediaController,
+      this.transportController
     );
   }
 
@@ -161,7 +150,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
-    this.qualityController.setNetworkQualityListener(listener);
+    this.transportController.setNetworkQualityListener(listener);
   }
 
   /**
@@ -171,7 +160,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void {
-    this.qualityController.setPerformanceAlarmListener(listener);
+    this.transportController.setPerformanceAlarmListener(listener);
   }
 
   /**
@@ -193,7 +182,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    return this.observeError(this.mediaManager.createLocalCameraStream(
+    return this.observeError(this.mediaController.createLocalCameraStream(
       videoFormat,
       position
     ));
@@ -212,7 +201,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream> {
     return this.replaceLocalStream(
       (): Promise<RealtimeMediaStream> =>
-        this.mediaManager.replaceLocalCameraStream(videoFormat, position)
+        this.mediaController.replaceLocalCameraStream(videoFormat, position)
     );
   }
 
@@ -230,7 +219,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    await this.observeError(this.mediaManager.stopLocalCameraStream());
+    await this.observeError(this.mediaController.stopLocalCameraStream());
   }
 
   /**
@@ -246,7 +235,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    return this.observeError(this.mediaManager.switchCamera());
+    return this.observeError(this.mediaController.switchCamera());
   }
 
   /**
@@ -268,7 +257,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    return this.observeError(this.mediaManager.createLocalVideoStream(
+    return this.observeError(this.mediaController.createLocalVideoStream(
       filePath,
       videoFormat
     ));
@@ -287,7 +276,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream> {
     return this.replaceLocalStream(
       (): Promise<RealtimeMediaStream> =>
-        this.mediaManager.replaceLocalVideoStream(filePath, videoFormat)
+        this.mediaController.replaceLocalVideoStream(filePath, videoFormat)
     );
   }
 
@@ -305,7 +294,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    await this.observeError(this.mediaManager.stopLocalVideoStream());
+    await this.observeError(this.mediaController.stopLocalVideoStream());
   }
 
   /**
@@ -327,7 +316,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    return this.observeError(this.mediaManager.createLocalImageStream(
+    return this.observeError(this.mediaController.createLocalImageStream(
       filePath,
       videoFormat
     ));
@@ -346,7 +335,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream> {
     return this.replaceLocalStream(
       (): Promise<RealtimeMediaStream> =>
-        this.mediaManager.replaceLocalImageStream(filePath, videoFormat)
+        this.mediaController.replaceLocalImageStream(filePath, videoFormat)
     );
   }
 
@@ -364,7 +353,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     }
 
-    await this.observeError(this.mediaManager.stopLocalImageStream());
+    await this.observeError(this.mediaController.stopLocalImageStream());
   }
 
   /**
@@ -385,7 +374,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const track: RealtimeVideoTrack | undefined = localStream.videoTrack;
     const videoFormat: RealtimeVideoFormat | undefined = track?.videoFormat;
     if (track === undefined || videoFormat === undefined ||
-      !this.mediaManager.owns(localStream)) {
+      !this.mediaController.owns(localStream)) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'The local stream must be created and started by this realtime manager'
@@ -400,7 +389,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
         this.options.model.name,
         videoFormat,
-        this.mediaManager.hasAudio,
+        this.mediaController.hasAudio,
         (): boolean => this.isOperationCurrent(operationVersion),
         async (
           sessionId: string,
@@ -458,7 +447,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   async startGeneration(context?: RealtimeContext): Promise<void> {
     const sessionId: string = this.connectionManager.currentSessionId;
     const videoFormat: RealtimeVideoFormat | undefined =
-      this.mediaManager.currentVideoFormat;
+      this.mediaController.currentVideoFormat;
     const connected: boolean = this.state.connectionState === RealtimeConnectionState.CONNECTED ||
       this.state.connectionState === RealtimeConnectionState.GENERATING;
     if (!connected || sessionId.length === 0 || videoFormat === undefined) {
@@ -481,7 +470,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     const operationVersion: number = this.operationVersion;
-    const releasePreview: PreviewRelease = this.mediaManager.freezePreview();
+    const releasePreview: PreviewRelease = this.mediaController.freezePreview();
 
     try {
       const taskId: string = await this.generationManager.start(
@@ -491,7 +480,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           this.ensureOperation(operationVersion);
         },
         async (): Promise<void> => {
-          await this.mediaManager.restartForGeneration();
+          await this.mediaController.restartForGeneration();
         }
       );
       if (this.connectionManager.currentSessionId !== sessionId) {
@@ -569,7 +558,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     if (this.connectionManager.currentSessionId.length > 0) {
       try {
-        this.streamController.setLocalAudioEnabled(this.mediaManager.hasAudio);
+        this.transportController.setLocalAudioEnabled(this.mediaController.hasAudio);
       } catch (error) {
         this.reportError(error);
       }

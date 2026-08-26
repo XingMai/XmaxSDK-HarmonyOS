@@ -1,6 +1,4 @@
 import { common } from '@kit.AbilityKit';
-import { EncodingController } from '../../transport/encoding/EncodingController';
-import { EncodingControlling } from '../../transport/encoding/EncodingControlling';
 import {
   XmaxError,
   XmaxErrorCode
@@ -27,11 +25,12 @@ import {
   updateRealtimeVideoTrackPosition
 } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamId } from '../../transport/stream/StreamId';
+import { TransportControlling } from '../../transport/TransportControlling';
 
 const CAMERA_REPLACEMENT_DELAY_MS: number = 150;
 
 /** 协调相机权限、采集、编码和本地预览资源。 */
-export class XmaxRealtimeCameraManager {
+export class CameraController {
 
   // 基础层组件
   private readonly rtcManager: RtcManaging;
@@ -41,20 +40,22 @@ export class XmaxRealtimeCameraManager {
   private readonly mediaService: MediaServicing;
 
   // 业务层组件
-  private readonly encodingController: EncodingControlling;
+  private readonly transportController: TransportControlling;
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
 
   /**
-   * 创建相机媒体 Manager。
+   * 创建相机媒体 Controller。
    *
    * @param context 申请相机权限所需的页面上下文。
    * @param rtcManager 相机采集和本地渲染使用的 RTC 基础能力。
+   * @param transportController 提供视频编码配置能力的统一传输组件。
    */
   constructor(
     context: common.UIAbilityContext,
-    rtcManager: RtcManaging
+    rtcManager: RtcManaging,
+    transportController: TransportControlling
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -64,7 +65,7 @@ export class XmaxRealtimeCameraManager {
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.encodingController = new EncodingController(rtcManager);
+    this.transportController = transportController;
   }
 
   /** @returns 当前活动的本地相机视频轨道；尚未创建时返回空值。 */
@@ -120,7 +121,7 @@ export class XmaxRealtimeCameraManager {
     );
 
     this.rtcManager.stopVideoCapture();
-    this.encodingController.configure(resolvedFormat);
+    this.transportController.setVideoEncoderConfig(resolvedFormat);
     this.rtcManager.switchCamera(position);
     this.rtcManager.startVideoCapture(
       resolvedFormat.width,
@@ -207,7 +208,7 @@ export class XmaxRealtimeCameraManager {
 
     try {
       await this.permissionManager.ensureCameraPermission();
-      this.encodingController.configure(resolvedFormat);
+      this.transportController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.switchCamera(position);
       this.rtcManager.startVideoCapture(
         resolvedFormat.width,
