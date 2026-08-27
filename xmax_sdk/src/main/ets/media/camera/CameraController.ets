@@ -24,8 +24,8 @@ import {
   updateRealtimeVideoTrackFormat,
   updateRealtimeVideoTrackPosition
 } from '../../service/realtime/RealtimeVideoTrack';
-import { StreamId } from '../../transport/stream/StreamId';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamControlling } from '../../stream/StreamControlling';
+import { StreamId } from '../../stream/StreamId';
 
 const CAMERA_REPLACEMENT_DELAY_MS: number = 150;
 
@@ -40,7 +40,7 @@ export class CameraController {
   private readonly mediaService: MediaServicing;
 
   // 业务层组件
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
@@ -50,12 +50,12 @@ export class CameraController {
    *
    * @param context 申请相机权限所需的页面上下文。
    * @param rtcManager 相机采集和本地渲染使用的 RTC 基础能力。
-   * @param transportController 提供视频编码配置能力的统一传输组件。
+   * @param streamController 提供视频编码配置能力的统一流组件。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
-    transportController: TransportControlling
+    streamController: StreamControlling
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -65,7 +65,7 @@ export class CameraController {
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.transportController = transportController;
+    this.streamController = streamController;
   }
 
   /** @returns 当前活动的本地相机视频轨道；尚未创建时返回空值。 */
@@ -121,7 +121,7 @@ export class CameraController {
     );
 
     this.rtcManager.stopVideoCapture();
-    this.transportController.setVideoEncoderConfig(resolvedFormat);
+    this.streamController.setVideoEncoderConfig(resolvedFormat);
     this.rtcManager.switchCamera(position);
     this.rtcManager.startVideoCapture(
       resolvedFormat.width,
@@ -208,7 +208,7 @@ export class CameraController {
 
     try {
       await this.permissionManager.ensureCameraPermission();
-      this.transportController.setVideoEncoderConfig(resolvedFormat);
+      this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.switchCamera(position);
       this.rtcManager.startVideoCapture(
         resolvedFormat.width,

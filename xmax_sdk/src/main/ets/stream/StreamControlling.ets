@@ -7,8 +7,8 @@ import { RealtimePoint } from '../service/realtime/RealtimePoint';
 import { RealtimeSessionConnection } from '../service/realtime/RealtimeSessionConnection';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 
-/** 定义传输层向 Core 和其他业务层暴露的统一能力。 */
-export interface TransportControlling {
+/** 定义流层向 Core 和其他业务层暴露的统一能力。 */
+export interface StreamControlling {
 
   /**
    * 设置实时视频编码器配置。
@@ -51,7 +51,7 @@ export interface TransportControlling {
   /**
    * 清理媒体流状态并离开当前 RTC 房间；没有活动房间时安全返回。
    *
-   * @returns 传输资源清理完成后的 Promise。
+   * @returns 流资源清理完成后的 Promise。
    */
   disconnect(): Promise<void>;
 

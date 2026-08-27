@@ -25,7 +25,7 @@ export class RoomController implements RoomControlling {
   // 基础层组件
   private readonly rtcManager: RtcManaging;
 
-  // 传输层组件
+  // 流层组件
   private readonly heartbeat: RoomHeartbeat;
 
   // 房间资源

@@ -29,8 +29,8 @@ import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { StreamId } from '../../transport/stream/StreamId';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamControlling } from '../../stream/StreamControlling';
+import { StreamId } from '../../stream/StreamId';
 
 /** 协调本地视频文件、音轨、编码、传输和预览资源。 */
 export class VideoController {
@@ -45,7 +45,7 @@ export class VideoController {
 
   // 业务层组件
   private readonly mediaSourceController: MediaSourceControlling;
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
   private readonly localVideoPreviewController: LocalVideoPreviewControlling;
 
   // 本地资源
@@ -56,13 +56,13 @@ export class VideoController {
    *
    * @param context 申请音频相关权限所需的页面上下文。
    * @param rtcManager 外部媒体源和本地渲染使用的 RTC 基础能力。
-   * @param transportController 提供编码配置和音视频帧传输能力的统一组件。
+   * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
    * @param errorListener 持续媒体输出错误监听器。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
-    transportController: TransportControlling,
+    streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
@@ -74,17 +74,17 @@ export class VideoController {
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.transportController = transportController;
+    this.streamController = streamController;
     this.localVideoPreviewController = new LocalVideoPreviewController();
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,
       this.audioManager,
       (frame: VideoFrame): void => {
         this.localVideoPreviewController.captureFirstFrame(frame);
-        this.transportController.pushLocalVideoFrame(frame);
+        this.streamController.pushLocalVideoFrame(frame);
       },
       (frame: AudioFrame): void => {
-        this.transportController.pushLocalAudioFrame(frame);
+        this.streamController.pushLocalAudioFrame(frame);
       },
       (message: string): void => {
         errorListener(new XmaxError(
@@ -211,7 +211,7 @@ export class VideoController {
         await this.permissionManager.ensureMicrophonePermission();
       }
 
-      this.transportController.setVideoEncoderConfig(resolvedFormat);
+      this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
       if (sourceConfiguration.hasAudio) {
         this.rtcManager.startExternalAudioSource();

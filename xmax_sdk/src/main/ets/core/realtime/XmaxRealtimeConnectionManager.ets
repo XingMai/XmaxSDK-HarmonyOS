@@ -3,16 +3,8 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RtcManaging } from '../../foundation/rtc/RtcManaging';
-import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { MediaControlling } from '../../media/MediaControlling';
-import { TrajectoryBinding } from '../../rendering/trajectory/TrajectoryBinding';
-import { TrajectoryRegistry } from '../../rendering/trajectory/TrajectoryRegistry';
-import { RemoteVideoControlling } from '../../rendering/video/RemoteVideoControlling';
-import {
-  VideoRenderBinding,
-  VideoRenderRegistry
-} from '../../rendering/video/VideoRenderRegistry';
+import { RenderControlling } from '../../rendering/RenderControlling';
 import { ApiServicing } from '../../service/network/ApiServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeSession } from '../../service/realtime/RealtimeSession';
@@ -24,8 +16,8 @@ import {
   RealtimeVideoTrack,
   updateRealtimeVideoTrackFormat
 } from '../../service/realtime/RealtimeVideoTrack';
-import { StreamId } from '../../transport/stream/StreamId';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamControlling } from '../../stream/StreamControlling';
+import { StreamId } from '../../stream/StreamId';
 
 type ConnectionValidity = () => boolean;
 type ConnectionHeartbeatFailureHandler = (
@@ -36,18 +28,15 @@ type ConnectionHeartbeatFailureHandler = (
 /** 协调服务端会话、RTC 房间、本地发布和远端媒体资源。 */
 export class XmaxRealtimeConnectionManager {
 
-  // 基础层组件
-  private readonly rtcManager: RtcManaging;
-
   // 服务层组件
   private readonly sessionService: RealtimeSessionServicing;
 
   // 业务层组件
   private readonly mediaController: MediaControlling;
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
 
   // 渲染层组件
-  private readonly remoteVideoController: RemoteVideoControlling;
+  private readonly renderController: RenderControlling;
 
   // 连接资源
   private activeRemoteTrack: RealtimeVideoTrack | null = null;
@@ -56,31 +45,26 @@ export class XmaxRealtimeConnectionManager {
   /**
    * 创建实时连接 Manager。
    *
-   * @param rtcManager RTC 引擎和渲染库等基础能力。
    * @param apiService 创建、心跳和关闭服务端会话的网络服务。
    * @param mediaController 远端轨迹交互使用的统一媒体组件。
-   * @param remoteVideoController 远端视频绑定组件。
-   * @param transportController RTC 房间、媒体流和信令的统一传输组件。
+   * @param renderController 视频轨道、远端画面和轨迹绑定的统一渲染组件。
+   * @param streamController RTC 房间、媒体流和信令的统一流组件。
    */
   constructor(
-    rtcManager: RtcManaging,
     apiService: ApiServicing,
     mediaController: MediaControlling,
-    remoteVideoController: RemoteVideoControlling,
-    transportController: TransportControlling
+    renderController: RenderControlling,
+    streamController: StreamControlling
   ) {
-    // 基础层组件
-    this.rtcManager = rtcManager;
-
     // 服务层组件
     this.sessionService = new RealtimeSessionService(apiService);
 
     // 业务层组件
     this.mediaController = mediaController;
-    this.transportController = transportController;
+    this.streamController = streamController;
 
     // 渲染层组件
-    this.remoteVideoController = remoteVideoController;
+    this.renderController = renderController;
   }
 
   /** @returns 当前活动的服务端会话标识；没有连接时返回空字符串。 */
@@ -133,7 +117,7 @@ export class XmaxRealtimeConnectionManager {
         );
       }
 
-      await this.transportController.connect(
+      await this.streamController.connect(
         connection,
         includeLocalAudio,
         (): void => {
@@ -148,21 +132,9 @@ export class XmaxRealtimeConnectionManager {
         connection.botName ?? 'video-remote',
         videoFormat
       );
-      VideoRenderRegistry.register(remoteTrack, new VideoRenderBinding(
-        this.rtcManager.renderLibraryName(),
-        (
-          viewId: string,
-          contentMode: VideoContentMode
-        ): void => {
-          this.remoteVideoController.attach(viewId, contentMode);
-        },
-        (viewId: string): void => {
-          this.remoteVideoController.detach(viewId);
-        }
-      ));
-      TrajectoryRegistry.register(
+      this.renderController.registerRemoteTrack(
         remoteTrack,
-        new TrajectoryBinding(this.mediaController)
+        this.mediaController
       );
 
       this.activeSession = session;
@@ -211,13 +183,8 @@ export class XmaxRealtimeConnectionManager {
     this.activeRemoteTrack = null;
 
     this.sessionService.stopHeartbeat();
-    if (remoteTrack !== null) {
-      VideoRenderRegistry.unregister(remoteTrack);
-      TrajectoryRegistry.unregister(remoteTrack);
-    }
-
     try {
-      this.remoteVideoController.reset();
+      this.renderController.resetRemoteTrack(remoteTrack);
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
@@ -227,7 +194,7 @@ export class XmaxRealtimeConnectionManager {
     }
 
     try {
-      await this.transportController.disconnect();
+      await this.streamController.disconnect();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
@@ -262,13 +229,9 @@ export class XmaxRealtimeConnectionManager {
     this.activeRemoteTrack = null;
 
     this.sessionService.stopHeartbeat();
-    if (remoteTrack !== null) {
-      VideoRenderRegistry.unregister(remoteTrack);
-      TrajectoryRegistry.unregister(remoteTrack);
-    }
-    this.remoteVideoController.reset();
+    this.renderController.resetRemoteTrack(remoteTrack);
     try {
-      await this.transportController.disconnect();
+      await this.streamController.disconnect();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(

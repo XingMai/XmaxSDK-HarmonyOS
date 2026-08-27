@@ -19,8 +19,8 @@ import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { StreamId } from '../../transport/stream/StreamId';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamControlling } from '../../stream/StreamControlling';
+import { StreamId } from '../../stream/StreamId';
 
 /** 协调本地图片解码、循环帧输出、编码和预览资源。 */
 export class ImageController {
@@ -34,7 +34,7 @@ export class ImageController {
 
   // 业务层组件
   private readonly imageSourceController: ImageSourceControlling;
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
@@ -43,12 +43,12 @@ export class ImageController {
    * 创建图片媒体 Controller。
    *
    * @param rtcManager 外部视频源和本地渲染使用的 RTC 基础能力。
-   * @param transportController 提供编码配置和视频帧传输能力的统一组件。
+   * @param streamController 提供编码配置和视频帧传输能力的统一流组件。
    * @param errorListener 持续图片帧输出错误监听器。
    */
   constructor(
     rtcManager: RtcManaging,
-    transportController: TransportControlling,
+    streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
@@ -59,12 +59,12 @@ export class ImageController {
     this.mediaService = new MediaService();
 
     // 业务层组件
-    this.transportController = transportController;
+    this.streamController = streamController;
     this.imageSourceController = new ImageSourceController(
       this.imageManager,
       this.mediaService,
       (frame: VideoFrame): void => {
-        this.transportController.pushLocalVideoFrame(frame);
+        this.streamController.pushLocalVideoFrame(frame);
       },
       (message: string): void => {
         errorListener(new XmaxError(
@@ -141,7 +141,7 @@ export class ImageController {
         );
       track = new RealtimeVideoTrack('video0', resolvedFormat);
 
-      this.transportController.setVideoEncoderConfig(resolvedFormat);
+      this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
 
       this.registerPreview(track);

@@ -6,7 +6,7 @@ import {
 import { MediaControlling } from '../../media/MediaControlling';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamControlling } from '../../stream/StreamControlling';
 
 type GenerationValidity = () => void;
 type GenerationStartedHandler = () => Promise<void>;
@@ -19,7 +19,7 @@ export class XmaxRealtimeGenerationManager {
 
   // 业务层组件
   private readonly mediaController: MediaControlling;
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
 
   // 生成资源
   private currentContext: RealtimeContext | null = null;
@@ -28,15 +28,15 @@ export class XmaxRealtimeGenerationManager {
    * 创建生成流程 Manager。
    *
    * @param mediaController 生成期间的统一媒体和交互组件。
-   * @param transportController 发送生成信令并匹配远端结果流的统一传输组件。
+   * @param streamController 发送生成信令并匹配远端结果流的统一流组件。
    */
   constructor(
     mediaController: MediaControlling,
-    transportController: TransportControlling
+    streamController: StreamControlling
   ) {
     // 业务层组件
     this.mediaController = mediaController;
-    this.transportController = transportController;
+    this.streamController = streamController;
   }
 
   /**
@@ -63,7 +63,7 @@ export class XmaxRealtimeGenerationManager {
     }
 
     const taskId: string = XmaxRealtimeGenerationManager.createTaskId();
-    const confirmation: Promise<void> = this.transportController.beginGeneration(
+    const confirmation: Promise<void> = this.streamController.beginGeneration(
       taskId,
       videoFormat,
       resolvedContext
@@ -101,7 +101,7 @@ export class XmaxRealtimeGenerationManager {
       return;
     }
 
-    this.transportController.updateGeneration(
+    this.streamController.updateGeneration(
       taskId,
       videoFormat,
       context
@@ -118,7 +118,7 @@ export class XmaxRealtimeGenerationManager {
   stop(taskId: string): void {
     this.mediaController.stop();
 
-    this.transportController.stopGeneration(taskId);
+    this.streamController.stopGeneration(taskId);
   }
 
   /**

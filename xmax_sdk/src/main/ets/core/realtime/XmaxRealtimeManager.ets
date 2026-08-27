@@ -10,9 +10,9 @@ import { RtcManager } from '../../foundation/rtc/RtcManager';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { MediaController } from '../../media/MediaController';
 import { MediaControlling } from '../../media/MediaControlling';
+import { RenderController } from '../../rendering/RenderController';
+import { RenderControlling } from '../../rendering/RenderControlling';
 import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
-import { RemoteVideoController } from '../../rendering/video/RemoteVideoController';
-import { RemoteVideoControlling } from '../../rendering/video/RemoteVideoControlling';
 import { ApiServicing } from '../../service/network/ApiServicing';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
@@ -26,8 +26,8 @@ import {
 } from '../../service/realtime/RealtimeState';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
-import { TransportController } from '../../transport/TransportController';
-import { TransportControlling } from '../../transport/TransportControlling';
+import { StreamController } from '../../stream/StreamController';
+import { StreamControlling } from '../../stream/StreamControlling';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 import { XmaxRealtimeConnectionManager } from './XmaxRealtimeConnectionManager';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
@@ -47,10 +47,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private readonly errorManager: XmaxRealtimeErrorManager;
 
   // 渲染层组件
-  private readonly remoteVideoController: RemoteVideoControlling;
+  private readonly renderController: RenderControlling;
 
   // 业务层组件
-  private readonly transportController: TransportControlling;
+  private readonly streamController: StreamControlling;
   private readonly mediaController: MediaControlling;
 
   // 实时管理组件
@@ -86,19 +86,19 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.errorManager = new XmaxRealtimeErrorManager();
 
     // 渲染层组件
-    this.remoteVideoController = new RemoteVideoController(this.rtcManager);
+    this.renderController = new RenderController(this.rtcManager);
 
     // 业务层组件
-    this.transportController = new TransportController(
+    this.streamController = new StreamController(
       this.rtcManager,
       (stream): void => {
-        this.remoteVideoController.setRemoteStream(stream);
+        this.renderController.setRemoteStream(stream);
       }
     );
     this.mediaController = new MediaController(
       context,
       this.rtcManager,
-      this.transportController,
+      this.streamController,
       (error: XmaxError): void => {
         this.errorManager.handle(error);
       }
@@ -106,15 +106,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     // 实时管理组件
     this.connectionManager = new XmaxRealtimeConnectionManager(
-      this.rtcManager,
       apiService,
       this.mediaController,
-      this.remoteVideoController,
-      this.transportController
+      this.renderController,
+      this.streamController
     );
     this.generationManager = new XmaxRealtimeGenerationManager(
       this.mediaController,
-      this.transportController
+      this.streamController
     );
   }
 
@@ -151,7 +150,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
-    this.transportController.setNetworkQualityListener(listener);
+    this.streamController.setNetworkQualityListener(listener);
   }
 
   /**
@@ -161,7 +160,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void {
-    this.transportController.setPerformanceAlarmListener(listener);
+    this.streamController.setPerformanceAlarmListener(listener);
   }
 
   /**
@@ -525,7 +524,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     if (this.connectionManager.currentSessionId.length > 0) {
       try {
-        this.transportController.setLocalAudioEnabled(this.mediaController.hasAudio);
+        this.streamController.setLocalAudioEnabled(this.mediaController.hasAudio);
       } catch (error) {
         this.reportError(error);
       }

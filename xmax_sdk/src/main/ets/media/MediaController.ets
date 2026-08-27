@@ -12,7 +12,7 @@ import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimePoint } from '../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
-import { TransportControlling } from '../transport/TransportControlling';
+import { StreamControlling } from '../stream/StreamControlling';
 import { CameraController } from './camera/CameraController';
 import { ImageController } from './image/ImageController';
 import { InteractionController } from './interaction/InteractionController';
@@ -63,13 +63,13 @@ export class MediaController implements MediaControlling {
    *
    * @param context 相机和媒体权限所需的页面上下文。
    * @param rtcManager 本地媒体来源共享的 RTC 基础能力。
-   * @param transportController 提供编码配置和音视频帧传输能力的统一组件。
+   * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
    * @param errorListener 持续媒体输出错误监听器。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
-    transportController: TransportControlling,
+    streamController: StreamControlling,
     errorListener: (error: XmaxError) => void
   ) {
     // 基础层组件
@@ -79,23 +79,23 @@ export class MediaController implements MediaControlling {
     this.cameraController = new CameraController(
       context,
       rtcManager,
-      transportController
+      streamController
     );
     this.imageController = new ImageController(
       rtcManager,
-      transportController,
+      streamController,
       errorListener
     );
     this.interactionController = new InteractionController((
       taskId: string,
       points: RealtimePoint[]
     ): void => {
-      transportController.sendTracks(taskId, points);
+      streamController.sendTracks(taskId, points);
     });
     this.videoController = new VideoController(
       context,
       rtcManager,
-      transportController,
+      streamController,
       errorListener
     );
   }
