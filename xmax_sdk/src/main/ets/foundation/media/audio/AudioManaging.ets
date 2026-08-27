@@ -19,6 +19,14 @@ export interface AudioManaging {
   write(frame: AudioFrame): void;
 
   /**
+   * 启用或暂停本地音频预览，不影响音频帧的其他消费者。
+   *
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
+   */
+  setPlaybackEnabled(enabled: boolean): void;
+
+  /**
    * 清除尚未播放的音频数据。
    *
    * @returns 缓冲区清理完成后的 Promise。

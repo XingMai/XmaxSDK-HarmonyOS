@@ -194,23 +194,13 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 以新的共享时间轴从文件起点重新输出音视频帧。
+   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
    *
-   * @returns 媒体源重新启动完成后的 Promise。
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
    */
-  async restart(): Promise<void> {
-    const metadata: MediaSourceMetadata = this.requireMetadata();
-
-    if (metadata.hasAudio) {
-      await this.audioManager.start();
-    }
-
-    const timeline = new MediaTimeline(0, metadata.durationUs);
-    this.videoSourceController.restart(timeline);
-    if (metadata.hasAudio) {
-      this.audioSourceController.restart(timeline);
-      await this.audioManager.flush();
-    }
+  setLocalAudioPreviewEnabled(enabled: boolean): void {
+    this.audioManager.setPlaybackEnabled(enabled);
   }
 
   /**

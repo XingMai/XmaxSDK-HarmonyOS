@@ -15,11 +15,6 @@ import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { MediaSourceConfiguration } from '../../media/MediaSourceConfiguration';
 import { MediaSourceController } from '../../media/MediaSourceController';
 import { MediaSourceControlling } from '../../media/MediaSourceControlling';
-import { LocalVideoPreviewController } from '../../rendering/video/LocalVideoPreviewController';
-import {
-  LocalVideoPreviewControlling,
-  PreviewRelease
-} from '../../rendering/video/LocalVideoPreviewControlling';
 import {
   VideoRenderBinding,
   VideoRenderRegistry
@@ -46,7 +41,6 @@ export class VideoController {
   // 业务层组件
   private readonly mediaSourceController: MediaSourceControlling;
   private readonly streamController: StreamControlling;
-  private readonly localVideoPreviewController: LocalVideoPreviewControlling;
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
@@ -75,12 +69,10 @@ export class VideoController {
 
     // 业务层组件
     this.streamController = streamController;
-    this.localVideoPreviewController = new LocalVideoPreviewController();
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,
       this.audioManager,
       (frame: VideoFrame): void => {
-        this.localVideoPreviewController.captureFirstFrame(frame);
         this.streamController.pushLocalVideoFrame(frame);
       },
       (frame: AudioFrame): void => {
@@ -139,7 +131,6 @@ export class VideoController {
     const hasAudio: boolean = this.mediaSourceController.hasAudio;
     this.activeTrack = null;
     await this.mediaSourceController.stop();
-    await this.localVideoPreviewController.reset();
 
     if (hasAudio) {
       try {
@@ -160,28 +151,13 @@ export class VideoController {
   }
 
   /**
-   * 将本地视频时间线重置到起点并重新开始帧输出。
+   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
    *
-   * @returns 重启操作完成后的 Promise。
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
    */
-  async restartForGeneration(): Promise<void> {
-    if (this.activeTrack !== null) {
-      await this.mediaSourceController.restart();
-    }
-  }
-
-  /**
-   * 将当前本地视频预览冻结在首帧。
-   *
-   * @returns 解除冻结并恢复预览的回调；没有活动轨道时返回空操作。
-   */
-  freezePreview(): PreviewRelease {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
-    if (track === null) {
-      return (): void => {};
-    }
-
-    return this.localVideoPreviewController.freeze(track);
+  setLocalAudioPreviewEnabled(enabled: boolean): void {
+    this.mediaSourceController.setLocalAudioPreviewEnabled(enabled);
   }
 
   /**
@@ -205,7 +181,6 @@ export class VideoController {
         );
       const resolvedFormat: RealtimeVideoFormat = sourceConfiguration.videoFormat;
       track = new RealtimeVideoTrack('video0', resolvedFormat);
-      this.localVideoPreviewController.configure(resolvedFormat);
 
       if (sourceConfiguration.hasAudio) {
         await this.permissionManager.ensureMicrophonePermission();
@@ -225,7 +200,6 @@ export class VideoController {
     } catch (error) {
       const hasAudio: boolean = this.mediaSourceController.hasAudio;
       await this.mediaSourceController.stop();
-      await this.localVideoPreviewController.reset();
 
       if (hasAudio) {
         try {

@@ -27,11 +27,12 @@ export interface MediaSourceControlling {
   start(): Promise<void>;
 
   /**
-   * 从文件起点同步重新输出音频帧和视频帧。
+   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
    *
-   * @returns 媒体源重新启动完成后的 Promise。
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
    */
-  restart(): Promise<void>;
+  setLocalAudioPreviewEnabled(enabled: boolean): void;
 
   /**
    * 停止输出并释放媒体文件资源。

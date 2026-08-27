@@ -12,7 +12,6 @@ import { MediaController } from '../../media/MediaController';
 import { MediaControlling } from '../../media/MediaControlling';
 import { RenderController } from '../../rendering/RenderController';
 import { RenderControlling } from '../../rendering/RenderControlling';
-import { PreviewRelease } from '../../rendering/video/LocalVideoPreviewControlling';
 import { ApiServicing } from '../../service/network/ApiServicing';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
@@ -436,23 +435,19 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     const operationVersion: number = this.operationVersion;
-    const releasePreview: PreviewRelease = this.mediaController.freezePreview();
-
     try {
       const taskId: string = await this.generationManager.start(
         videoFormat,
         context,
         (): void => {
           this.ensureOperation(operationVersion);
-        },
-        async (): Promise<void> => {
-          await this.mediaController.restartForGeneration();
         }
       );
       if (this.connectionManager.currentSessionId !== sessionId) {
         throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
       }
 
+      this.mediaController.setLocalAudioPreviewEnabled(false);
       this.emitState(new RealtimeState(
         RealtimeConnectionState.GENERATING,
         sessionId,
@@ -460,8 +455,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
     } catch (error) {
       throw this.reportError(error);
-    } finally {
-      releasePreview();
     }
   }
 
@@ -482,6 +475,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.state.connectionState === RealtimeConnectionState.GENERATING;
     try {
       this.generationManager.stop(this.state.taskId ?? '');
+      this.mediaController.setLocalAudioPreviewEnabled(true);
       if (wasGenerating) {
         this.emitState(new RealtimeState(
           RealtimeConnectionState.CONNECTED,
@@ -616,6 +610,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     this.operationVersion++;
+    this.mediaController.setLocalAudioPreviewEnabled(true);
     this.terminationFinalState = finalState;
     const taskId: string = this.state.taskId ?? '';
     const terminationPromise: Promise<void> = Promise.resolve().then(

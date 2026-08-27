@@ -9,7 +9,6 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 import { StreamControlling } from '../../stream/StreamControlling';
 
 type GenerationValidity = () => void;
-type GenerationStartedHandler = () => Promise<void>;
 
 const TASK_ID_PREFIX: string = 'task-';
 const TASK_ID_ALPHABET: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -45,14 +44,12 @@ export class XmaxRealtimeGenerationManager {
    * @param videoFormat 当前本地输入的视频格式。
    * @param context 可选的生成条件；首次生成时必须提供。
    * @param ensureCurrent 确认当前生成操作仍然有效的回调。
-   * @param onGenerationStarted 生成信令发出后需要执行的本地媒体操作。
    * @returns 确认远端结果开始后的生成任务标识。
    */
   async start(
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext | undefined,
-    ensureCurrent: GenerationValidity,
-    onGenerationStarted: GenerationStartedHandler
+    ensureCurrent: GenerationValidity
   ): Promise<string> {
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
@@ -69,7 +66,6 @@ export class XmaxRealtimeGenerationManager {
       resolvedContext
     );
     try {
-      await onGenerationStarted();
       await confirmation;
       ensureCurrent();
 

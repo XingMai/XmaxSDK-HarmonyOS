@@ -12,6 +12,7 @@ export class AudioManager implements AudioManaging {
   // 音频缓冲
   private pendingFrames: Uint8Array[] = [];
   private pendingFrameOffset: number = 0;
+  private isPlaybackEnabled: boolean = true;
 
   /**
    * 创建并启动本地 PCM 音频播放器。
@@ -71,11 +72,30 @@ export class AudioManager implements AudioManaging {
    * @returns 无返回值。
    */
   write(frame: AudioFrame): void {
-    if (this.renderer === null) {
+    if (this.renderer === null || !this.isPlaybackEnabled) {
       return;
     }
 
     this.pendingFrames.push(frame.data);
+  }
+
+  /**
+   * 启用或暂停本地音频预览。
+   *
+   * 暂停后继续由上游处理音频帧，但本地播放器仅输出静音数据。
+   *
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
+   */
+  setPlaybackEnabled(enabled: boolean): void {
+    if (this.isPlaybackEnabled === enabled) {
+      return;
+    }
+
+    this.isPlaybackEnabled = enabled;
+    if (!enabled) {
+      this.clearPendingFrames();
+    }
   }
 
   /**
@@ -101,6 +121,7 @@ export class AudioManager implements AudioManaging {
   async stop(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     this.renderer = null;
+    this.isPlaybackEnabled = true;
     this.clearPendingFrames();
 
     if (renderer === null) {
@@ -136,6 +157,11 @@ export class AudioManager implements AudioManaging {
    */
   private fillPlaybackBuffer(data: ArrayBuffer): audio.AudioDataCallbackResult {
     const output = new Uint8Array(data);
+    if (!this.isPlaybackEnabled) {
+      output.fill(0);
+      return audio.AudioDataCallbackResult.VALID;
+    }
+
     let outputOffset: number = 0;
 
     while (outputOffset < output.length && this.pendingFrames.length > 0) {

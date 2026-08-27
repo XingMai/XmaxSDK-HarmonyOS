@@ -7,7 +7,6 @@ import {
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../foundation/media/camera/CameraPosition';
 import { RtcManaging } from '../foundation/rtc/RtcManaging';
-import { PreviewRelease } from '../rendering/video/LocalVideoPreviewControlling';
 import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimePoint } from '../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
@@ -233,19 +232,10 @@ export class MediaController implements MediaControlling {
     return track !== undefined && this.currentTrack === track;
   }
 
-  /** @returns 解除视频预览冻结的回调；非视频来源返回空操作。 */
-  freezePreview(): PreviewRelease {
-    if (this.activeSource?.controller !== this.videoController) {
-      return (): void => {};
-    }
-
-    return this.videoController.freezePreview();
-  }
-
-  /** @returns 视频文件时间线重启完成后的 Promise。 */
-  async restartForGeneration(): Promise<void> {
+  /** @inheritdoc */
+  setLocalAudioPreviewEnabled(enabled: boolean): void {
     if (this.activeSource?.controller === this.videoController) {
-      await this.videoController.restartForGeneration();
+      this.videoController.setLocalAudioPreviewEnabled(enabled);
     }
   }
 

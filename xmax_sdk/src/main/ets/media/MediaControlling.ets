@@ -1,6 +1,5 @@
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../foundation/media/camera/CameraPosition';
-import { PreviewRelease } from '../rendering/video/LocalVideoPreviewControlling';
 import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
@@ -87,12 +86,10 @@ export interface MediaControlling extends InteractionControlling {
   owns(stream: RealtimeMediaStream): boolean;
 
   /**
-   * 冻结当前文件视频的本地预览。
+   * 启用或暂停文件视频的本地音频预览，不影响 RTC 音频帧输出。
    *
-   * @returns 解除预览冻结的回调；非视频来源返回空操作。
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
    */
-  freezePreview(): PreviewRelease;
-
-  /** @returns 当前文件媒体从起点重新播放完成后的 Promise。 */
-  restartForGeneration(): Promise<void>;
+  setLocalAudioPreviewEnabled(enabled: boolean): void;
 }
