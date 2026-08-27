@@ -18,10 +18,14 @@ target_compile_options(xmax_video PRIVATE
 target_link_libraries(xmax_video PUBLIC
     ace_napi.z
     hilog_ndk.z
+    libnative_buffer.so
+    libnative_image.so
     libnative_media_avdemuxer.so
     libnative_media_avsource.so
     libnative_media_acodec.so
     libnative_media_codecbase.so
     libnative_media_core.so
     libnative_media_vdec.so
+    libnative_window.so
+    libvideo_processing.so
 )

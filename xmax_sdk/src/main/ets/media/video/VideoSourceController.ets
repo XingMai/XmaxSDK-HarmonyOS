@@ -37,6 +37,8 @@ export class VideoSourceController implements VideoSourceControlling {
   private timeline: MediaTimeline | null = null;
   private loopIndex: number = 0;
   private frameIntervalUs: number = 0;
+  private outputWidth: number = 0;
+  private outputHeight: number = 0;
   private lastSourceTimestampUs: number = -1;
 
   /**
@@ -54,16 +56,20 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 配置待解码的视频文件、旋转方向和目标帧率。
+   * 配置待解码的视频文件、旋转方向和目标格式。
    *
    * @param filePath 本地视频文件路径。
    * @param rotation 视频源旋转方向。
+   * @param outputWidth 目标视频宽度。
+   * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
    * @returns 无返回值。
    */
   configure(
     filePath: string,
     rotation: VideoRotation,
+    outputWidth: number,
+    outputHeight: number,
     frameRate: number
   ): void {
     if (this.decoder !== null) {
@@ -75,6 +81,8 @@ export class VideoSourceController implements VideoSourceControlling {
 
     this.filePath = filePath;
     this.sourceRotation = rotation;
+    this.outputWidth = outputWidth;
+    this.outputHeight = outputHeight;
     this.frameIntervalUs = 1000000 / frameRate;
     this.resetFrameSampling();
   }
@@ -131,6 +139,8 @@ export class VideoSourceController implements VideoSourceControlling {
     this.timeline = null;
     this.loopIndex = 0;
     this.frameIntervalUs = 0;
+    this.outputWidth = 0;
+    this.outputHeight = 0;
     this.resetFrameSampling();
   }
 
@@ -152,6 +162,9 @@ export class VideoSourceController implements VideoSourceControlling {
     return new VideoFileFrameDecoder(
       this.filePath,
       this.sourceRotation,
+      this.outputWidth,
+      this.outputHeight,
+      this.frameIntervalUs,
       new VideoSourceDecoderListener(
         (frame: VideoFileDecodedFrame): void => {
           this.handleFrame(frame);

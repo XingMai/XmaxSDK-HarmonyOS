@@ -7,11 +7,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
+#include <poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -21,6 +24,11 @@
 #include "multimedia/player_framework/native_avdemuxer.h"
 #include "multimedia/player_framework/native_avformat.h"
 #include "multimedia/player_framework/native_avsource.h"
+#include "multimedia/video_processing_engine/video_processing.h"
+#include "multimedia/video_processing_engine/video_processing_types.h"
+#include "native_buffer/native_buffer.h"
+#include "native_image/native_image.h"
+#include "native_window/external_window.h"
 
 namespace {
 struct DecodedFramePacket {
@@ -33,74 +41,266 @@ struct DecodedFramePacket {
   std::string error;
 };
 
+struct HdrSurfaceBufferPacket {
+  OHNativeWindowBuffer* windowBuffer = nullptr;
+  int fenceFd = -1;
+};
+
 bool IsSupportedRotation(int32_t rotation) {
   return rotation == 0 || rotation == 90 ||
       rotation == 180 || rotation == 270;
 }
 
-void RotateNv12(
-    const std::vector<uint8_t>& source,
+void CopyOrRotateNv12(
+    const uint8_t* sourceLuma,
+    int32_t sourceLumaStride,
+    const uint8_t* sourceChroma,
+    int32_t sourceChromaStride,
     int32_t width,
     int32_t height,
     int32_t rotation,
     std::vector<uint8_t>* output) {
-  const int32_t targetWidth = rotation == 180 ? width : height;
-  const int32_t targetHeight = rotation == 180 ? height : width;
-  const size_t sourceLumaLength =
-      static_cast<size_t>(width) * static_cast<size_t>(height);
+  const bool swapsDimensions = rotation == 90 || rotation == 270;
+  const int32_t targetWidth = swapsDimensions ? height : width;
+  const int32_t targetHeight = swapsDimensions ? width : height;
   const size_t targetLumaLength =
       static_cast<size_t>(targetWidth) * static_cast<size_t>(targetHeight);
   output->resize(targetLumaLength + targetLumaLength / 2);
 
-  const uint8_t* sourceLuma = source.data();
   uint8_t* targetLuma = output->data();
-  for (int32_t y = 0; y < height; ++y) {
-    for (int32_t x = 0; x < width; ++x) {
-      int32_t targetX = 0;
-      int32_t targetY = 0;
-      if (rotation == 90) {
-        targetX = height - 1 - y;
-        targetY = x;
-      } else if (rotation == 180) {
-        targetX = width - 1 - x;
-        targetY = height - 1 - y;
-      } else {
-        targetX = y;
-        targetY = width - 1 - x;
+  if (rotation == 0) {
+    const size_t lumaLength =
+        static_cast<size_t>(width) * height;
+    if (sourceLumaStride == width && sourceChromaStride == width) {
+      std::memcpy(output->data(), sourceLuma, lumaLength);
+      std::memcpy(
+          output->data() + lumaLength,
+          sourceChroma,
+          lumaLength / 2);
+      return;
+    }
+    for (int32_t y = 0; y < height; ++y) {
+      std::memcpy(
+          targetLuma + static_cast<size_t>(y) * width,
+          sourceLuma + static_cast<size_t>(y) * sourceLumaStride,
+          width);
+    }
+    uint8_t* targetChroma = output->data() + targetLumaLength;
+    for (int32_t y = 0; y < height / 2; ++y) {
+      std::memcpy(
+          targetChroma + static_cast<size_t>(y) * width,
+          sourceChroma + static_cast<size_t>(y) * sourceChromaStride,
+          width);
+    }
+    return;
+  }
+
+  constexpr int32_t LUMA_TILE_SIZE = 32;
+  for (int32_t blockY = 0; blockY < height;
+       blockY += LUMA_TILE_SIZE) {
+    for (int32_t blockX = 0; blockX < width;
+         blockX += LUMA_TILE_SIZE) {
+      const int32_t endY = std::min(blockY + LUMA_TILE_SIZE, height);
+      const int32_t endX = std::min(blockX + LUMA_TILE_SIZE, width);
+      for (int32_t y = blockY; y < endY; ++y) {
+        for (int32_t x = blockX; x < endX; ++x) {
+          int32_t targetX = 0;
+          int32_t targetY = 0;
+          if (rotation == 90) {
+            targetX = height - 1 - y;
+            targetY = x;
+          } else if (rotation == 180) {
+            targetX = width - 1 - x;
+            targetY = height - 1 - y;
+          } else {
+            targetX = y;
+            targetY = width - 1 - x;
+          }
+          targetLuma[
+              static_cast<size_t>(targetY) * targetWidth + targetX] =
+              sourceLuma[
+                  static_cast<size_t>(y) * sourceLumaStride + x];
+        }
       }
-      targetLuma[
-          static_cast<size_t>(targetY) * targetWidth + targetX] =
-          sourceLuma[static_cast<size_t>(y) * width + x];
     }
   }
 
-  const uint8_t* sourceChroma = source.data() + sourceLumaLength;
   uint8_t* targetChroma = output->data() + targetLumaLength;
   const int32_t sourceChromaWidth = width / 2;
   const int32_t sourceChromaHeight = height / 2;
   const int32_t targetChromaStride = targetWidth;
-  for (int32_t y = 0; y < sourceChromaHeight; ++y) {
-    for (int32_t x = 0; x < sourceChromaWidth; ++x) {
-      int32_t targetX = 0;
-      int32_t targetY = 0;
-      if (rotation == 90) {
-        targetX = sourceChromaHeight - 1 - y;
-        targetY = x;
-      } else if (rotation == 180) {
-        targetX = sourceChromaWidth - 1 - x;
-        targetY = sourceChromaHeight - 1 - y;
-      } else {
-        targetX = y;
-        targetY = sourceChromaWidth - 1 - x;
+  constexpr int32_t CHROMA_TILE_SIZE = 16;
+  for (int32_t blockY = 0; blockY < sourceChromaHeight;
+       blockY += CHROMA_TILE_SIZE) {
+    for (int32_t blockX = 0; blockX < sourceChromaWidth;
+         blockX += CHROMA_TILE_SIZE) {
+      const int32_t endY = std::min(
+          blockY + CHROMA_TILE_SIZE, sourceChromaHeight);
+      const int32_t endX = std::min(
+          blockX + CHROMA_TILE_SIZE, sourceChromaWidth);
+      for (int32_t y = blockY; y < endY; ++y) {
+        for (int32_t x = blockX; x < endX; ++x) {
+          int32_t targetX = 0;
+          int32_t targetY = 0;
+          if (rotation == 90) {
+            targetX = sourceChromaHeight - 1 - y;
+            targetY = x;
+          } else if (rotation == 180) {
+            targetX = sourceChromaWidth - 1 - x;
+            targetY = sourceChromaHeight - 1 - y;
+          } else {
+            targetX = y;
+            targetY = sourceChromaWidth - 1 - x;
+          }
+          const size_t sourceOffset =
+              static_cast<size_t>(y) * sourceChromaStride + x * 2;
+          const size_t targetOffset =
+              static_cast<size_t>(targetY) * targetChromaStride +
+              targetX * 2;
+          targetChroma[targetOffset] = sourceChroma[sourceOffset];
+          targetChroma[targetOffset + 1] =
+              sourceChroma[sourceOffset + 1];
+        }
       }
-      const size_t sourceOffset =
-          static_cast<size_t>(y) * width + x * 2;
-      const size_t targetOffset =
-          static_cast<size_t>(targetY) * targetChromaStride + targetX * 2;
-      targetChroma[targetOffset] = sourceChroma[sourceOffset];
-      targetChroma[targetOffset + 1] = sourceChroma[sourceOffset + 1];
     }
   }
+}
+
+int32_t ScaledIndex(
+    int32_t targetIndex,
+    int32_t sourceSize,
+    int32_t targetSize) {
+  return std::min(
+      static_cast<int32_t>(
+          (static_cast<int64_t>(targetIndex) * sourceSize) /
+          targetSize),
+      sourceSize - 1);
+}
+
+void ScalePlane(
+    const uint8_t* source,
+    int32_t sourceStride,
+    int32_t sourceWidth,
+    int32_t sourceHeight,
+    uint8_t* target,
+    int32_t targetStride,
+    int32_t targetWidth,
+    int32_t targetHeight,
+    int32_t bytesPerSample) {
+  std::vector<int32_t> sourceX(targetWidth);
+  for (int32_t x = 0; x < targetWidth; ++x) {
+    sourceX[x] = ScaledIndex(x, sourceWidth, targetWidth);
+  }
+
+  for (int32_t y = 0; y < targetHeight; ++y) {
+    const int32_t sourceY = ScaledIndex(y, sourceHeight, targetHeight);
+    const uint8_t* sourceRow =
+        source + static_cast<size_t>(sourceY) * sourceStride;
+    uint8_t* targetRow =
+        target + static_cast<size_t>(y) * targetStride;
+    for (int32_t x = 0; x < targetWidth; ++x) {
+      const uint8_t* sourceSample =
+          sourceRow + static_cast<size_t>(sourceX[x]) * bytesPerSample;
+      uint8_t* targetSample =
+          targetRow + static_cast<size_t>(x) * bytesPerSample;
+      targetSample[0] = sourceSample[0];
+      if (bytesPerSample == 2) {
+        targetSample[1] = sourceSample[1];
+      }
+    }
+  }
+}
+
+void ScaleNv12(
+    const uint8_t* sourceLuma,
+    int32_t sourceLumaStride,
+    const uint8_t* sourceChroma,
+    int32_t sourceChromaStride,
+    int32_t sourceWidth,
+    int32_t sourceHeight,
+    int32_t targetWidth,
+    int32_t targetHeight,
+    std::vector<uint8_t>* output) {
+  if (sourceWidth == targetWidth && sourceHeight == targetHeight) {
+    CopyOrRotateNv12(
+        sourceLuma,
+        sourceLumaStride,
+        sourceChroma,
+        sourceChromaStride,
+        sourceWidth,
+        sourceHeight,
+        0,
+        output);
+    return;
+  }
+
+  const size_t lumaLength =
+      static_cast<size_t>(targetWidth) * targetHeight;
+  output->resize(lumaLength + lumaLength / 2);
+  ScalePlane(
+      sourceLuma,
+      sourceLumaStride,
+      sourceWidth,
+      sourceHeight,
+      output->data(),
+      targetWidth,
+      targetWidth,
+      targetHeight,
+      1);
+  ScalePlane(
+      sourceChroma,
+      sourceChromaStride,
+      sourceWidth / 2,
+      sourceHeight / 2,
+      output->data() + lumaLength,
+      targetWidth,
+      targetWidth / 2,
+      targetHeight / 2,
+      2);
+}
+
+void ScaleAndRotateNv12(
+    const uint8_t* sourceLuma,
+    int32_t sourceLumaStride,
+    const uint8_t* sourceChroma,
+    int32_t sourceChromaStride,
+    int32_t sourceWidth,
+    int32_t sourceHeight,
+    int32_t rotation,
+    int32_t targetWidth,
+    int32_t targetHeight,
+    std::vector<uint8_t>* output) {
+  const bool swapsDimensions = rotation == 90 || rotation == 270;
+  const int32_t scaledWidth =
+      swapsDimensions ? targetHeight : targetWidth;
+  const int32_t scaledHeight =
+      swapsDimensions ? targetWidth : targetHeight;
+  std::vector<uint8_t> scaledData;
+  ScaleNv12(
+      sourceLuma,
+      sourceLumaStride,
+      sourceChroma,
+      sourceChromaStride,
+      sourceWidth,
+      sourceHeight,
+      scaledWidth,
+      scaledHeight,
+      &scaledData);
+  if (rotation == 0) {
+    *output = std::move(scaledData);
+    return;
+  }
+  const size_t scaledLumaLength =
+      static_cast<size_t>(scaledWidth) * scaledHeight;
+  CopyOrRotateNv12(
+      scaledData.data(),
+      scaledWidth,
+      scaledData.data() + scaledLumaLength,
+      scaledWidth,
+      scaledWidth,
+      scaledHeight,
+      rotation,
+      output);
 }
 
 class NativeVideoFileDecoder {
@@ -119,10 +319,16 @@ class NativeVideoFileDecoder {
       int64_t playbackAnchorUs,
       int64_t mediaStartUs,
       int32_t rotation,
+      int32_t targetWidth,
+      int32_t targetHeight,
+      int64_t frameIntervalUs,
       std::string* error) {
     playbackAnchorUs_ = playbackAnchorUs;
     mediaStartUs_ = mediaStartUs;
     rotation_ = rotation;
+    targetWidth_ = targetWidth;
+    targetHeight_ = targetHeight;
+    frameIntervalUs_ = frameIntervalUs;
 
     fd_ = dup(sourceFd);
     if (fd_ < 0) {
@@ -185,8 +391,19 @@ class NativeVideoFileDecoder {
     stride_ = width_;
     sliceHeight_ = height_;
     pixelFormat_ = AV_PIXEL_FORMAT_NV12;
+    int32_t isHdrVivid = 0;
+    isHdrVivid_ =
+        OH_AVFormat_GetIntValue(
+            trackFormat_, OH_MD_KEY_VIDEO_IS_HDR_VIVID, &isHdrVivid) &&
+        isHdrVivid == 1;
     OH_AVFormat_SetIntValue(
         trackFormat_, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
+    if (isHdrVivid_) {
+      OH_AVFormat_SetIntValue(
+          trackFormat_,
+          OH_MD_KEY_VIDEO_DECODER_OUTPUT_COLOR_SPACE,
+          OH_COLORSPACE_BT709_LIMIT);
+    }
 
     demuxer_ = OH_AVDemuxer_CreateWithSource(source_);
     if (demuxer_ == nullptr ||
@@ -199,6 +416,9 @@ class NativeVideoFileDecoder {
     decoder_ = OH_VideoDecoder_CreateByMime(mime);
     if (decoder_ == nullptr) {
       *error = "当前设备不支持所选视频编码";
+      return false;
+    }
+    if (isHdrVivid_ && !InitializeHdrOutputSurface(error)) {
       return false;
     }
 
@@ -232,17 +452,50 @@ class NativeVideoFileDecoder {
     };
     if (OH_VideoDecoder_RegisterCallback(
             decoder_, callbacks, this) != AV_ERR_OK ||
-        OH_VideoDecoder_Configure(decoder_, trackFormat_) != AV_ERR_OK ||
-        OH_VideoDecoder_Prepare(decoder_) != AV_ERR_OK) {
+        OH_VideoDecoder_Configure(decoder_, trackFormat_) != AV_ERR_OK) {
       *error = "配置 NV12 视频连续解码失败";
+      return false;
+    }
+    if (isHdrVivid_ &&
+        OH_VideoDecoder_SetSurface(
+            decoder_, hdrProcessorInputWindow_) != AV_ERR_OK) {
+      *error = "绑定 HDR Vivid SDR 输出 Surface 失败";
+      return false;
+    }
+    if (OH_VideoDecoder_Prepare(decoder_) != AV_ERR_OK) {
+      *error = "准备 NV12 视频连续解码失败";
       return false;
     }
 
     running_.store(true);
+    if (isHdrVivid_) {
+      hdrSurfaceWorker_ =
+          std::thread(&NativeVideoFileDecoder::HdrSurfaceWorkerLoop, this);
+    }
     if (OH_VideoDecoder_Start(decoder_) != AV_ERR_OK) {
       running_.store(false);
+      hdrSurfaceCondition_.notify_all();
+      if (hdrSurfaceWorker_.joinable()) {
+        hdrSurfaceWorker_.join();
+      }
       *error = "启动视频连续解码失败";
       return false;
+    }
+    if (isHdrVivid_) {
+      const VideoProcessing_ErrorCode processingResult =
+          OH_VideoProcessing_Start(hdrVideoProcessor_);
+      if (processingResult != VIDEO_PROCESSING_SUCCESS) {
+        OH_VideoDecoder_Stop(decoder_);
+        running_.store(false);
+        hdrSurfaceCondition_.notify_all();
+        if (hdrSurfaceWorker_.joinable()) {
+          hdrSurfaceWorker_.join();
+        }
+        *error = "启动 HDR Vivid 视频缩放失败：" +
+            std::to_string(processingResult);
+        return false;
+      }
+      hdrVideoProcessorStarted_ = true;
     }
     return true;
   }
@@ -250,12 +503,22 @@ class NativeVideoFileDecoder {
   void Stop() {
     const bool wasRunning = running_.exchange(false);
     pacingCondition_.notify_all();
+    hdrSurfaceCondition_.notify_all();
     if (decoder_ != nullptr) {
       if (wasRunning) {
         OH_VideoDecoder_Stop(decoder_);
       }
+      if (hdrVideoProcessorStarted_) {
+        OH_VideoProcessing_Stop(hdrVideoProcessor_);
+        hdrVideoProcessorStarted_ = false;
+      }
+      if (hdrSurfaceWorker_.joinable()) {
+        hdrSurfaceWorker_.join();
+      }
       OH_VideoDecoder_Destroy(decoder_);
       decoder_ = nullptr;
+    } else if (hdrSurfaceWorker_.joinable()) {
+      hdrSurfaceWorker_.join();
     }
     if (listener_ != nullptr) {
       napi_release_threadsafe_function(listener_, napi_tsfn_abort);
@@ -277,9 +540,361 @@ class NativeVideoFileDecoder {
       close(fd_);
       fd_ = -1;
     }
+    ReleaseHdrOutputSurface();
   }
 
  private:
+  bool InitializeHdrOutputSurface(std::string* error) {
+    const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
+    hdrSurfaceWidth_ = swapsDimensions ? targetHeight_ : targetWidth_;
+    hdrSurfaceHeight_ = swapsDimensions ? targetWidth_ : targetHeight_;
+    hdrOutputSurface_ = OH_ConsumerSurface_Create();
+    if (hdrOutputSurface_ == nullptr) {
+      *error = "创建 HDR Vivid SDR 输出 Surface 失败";
+      return false;
+    }
+    if (OH_ConsumerSurface_SetDefaultUsage(
+        hdrOutputSurface_,
+        NATIVEBUFFER_USAGE_CPU_READ |
+            NATIVEBUFFER_USAGE_CPU_READ_OFTEN) != 0 ||
+        OH_ConsumerSurface_SetDefaultSize(
+            hdrOutputSurface_, hdrSurfaceWidth_, hdrSurfaceHeight_) != 0) {
+      *error = "配置 HDR Vivid SDR 输出 Surface 失败";
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+    hdrOutputWindow_ = OH_NativeImage_AcquireNativeWindow(
+        hdrOutputSurface_);
+    if (hdrOutputWindow_ == nullptr ||
+        OH_NativeWindow_NativeWindowHandleOpt(
+            hdrOutputWindow_,
+            SET_FORMAT,
+            NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) != 0 ||
+        OH_NativeWindow_SetColorSpace(
+            hdrOutputWindow_, OH_COLORSPACE_BT709_LIMIT) != 0) {
+      *error = "配置 HDR Vivid SDR 输出格式失败";
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+    const OH_OnFrameAvailableListener listener{
+        this,
+        OnHdrFrameAvailable
+    };
+    if (OH_NativeImage_SetOnFrameAvailableListener(
+            hdrOutputSurface_, listener) != 0) {
+      *error = "注册 HDR Vivid SDR 帧回调失败";
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+
+    VideoProcessing_ErrorCode processingResult =
+        OH_VideoProcessing_Create(
+            &hdrVideoProcessor_,
+            VIDEO_PROCESSING_TYPE_DETAIL_ENHANCER);
+    if (processingResult != VIDEO_PROCESSING_SUCCESS ||
+        hdrVideoProcessor_ == nullptr) {
+      *error = "创建 HDR Vivid 视频缩放器失败：" +
+          std::to_string(processingResult);
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+    OH_AVFormat* processingParameter = OH_AVFormat_Create();
+    if (processingParameter == nullptr ||
+        !OH_AVFormat_SetIntValue(
+            processingParameter,
+            VIDEO_DETAIL_ENHANCER_PARAMETER_KEY_QUALITY_LEVEL,
+            VIDEO_DETAIL_ENHANCER_QUALITY_LEVEL_NONE)) {
+      if (processingParameter != nullptr) {
+        OH_AVFormat_Destroy(processingParameter);
+      }
+      *error = "配置 HDR Vivid 视频缩放参数失败";
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+    processingResult = OH_VideoProcessing_SetParameter(
+        hdrVideoProcessor_, processingParameter);
+    OH_AVFormat_Destroy(processingParameter);
+    if (processingResult != VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessing_GetSurface(
+            hdrVideoProcessor_, &hdrProcessorInputWindow_) !=
+            VIDEO_PROCESSING_SUCCESS ||
+        hdrProcessorInputWindow_ == nullptr ||
+        OH_NativeWindow_NativeWindowHandleOpt(
+            hdrProcessorInputWindow_,
+            SET_FORMAT,
+            NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) != 0 ||
+        OH_NativeWindow_SetColorSpace(
+            hdrProcessorInputWindow_, OH_COLORSPACE_BT709_LIMIT) != 0 ||
+        OH_VideoProcessing_SetSurface(
+            hdrVideoProcessor_, hdrOutputWindow_) !=
+            VIDEO_PROCESSING_SUCCESS) {
+      *error = "连接 HDR Vivid 视频缩放 Surface 失败：" +
+          std::to_string(processingResult);
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+
+    processingResult =
+        OH_VideoProcessingCallback_Create(&hdrProcessingCallback_);
+    if (processingResult != VIDEO_PROCESSING_SUCCESS ||
+        hdrProcessingCallback_ == nullptr ||
+        OH_VideoProcessingCallback_BindOnError(
+            hdrProcessingCallback_, OnHdrProcessingError) !=
+            VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessing_RegisterCallback(
+            hdrVideoProcessor_, hdrProcessingCallback_, this) !=
+            VIDEO_PROCESSING_SUCCESS) {
+      *error = "注册 HDR Vivid 视频缩放回调失败：" +
+          std::to_string(processingResult);
+      ReleaseHdrOutputSurface();
+      return false;
+    }
+    return true;
+  }
+
+  void ReleaseHdrOutputSurface() {
+    std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
+    if (hdrVideoProcessorStarted_) {
+      OH_VideoProcessing_Stop(hdrVideoProcessor_);
+      hdrVideoProcessorStarted_ = false;
+    }
+    if (hdrVideoProcessor_ != nullptr) {
+      OH_VideoProcessing_Destroy(hdrVideoProcessor_);
+      hdrVideoProcessor_ = nullptr;
+    }
+    if (hdrProcessingCallback_ != nullptr) {
+      OH_VideoProcessingCallback_Destroy(hdrProcessingCallback_);
+      hdrProcessingCallback_ = nullptr;
+    }
+    if (hdrProcessorInputWindow_ != nullptr) {
+      OH_NativeWindow_DestroyNativeWindow(hdrProcessorInputWindow_);
+      hdrProcessorInputWindow_ = nullptr;
+    }
+    if (hdrOutputSurface_ != nullptr) {
+      OH_NativeImage_UnsetOnFrameAvailableListener(hdrOutputSurface_);
+      hdrOutputWindow_ = nullptr;
+      OH_NativeImage_Destroy(&hdrOutputSurface_);
+    }
+    std::lock_guard<std::mutex> lock(hdrTimestampMutex_);
+    pendingHdrTimestamps_.clear();
+    hdrEndOfStreamPending_ = false;
+  }
+
+  static void OnHdrFrameAvailable(void* context) {
+    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
+    if (decoder != nullptr) {
+      decoder->EnqueueHdrSurfaceFrame();
+    }
+  }
+
+  static void OnHdrProcessingError(
+      OH_VideoProcessing*,
+      VideoProcessing_ErrorCode error,
+      void* context) {
+    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
+    if (decoder != nullptr) {
+      decoder->ReportError(
+          "HDR Vivid 视频缩放失败：" + std::to_string(error));
+    }
+  }
+
+  void EnqueueHdrSurfaceFrame() {
+    std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
+    if (!running_.load() || hdrOutputSurface_ == nullptr) {
+      return;
+    }
+    OHNativeWindowBuffer* windowBuffer = nullptr;
+    int fenceFd = -1;
+    if (OH_NativeImage_AcquireNativeWindowBuffer(
+            hdrOutputSurface_, &windowBuffer, &fenceFd) != 0 ||
+        windowBuffer == nullptr) {
+      if (fenceFd >= 0) {
+        close(fenceFd);
+      }
+      ReportError("读取 HDR Vivid SDR Surface 帧失败");
+      return;
+    }
+    if (OH_NativeWindow_NativeObjectReference(windowBuffer) != 0) {
+      if (fenceFd >= 0) {
+        close(fenceFd);
+      }
+      OH_NativeImage_ReleaseNativeWindowBuffer(
+          hdrOutputSurface_, windowBuffer, -1);
+      ReportError("持有 HDR Vivid SDR Surface 帧失败");
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(hdrSurfaceQueueMutex_);
+      hdrSurfaceQueue_.push_back({windowBuffer, fenceFd});
+    }
+    hdrSurfaceCondition_.notify_one();
+  }
+
+  void HdrSurfaceWorkerLoop() {
+    while (true) {
+      HdrSurfaceBufferPacket packet;
+      {
+        std::unique_lock<std::mutex> lock(hdrSurfaceQueueMutex_);
+        hdrSurfaceCondition_.wait(lock, [this] {
+          return !running_.load() || !hdrSurfaceQueue_.empty();
+        });
+        if (hdrSurfaceQueue_.empty()) {
+          if (!running_.load()) {
+            return;
+          }
+          continue;
+        }
+        packet = hdrSurfaceQueue_.front();
+        hdrSurfaceQueue_.pop_front();
+      }
+      HandleHdrSurfaceFrame(packet.windowBuffer, packet.fenceFd);
+    }
+  }
+
+  void HandleHdrSurfaceFrame(
+      OHNativeWindowBuffer* windowBuffer,
+      int fenceFd) {
+    OH_NativeImage* outputSurface = hdrOutputSurface_;
+    const auto releaseWindowBuffer =
+        [this, outputSurface, windowBuffer]() {
+      std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
+      OH_NativeWindow_NativeObjectUnreference(windowBuffer);
+      OH_NativeImage_ReleaseNativeWindowBuffer(
+          outputSurface, windowBuffer, -1);
+    };
+    if (!running_.load() || outputSurface == nullptr) {
+      if (fenceFd >= 0) {
+        close(fenceFd);
+      }
+      if (outputSurface != nullptr) {
+        releaseWindowBuffer();
+      } else {
+        OH_NativeWindow_NativeObjectUnreference(windowBuffer);
+      }
+      return;
+    }
+    if (fenceFd >= 0) {
+      pollfd descriptor{fenceFd, POLLIN, 0};
+      int waitResult = 0;
+      for (int32_t attempt = 0;
+           attempt < 60 && running_.load(); ++attempt) {
+        waitResult = poll(&descriptor, 1, 50);
+        if (waitResult > 0) {
+          break;
+        }
+      }
+      close(fenceFd);
+      if (!running_.load()) {
+        releaseWindowBuffer();
+        return;
+      }
+      if (waitResult <= 0) {
+        releaseWindowBuffer();
+        ReportError("等待 HDR Vivid SDR Surface 帧超时");
+        return;
+      }
+    }
+    OH_NativeBuffer* nativeBuffer = nullptr;
+    void* address = nullptr;
+    OH_NativeBuffer_Planes planes{};
+    OH_NativeBuffer_Config config{};
+    const bool mapped =
+        OH_NativeBuffer_FromNativeWindowBuffer(
+            windowBuffer, &nativeBuffer) == 0 &&
+        nativeBuffer != nullptr &&
+        OH_NativeBuffer_MapPlanes(
+            nativeBuffer, &address, &planes) == 0 &&
+        address != nullptr;
+    if (nativeBuffer != nullptr) {
+      OH_NativeBuffer_GetConfig(nativeBuffer, &config);
+    }
+    if (!mapped || planes.planeCount < 2 ||
+        config.width <= 0 || config.height <= 0 ||
+        config.stride < config.width) {
+      if (mapped) {
+        OH_NativeBuffer_Unmap(nativeBuffer);
+      }
+      releaseWindowBuffer();
+      ReportError("访问 HDR Vivid SDR NV12 帧失败");
+      return;
+    }
+    const auto* bytes = static_cast<const uint8_t*>(address);
+    CopyOrRotateNv12(
+        bytes + planes.planes[0].offset,
+        config.stride,
+        bytes + planes.planes[1].offset,
+        config.stride,
+        config.width,
+        config.height,
+        0,
+        &hdrSourceData_);
+    OH_NativeBuffer_Unmap(nativeBuffer);
+    releaseWindowBuffer();
+
+    const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
+    const int32_t scaledWidth =
+        swapsDimensions ? targetHeight_ : targetWidth_;
+    const int32_t scaledHeight =
+        swapsDimensions ? targetWidth_ : targetHeight_;
+    const size_t sourceLumaLength =
+        static_cast<size_t>(config.width) * config.height;
+    ScaleNv12(
+        hdrSourceData_.data(),
+        config.width,
+        hdrSourceData_.data() + sourceLumaLength,
+        config.width,
+        config.width,
+        config.height,
+        scaledWidth,
+        scaledHeight,
+        &hdrScaledData_);
+
+    std::vector<uint8_t> frameData;
+    if (rotation_ == 0) {
+      frameData = hdrScaledData_;
+    } else {
+      const size_t scaledLumaLength =
+          static_cast<size_t>(scaledWidth) * scaledHeight;
+      CopyOrRotateNv12(
+          hdrScaledData_.data(),
+          scaledWidth,
+          hdrScaledData_.data() + scaledLumaLength,
+          scaledWidth,
+          scaledWidth,
+          scaledHeight,
+          rotation_,
+          &frameData);
+    }
+
+    int64_t timestampUs = 0;
+    bool dispatchEndOfStream = false;
+    {
+      std::lock_guard<std::mutex> lock(hdrTimestampMutex_);
+      if (pendingHdrTimestamps_.empty()) {
+        return;
+      }
+      timestampUs = pendingHdrTimestamps_.front();
+      pendingHdrTimestamps_.pop_front();
+      dispatchEndOfStream =
+          pendingHdrTimestamps_.empty() && hdrEndOfStreamPending_;
+      if (dispatchEndOfStream) {
+        hdrEndOfStreamPending_ = false;
+      }
+    }
+    auto* packet = new DecodedFramePacket();
+    packet->width = targetWidth_;
+    packet->height = targetHeight_;
+    packet->stride = packet->width;
+    packet->timestampUs = timestampUs;
+    packet->data = std::move(frameData);
+    Dispatch(packet);
+    if (dispatchEndOfStream) {
+      auto* endPacket = new DecodedFramePacket();
+      endPacket->endOfStream = true;
+      Dispatch(endPacket);
+    }
+  }
+
   static void OnError(
       OH_AVCodec*,
       int32_t errorCode,
@@ -361,14 +976,83 @@ class NativeVideoFileDecoder {
       OH_AVBuffer* buffer,
       void* userData) {
     auto* decoder = static_cast<NativeVideoFileDecoder*>(userData);
-    if (decoder == nullptr || buffer == nullptr) {
+    if (decoder == nullptr) {
       if (codec != nullptr) {
         OH_VideoDecoder_FreeOutputBuffer(codec, index);
       }
       return;
     }
+    if (decoder->isHdrVivid_) {
+      decoder->HandleHdrOutputBuffer(codec, index, buffer);
+      return;
+    }
+    if (buffer == nullptr) {
+      OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      return;
+    }
     decoder->HandleOutputBuffer(buffer);
     OH_VideoDecoder_FreeOutputBuffer(codec, index);
+  }
+
+  void HandleHdrOutputBuffer(
+      OH_AVCodec* codec,
+      uint32_t index,
+      OH_AVBuffer* buffer) {
+    if (!running_.load() || codec == nullptr || buffer == nullptr) {
+      if (codec != nullptr) {
+        OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      }
+      return;
+    }
+    OH_AVCodecBufferAttr attr{};
+    if (OH_AVBuffer_GetBufferAttr(buffer, &attr) != AV_ERR_OK) {
+      OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      ReportError("读取 HDR Vivid 解码帧属性失败");
+      return;
+    }
+    if ((attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0) {
+      OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      bool dispatchEndOfStream = false;
+      {
+        std::lock_guard<std::mutex> lock(hdrTimestampMutex_);
+        if (pendingHdrTimestamps_.empty()) {
+          dispatchEndOfStream = true;
+        } else {
+          hdrEndOfStreamPending_ = true;
+        }
+      }
+      if (dispatchEndOfStream) {
+        auto* packet = new DecodedFramePacket();
+        packet->endOfStream = true;
+        Dispatch(packet);
+      }
+      return;
+    }
+    if (!ShouldOutputFrame(attr.pts)) {
+      OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      return;
+    }
+
+    Pace(attr.pts);
+    if (!running_.load()) {
+      OH_VideoDecoder_FreeOutputBuffer(codec, index);
+      return;
+    }
+    const int64_t timestampUs = PlaybackTimestampUs(attr.pts);
+    {
+      std::lock_guard<std::mutex> lock(hdrTimestampMutex_);
+      pendingHdrTimestamps_.push_back(timestampUs);
+    }
+    if (OH_VideoDecoder_RenderOutputBuffer(codec, index) != AV_ERR_OK) {
+      {
+        std::lock_guard<std::mutex> lock(hdrTimestampMutex_);
+        if (!pendingHdrTimestamps_.empty() &&
+            pendingHdrTimestamps_.back() == timestampUs) {
+          pendingHdrTimestamps_.pop_back();
+        }
+      }
+      ReportError("渲染 HDR Vivid SDR Surface 帧失败");
+    }
   }
 
   void HandleOutputBuffer(OH_AVBuffer* buffer) {
@@ -387,6 +1071,9 @@ class NativeVideoFileDecoder {
       return;
     }
     if (attr.size <= 0 || attr.offset < 0) {
+      return;
+    }
+    if (!ShouldOutputFrame(attr.pts)) {
       return;
     }
 
@@ -408,8 +1095,7 @@ class NativeVideoFileDecoder {
       ReportError("视频解码器未输出 NV12 帧");
       return;
     }
-    const int32_t minimumStride = width;
-    if (stride < minimumStride) {
+    if (stride < width) {
       ReportError("NV12 视频解码帧宽跨距无效");
       return;
     }
@@ -436,40 +1122,26 @@ class NativeVideoFileDecoder {
     if (!running_.load()) {
       return;
     }
-    const size_t targetLumaLength =
-        static_cast<size_t>(minimumStride) * static_cast<size_t>(height);
-    std::vector<uint8_t> packedData(targetLumaLength + targetLumaLength / 2);
-    const uint8_t* sourceRow = address + attr.offset;
-    uint8_t* targetRow = packedData.data();
-    for (int32_t row = 0; row < height; ++row) {
-      std::memcpy(targetRow, sourceRow, minimumStride);
-      sourceRow += stride;
-      targetRow += minimumStride;
-    }
-    sourceRow = address + attr.offset +
-        static_cast<size_t>(stride) * static_cast<size_t>(sliceHeight);
-    targetRow = packedData.data() + targetLumaLength;
-    for (int32_t row = 0; row < height / 2; ++row) {
-      std::memcpy(targetRow, sourceRow, minimumStride);
-      sourceRow += stride;
-      targetRow += minimumStride;
-    }
+    std::vector<uint8_t> frameData;
+    ScaleAndRotateNv12(
+        address + attr.offset,
+        stride,
+        address + attr.offset +
+            static_cast<size_t>(stride) * sliceHeight,
+        stride,
+        width,
+        height,
+        rotation_,
+        targetWidth_,
+        targetHeight_,
+        &frameData);
 
     auto* packet = new DecodedFramePacket();
-    packet->width = rotation_ == 90 || rotation_ == 270 ? height : width;
-    packet->height = rotation_ == 90 || rotation_ == 270 ? width : height;
+    packet->width = targetWidth_;
+    packet->height = targetHeight_;
     packet->stride = packet->width;
     packet->timestampUs = PlaybackTimestampUs(attr.pts);
-    if (rotation_ == 0) {
-      packet->data = std::move(packedData);
-    } else {
-      RotateNv12(
-          packedData,
-          width,
-          height,
-          rotation_,
-          &packet->data);
-    }
+    packet->data = std::move(frameData);
     Dispatch(packet);
   }
 
@@ -482,6 +1154,16 @@ class NativeVideoFileDecoder {
     pacingCondition_.wait_until(lock, deadline, [this] {
       return !running_.load();
     });
+  }
+
+  bool ShouldOutputFrame(int64_t mediaTimestampUs) {
+    if (lastOutputMediaTimestampUs_ >= 0 &&
+        mediaTimestampUs - lastOutputMediaTimestampUs_ <
+            frameIntervalUs_ * 3 / 4) {
+      return false;
+    }
+    lastOutputMediaTimestampUs_ = mediaTimestampUs;
+    return true;
   }
 
   int64_t PlaybackTimestampUs(int64_t mediaTimestampUs) const {
@@ -505,6 +1187,13 @@ class NativeVideoFileDecoder {
             listener_, packet, napi_tsfn_blocking) != napi_ok) {
       delete packet;
     }
+  }
+
+  static void FinalizeFrameData(
+      napi_env,
+      void*,
+      void* hint) {
+    delete static_cast<std::vector<uint8_t>*>(hint);
   }
 
   static void CallListener(
@@ -533,20 +1222,19 @@ class NativeVideoFileDecoder {
         undefined
     };
     if (!packet->data.empty()) {
-      void* outputAddress = nullptr;
-      if (napi_create_arraybuffer(
+      auto* frameData = new std::vector<uint8_t>(
+          std::move(packet->data));
+      if (napi_create_external_arraybuffer(
               env,
-              packet->data.size(),
-              &outputAddress,
-              &arguments[0]) != napi_ok ||
-          outputAddress == nullptr) {
+              frameData->data(),
+              frameData->size(),
+              FinalizeFrameData,
+              frameData,
+              &arguments[0]) != napi_ok) {
+        delete frameData;
         delete packet;
         return;
       }
-      std::memcpy(
-          outputAddress,
-          packet->data.data(),
-          packet->data.size());
     }
     napi_create_int32(env, packet->width, &arguments[1]);
     napi_create_int32(env, packet->height, &arguments[2]);
@@ -592,12 +1280,35 @@ class NativeVideoFileDecoder {
   int32_t stride_ = 0;
   int32_t sliceHeight_ = 0;
   int32_t pixelFormat_ = 0;
+  bool isHdrVivid_ = false;
+  int32_t hdrSurfaceWidth_ = 0;
+  int32_t hdrSurfaceHeight_ = 0;
+  OH_VideoProcessing* hdrVideoProcessor_ = nullptr;
+  VideoProcessing_Callback* hdrProcessingCallback_ = nullptr;
+  OHNativeWindow* hdrProcessorInputWindow_ = nullptr;
+  bool hdrVideoProcessorStarted_ = false;
+  OH_NativeImage* hdrOutputSurface_ = nullptr;
+  OHNativeWindow* hdrOutputWindow_ = nullptr;
+  std::mutex hdrSurfaceMutex_;
+  std::mutex hdrSurfaceQueueMutex_;
+  std::condition_variable hdrSurfaceCondition_;
+  std::deque<HdrSurfaceBufferPacket> hdrSurfaceQueue_;
+  std::thread hdrSurfaceWorker_;
+  std::mutex hdrTimestampMutex_;
+  std::deque<int64_t> pendingHdrTimestamps_;
+  bool hdrEndOfStreamPending_ = false;
+  std::vector<uint8_t> hdrSourceData_;
+  std::vector<uint8_t> hdrScaledData_;
 
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
   int64_t playbackAnchorUs_ = 0;
   int64_t mediaStartUs_ = 0;
   int32_t rotation_ = 0;
+  int32_t targetWidth_ = 0;
+  int32_t targetHeight_ = 0;
+  int64_t frameIntervalUs_ = 0;
+  int64_t lastOutputMediaTimestampUs_ = -1;
 };
 
 NativeVideoFileDecoder* UnwrapDecoder(
@@ -643,8 +1354,11 @@ napi_value ReleaseDecoder(
 napi_value CreateVideoFileDecoder(
     napi_env env,
     napi_callback_info info) {
-  size_t argumentCount = 6;
-  napi_value arguments[6] = {
+  size_t argumentCount = 9;
+  napi_value arguments[9] = {
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr,
       nullptr,
       nullptr,
@@ -659,11 +1373,11 @@ napi_value CreateVideoFileDecoder(
           arguments,
           nullptr,
           nullptr) != napi_ok ||
-      argumentCount != 6) {
+      argumentCount != 9) {
     napi_throw_type_error(
         env,
         nullptr,
-        "Expected fd, size, playback timing, rotation and frame listener");
+        "Expected fd, size, playback timing, output format and frame listener");
     return nullptr;
   }
 
@@ -672,6 +1386,9 @@ napi_value CreateVideoFileDecoder(
   double playbackAnchorUs = 0;
   double mediaStartUs = 0;
   int32_t rotation = 0;
+  int32_t targetWidth = 0;
+  int32_t targetHeight = 0;
+  double frameIntervalUs = 0;
   napi_valuetype listenerType = napi_undefined;
   if (napi_get_value_int32(env, arguments[0], &fd) != napi_ok ||
       napi_get_value_double(env, arguments[1], &sizeValue) != napi_ok ||
@@ -680,10 +1397,17 @@ napi_value CreateVideoFileDecoder(
       napi_get_value_double(
           env, arguments[3], &mediaStartUs) != napi_ok ||
       napi_get_value_int32(env, arguments[4], &rotation) != napi_ok ||
+      napi_get_value_int32(env, arguments[5], &targetWidth) != napi_ok ||
+      napi_get_value_int32(env, arguments[6], &targetHeight) != napi_ok ||
+      napi_get_value_double(
+          env, arguments[7], &frameIntervalUs) != napi_ok ||
       fd < 0 || sizeValue <= 0 ||
       playbackAnchorUs <= 0 ||
+      targetWidth <= 0 || targetHeight <= 0 ||
+      targetWidth % 2 != 0 || targetHeight % 2 != 0 ||
+      frameIntervalUs <= 0 ||
       !IsSupportedRotation(rotation) ||
-      napi_typeof(env, arguments[5], &listenerType) != napi_ok ||
+      napi_typeof(env, arguments[8], &listenerType) != napi_ok ||
       listenerType != napi_function) {
     napi_throw_type_error(env, nullptr, "Video file decoder arguments are invalid");
     return nullptr;
@@ -693,12 +1417,15 @@ napi_value CreateVideoFileDecoder(
   std::string error;
   if (!decoder->Initialize(
           env,
-          arguments[5],
+          arguments[8],
           fd,
           static_cast<int64_t>(sizeValue),
           static_cast<int64_t>(playbackAnchorUs),
           static_cast<int64_t>(mediaStartUs),
           rotation,
+          targetWidth,
+          targetHeight,
+          static_cast<int64_t>(frameIntervalUs),
           &error)) {
     delete decoder;
     napi_throw_error(env, nullptr, error.c_str());

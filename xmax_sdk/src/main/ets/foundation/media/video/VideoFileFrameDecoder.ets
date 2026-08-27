@@ -50,6 +50,9 @@ export class VideoFileFrameDecoder {
   constructor(
     videoUri: string,
     rotation: VideoRotation,
+    outputWidth: number,
+    outputHeight: number,
+    frameIntervalUs: number,
     listener: VideoFileFrameDecoderListener,
     playbackAnchorUs?: number,
     mediaStartUs?: number
@@ -73,6 +76,9 @@ export class VideoFileFrameDecoder {
         resolvedPlaybackAnchorUs,
         resolvedMediaStartUs,
         rotation,
+        outputWidth,
+        outputHeight,
+        frameIntervalUs,
         (
           data: ArrayBuffer | undefined,
           width: number,

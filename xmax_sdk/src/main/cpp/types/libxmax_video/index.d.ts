@@ -33,6 +33,9 @@ interface XmaxVideoNative {
     playbackAnchorUs: number,
     mediaStartUs: number,
     rotation: number,
+    outputWidth: number,
+    outputHeight: number,
+    frameIntervalUs: number,
     listener: NativeVideoFileFrameListener
   ): NativeVideoFileDecoder;
 

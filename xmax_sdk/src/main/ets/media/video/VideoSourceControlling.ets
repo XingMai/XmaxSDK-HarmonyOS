@@ -13,12 +13,16 @@ export interface VideoSourceControlling {
    *
    * @param filePath 本地视频文件路径。
    * @param rotation 视频源旋转方向。
+   * @param outputWidth 目标视频宽度。
+   * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
    * @returns 无返回值。
    */
   configure(
     filePath: string,
     rotation: VideoRotation,
+    outputWidth: number,
+    outputHeight: number,
     frameRate: number
   ): void;
 

@@ -154,6 +154,8 @@ export class MediaSourceController implements MediaSourceControlling {
     this.videoSourceController.configure(
       filePath,
       metadata.rotation,
+      resolvedFormat.width,
+      resolvedFormat.height,
       resolvedFormat.fps
     );
     if (metadata.hasAudio) {
