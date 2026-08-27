@@ -115,11 +115,11 @@ export class VideoFileFrameDecoder {
     }
   }
 
-  release(): void {
+  release(): Promise<void> {
     if (this.isReleased) {
-      return;
+      return Promise.resolve();
     }
     this.isReleased = true;
-    this.nativeDecoder.release();
+    return this.nativeDecoder.release();
   }
 }

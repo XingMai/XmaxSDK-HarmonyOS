@@ -2,6 +2,17 @@ import { RemoteStream } from './RemoteStream';
 
 export interface RtcEventListener {
   /**
+   * 处理远端音频发布状态变化。
+   *
+   * @param userId 远端用户标识。
+   * @param published 是否已发布音频。
+   */
+  onRemoteAudioPublished(
+    userId: string,
+    published: boolean
+  ): void;
+
+  /**
    * 处理远端视频发布状态变化。
    *
    * @param userId 远端用户标识。

@@ -167,6 +167,30 @@ export interface RtcManaging {
   ): void;
 
   /**
+   * 更新远端音频流订阅状态。
+   *
+   * @param userId 远端用户标识。
+   * @param subscribe 是否订阅音频流。
+   * @returns 无返回值。
+   */
+  subscribeRemoteAudio(
+    userId: string,
+    subscribe: boolean
+  ): void;
+
+  /**
+   * 设置指定远端用户的音频播放音量。
+   *
+   * @param userId 远端用户标识。
+   * @param volume RTC 音量值，100 表示原始音量。
+   * @returns 无返回值。
+   */
+  setRemoteAudioVolume(
+    userId: string,
+    volume: number
+  ): void;
+
+  /**
    * 将本地视频绑定到渲染视图。
    *
    * @param viewId 渲染视图标识。

@@ -435,6 +435,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     const operationVersion: number = this.operationVersion;
+    this.mediaController.setLocalAudioPreviewEnabled(false);
     try {
       const taskId: string = await this.generationManager.start(
         videoFormat,
@@ -447,13 +448,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
       }
 
-      this.mediaController.setLocalAudioPreviewEnabled(false);
       this.emitState(new RealtimeState(
         RealtimeConnectionState.GENERATING,
         sessionId,
         taskId
       ));
     } catch (error) {
+      this.mediaController.setLocalAudioPreviewEnabled(true);
       throw this.reportError(error);
     }
   }

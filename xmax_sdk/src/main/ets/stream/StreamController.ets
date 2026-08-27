@@ -24,6 +24,7 @@ import { StreamControlling } from './StreamControlling';
 
 const GENERATION_START_TIMEOUT_MS: number = 30000;
 const GENERATION_START_DELAY_MS: number = 150;
+const DEFAULT_REMOTE_AUDIO_VOLUME: number = 100;
 type RemoteStreamListener = (stream: RemoteStream | null) => void;
 
 /** 保存当前实时生成任务标识及对应的 SEI 数据。 */
@@ -194,6 +195,30 @@ export class StreamController implements StreamControlling, RtcEventListener {
   /** @inheritdoc */
   sendTracks(taskId: string, points: RealtimePoint[]): void {
     this.roomController.sendTracks(taskId, points);
+  }
+
+  /**
+   * 订阅生成端发布的远端音频，由 RTC 内部完成播放。
+   *
+   * @param userId 远端用户标识。
+   * @param published 远端音频是否已发布。
+   * @returns 无返回值。
+   */
+  onRemoteAudioPublished(
+    userId: string,
+    published: boolean
+  ): void {
+    if (this.botName.length > 0 && userId !== this.botName) {
+      return;
+    }
+
+    if (published) {
+      this.rtcManager.setRemoteAudioVolume(
+        userId,
+        DEFAULT_REMOTE_AUDIO_VOLUME
+      );
+    }
+    this.rtcManager.subscribeRemoteAudio(userId, published);
   }
 
   /**

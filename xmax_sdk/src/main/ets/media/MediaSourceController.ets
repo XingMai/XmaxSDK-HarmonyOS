@@ -188,8 +188,9 @@ export class MediaSourceController implements MediaSourceControlling {
         this.audioSourceController.start(timeline);
       }
     } catch (error) {
-      this.videoSourceController.stop();
+      const videoStopPromise: Promise<void> = this.videoSourceController.stop();
       this.audioSourceController.stop();
+      await videoStopPromise;
       await this.audioManager.stop();
       throw XmaxError.from(error);
     }
@@ -211,8 +212,9 @@ export class MediaSourceController implements MediaSourceControlling {
    * @returns 媒体源停止完成后的 Promise。
    */
   async stop(): Promise<void> {
-    this.videoSourceController.stop();
+    const videoStopPromise: Promise<void> = this.videoSourceController.stop();
     this.audioSourceController.stop();
+    await videoStopPromise;
     await this.stopAudioPlayback();
 
     this.metadata = null;

@@ -469,11 +469,13 @@ class NativeVideoFileDecoder {
 
     running_.store(true);
     if (isHdrVivid_) {
+      hdrSurfaceWorkerRunning_.store(true);
       hdrSurfaceWorker_ =
           std::thread(&NativeVideoFileDecoder::HdrSurfaceWorkerLoop, this);
     }
     if (OH_VideoDecoder_Start(decoder_) != AV_ERR_OK) {
       running_.store(false);
+      hdrSurfaceWorkerRunning_.store(false);
       hdrSurfaceCondition_.notify_all();
       if (hdrSurfaceWorker_.joinable()) {
         hdrSurfaceWorker_.join();
@@ -482,11 +484,20 @@ class NativeVideoFileDecoder {
       return false;
     }
     if (isHdrVivid_) {
+      {
+        std::lock_guard<std::mutex> lock(hdrProcessingStateMutex_);
+        hdrVideoProcessorStopped_ = false;
+      }
       const VideoProcessing_ErrorCode processingResult =
           OH_VideoProcessing_Start(hdrVideoProcessor_);
       if (processingResult != VIDEO_PROCESSING_SUCCESS) {
+        {
+          std::lock_guard<std::mutex> lock(hdrProcessingStateMutex_);
+          hdrVideoProcessorStopped_ = true;
+        }
         OH_VideoDecoder_Stop(decoder_);
         running_.store(false);
+        hdrSurfaceWorkerRunning_.store(false);
         hdrSurfaceCondition_.notify_all();
         if (hdrSurfaceWorker_.joinable()) {
           hdrSurfaceWorker_.join();
@@ -503,21 +514,26 @@ class NativeVideoFileDecoder {
   void Stop() {
     const bool wasRunning = running_.exchange(false);
     pacingCondition_.notify_all();
-    hdrSurfaceCondition_.notify_all();
+
+    {
+      std::lock_guard<std::mutex> lock(demuxerMutex_);
+    }
+
     if (decoder_ != nullptr) {
       if (wasRunning) {
         OH_VideoDecoder_Stop(decoder_);
       }
-      if (hdrVideoProcessorStarted_) {
-        OH_VideoProcessing_Stop(hdrVideoProcessor_);
-        hdrVideoProcessorStarted_ = false;
-      }
+      StopHdrVideoProcessor();
+      hdrSurfaceWorkerRunning_.store(false);
+      hdrSurfaceCondition_.notify_all();
       if (hdrSurfaceWorker_.joinable()) {
         hdrSurfaceWorker_.join();
       }
       OH_VideoDecoder_Destroy(decoder_);
       decoder_ = nullptr;
     } else if (hdrSurfaceWorker_.joinable()) {
+      hdrSurfaceWorkerRunning_.store(false);
+      hdrSurfaceCondition_.notify_all();
       hdrSurfaceWorker_.join();
     }
     if (listener_ != nullptr) {
@@ -641,6 +657,9 @@ class NativeVideoFileDecoder {
         OH_VideoProcessingCallback_BindOnError(
             hdrProcessingCallback_, OnHdrProcessingError) !=
             VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessingCallback_BindOnState(
+            hdrProcessingCallback_, OnHdrProcessingState) !=
+            VIDEO_PROCESSING_SUCCESS ||
         OH_VideoProcessing_RegisterCallback(
             hdrVideoProcessor_, hdrProcessingCallback_, this) !=
             VIDEO_PROCESSING_SUCCESS) {
@@ -652,12 +671,23 @@ class NativeVideoFileDecoder {
     return true;
   }
 
-  void ReleaseHdrOutputSurface() {
-    std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
-    if (hdrVideoProcessorStarted_) {
-      OH_VideoProcessing_Stop(hdrVideoProcessor_);
-      hdrVideoProcessorStarted_ = false;
+  void StopHdrVideoProcessor() {
+    if (!hdrVideoProcessorStarted_ || hdrVideoProcessor_ == nullptr) {
+      return;
     }
+    const VideoProcessing_ErrorCode stopResult =
+        OH_VideoProcessing_Stop(hdrVideoProcessor_);
+    if (stopResult == VIDEO_PROCESSING_SUCCESS) {
+      std::unique_lock<std::mutex> lock(hdrProcessingStateMutex_);
+      hdrProcessingStateCondition_.wait(
+          lock, [this] { return hdrVideoProcessorStopped_; });
+    }
+    hdrVideoProcessorStarted_ = false;
+  }
+
+  void ReleaseHdrOutputSurface() {
+    StopHdrVideoProcessor();
+    std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
     if (hdrVideoProcessor_ != nullptr) {
       OH_VideoProcessing_Destroy(hdrVideoProcessor_);
       hdrVideoProcessor_ = nullptr;
@@ -698,9 +728,26 @@ class NativeVideoFileDecoder {
     }
   }
 
+  static void OnHdrProcessingState(
+      OH_VideoProcessing*,
+      VideoProcessing_State state,
+      void* context) {
+    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
+    if (decoder == nullptr ||
+        state != VIDEO_PROCESSING_STATE_STOPPED) {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(
+          decoder->hdrProcessingStateMutex_);
+      decoder->hdrVideoProcessorStopped_ = true;
+    }
+    decoder->hdrProcessingStateCondition_.notify_all();
+  }
+
   void EnqueueHdrSurfaceFrame() {
     std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
-    if (!running_.load() || hdrOutputSurface_ == nullptr) {
+    if (!hdrSurfaceWorkerRunning_.load() || hdrOutputSurface_ == nullptr) {
       return;
     }
     OHNativeWindowBuffer* windowBuffer = nullptr;
@@ -736,10 +783,11 @@ class NativeVideoFileDecoder {
       {
         std::unique_lock<std::mutex> lock(hdrSurfaceQueueMutex_);
         hdrSurfaceCondition_.wait(lock, [this] {
-          return !running_.load() || !hdrSurfaceQueue_.empty();
+          return !hdrSurfaceWorkerRunning_.load() ||
+              !hdrSurfaceQueue_.empty();
         });
         if (hdrSurfaceQueue_.empty()) {
-          if (!running_.load()) {
+          if (!hdrSurfaceWorkerRunning_.load()) {
             return;
           }
           continue;
@@ -951,19 +999,31 @@ class NativeVideoFileDecoder {
       return;
     }
 
-    OH_AVErrCode readResult;
+    OH_AVErrCode readResult = AV_ERR_OK;
+    OH_AVErrCode pushResult = AV_ERR_OK;
     {
       std::lock_guard<std::mutex> lock(decoder->demuxerMutex_);
+      if (!decoder->running_.load() || decoder->inputEnded_) {
+        return;
+      }
       readResult = OH_AVDemuxer_ReadSampleBuffer(
           decoder->demuxer_, decoder->trackIndex_, buffer);
+      if (readResult == AV_ERR_OK) {
+        OH_AVCodecBufferAttr attr{};
+        const bool endOfStream =
+            OH_AVBuffer_GetBufferAttr(buffer, &attr) == AV_ERR_OK &&
+            (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
+        pushResult = OH_VideoDecoder_PushInputBuffer(codec, index);
+        if (pushResult == AV_ERR_OK) {
+          decoder->inputEnded_ = endOfStream;
+        }
+      }
     }
     if (readResult != AV_ERR_OK) {
       decoder->ReportError(
           "读取视频压缩帧失败：" + std::to_string(readResult));
       return;
     }
-    const OH_AVErrCode pushResult =
-        OH_VideoDecoder_PushInputBuffer(codec, index);
     if (pushResult != AV_ERR_OK) {
       decoder->ReportError(
           "提交视频压缩帧失败：" + std::to_string(pushResult));
@@ -1274,6 +1334,7 @@ class NativeVideoFileDecoder {
   std::atomic<bool> running_{false};
   std::atomic<bool> reportedError_{false};
   std::mutex demuxerMutex_;
+  bool inputEnded_ = false;
   std::mutex formatMutex_;
   int32_t width_ = 0;
   int32_t height_ = 0;
@@ -1287,12 +1348,16 @@ class NativeVideoFileDecoder {
   VideoProcessing_Callback* hdrProcessingCallback_ = nullptr;
   OHNativeWindow* hdrProcessorInputWindow_ = nullptr;
   bool hdrVideoProcessorStarted_ = false;
+  bool hdrVideoProcessorStopped_ = true;
+  std::mutex hdrProcessingStateMutex_;
+  std::condition_variable hdrProcessingStateCondition_;
   OH_NativeImage* hdrOutputSurface_ = nullptr;
   OHNativeWindow* hdrOutputWindow_ = nullptr;
   std::mutex hdrSurfaceMutex_;
   std::mutex hdrSurfaceQueueMutex_;
   std::condition_variable hdrSurfaceCondition_;
   std::deque<HdrSurfaceBufferPacket> hdrSurfaceQueue_;
+  std::atomic<bool> hdrSurfaceWorkerRunning_{false};
   std::thread hdrSurfaceWorker_;
   std::mutex hdrTimestampMutex_;
   std::deque<int64_t> pendingHdrTimestamps_;
@@ -1313,7 +1378,8 @@ class NativeVideoFileDecoder {
 
 NativeVideoFileDecoder* UnwrapDecoder(
     napi_env env,
-    napi_callback_info info) {
+    napi_callback_info info,
+    napi_value* receiver = nullptr) {
   size_t argumentCount = 0;
   napi_value thisValue = nullptr;
   if (napi_get_cb_info(
@@ -1332,7 +1398,63 @@ NativeVideoFileDecoder* UnwrapDecoder(
           reinterpret_cast<void**>(&decoder)) != napi_ok) {
     return nullptr;
   }
+  if (receiver != nullptr) {
+    *receiver = thisValue;
+  }
   return decoder;
+}
+
+struct ReleaseDecoderContext {
+  napi_async_work work = nullptr;
+  napi_deferred deferred = nullptr;
+  napi_ref decoderReference = nullptr;
+  NativeVideoFileDecoder* decoder = nullptr;
+};
+
+void RejectReleaseDecoder(
+    napi_env env,
+    napi_deferred deferred,
+    const char* reason) {
+  napi_value message = nullptr;
+  napi_value error = nullptr;
+  napi_create_string_utf8(
+      env, reason, NAPI_AUTO_LENGTH, &message);
+  napi_create_error(env, nullptr, message, &error);
+  napi_reject_deferred(env, deferred, error);
+}
+
+void ExecuteReleaseDecoder(napi_env, void* data) {
+  auto* context = static_cast<ReleaseDecoderContext*>(data);
+  if (context != nullptr && context->decoder != nullptr) {
+    context->decoder->Stop();
+  }
+}
+
+void CompleteReleaseDecoder(
+    napi_env env,
+    napi_status status,
+    void* data) {
+  auto* context = static_cast<ReleaseDecoderContext*>(data);
+  if (context == nullptr) {
+    return;
+  }
+  napi_value result = nullptr;
+  if (status == napi_ok) {
+    napi_get_undefined(env, &result);
+    napi_resolve_deferred(env, context->deferred, result);
+  } else {
+    RejectReleaseDecoder(
+        env,
+        context->deferred,
+        "Failed to release the video decoder asynchronously");
+  }
+  if (context->decoderReference != nullptr) {
+    napi_delete_reference(env, context->decoderReference);
+  }
+  if (context->work != nullptr) {
+    napi_delete_async_work(env, context->work);
+  }
+  delete context;
 }
 
 void FinalizeDecoder(napi_env, void* data, void*) {
@@ -1342,13 +1464,56 @@ void FinalizeDecoder(napi_env, void* data, void*) {
 napi_value ReleaseDecoder(
     napi_env env,
     napi_callback_info info) {
-  NativeVideoFileDecoder* decoder = UnwrapDecoder(env, info);
-  if (decoder != nullptr) {
-    decoder->Stop();
+  napi_value receiver = nullptr;
+  NativeVideoFileDecoder* decoder =
+      UnwrapDecoder(env, info, &receiver);
+  if (decoder == nullptr || receiver == nullptr) {
+    napi_throw_error(env, nullptr, "Video decoder is unavailable");
+    return nullptr;
   }
-  napi_value result = nullptr;
-  napi_get_undefined(env, &result);
-  return result;
+
+  napi_value promise = nullptr;
+  auto* context = new ReleaseDecoderContext();
+  context->decoder = decoder;
+  if (napi_create_reference(
+          env, receiver, 1, &context->decoderReference) != napi_ok ||
+      napi_create_promise(
+          env, &context->deferred, &promise) != napi_ok) {
+    if (context->decoderReference != nullptr) {
+      napi_delete_reference(env, context->decoderReference);
+    }
+    delete context;
+    napi_throw_error(env, nullptr, "Failed to prepare video decoder release");
+    return nullptr;
+  }
+
+  napi_value resourceName = nullptr;
+  if (napi_create_string_utf8(
+          env,
+          "XmaxReleaseNativeVideoFileDecoder",
+          NAPI_AUTO_LENGTH,
+          &resourceName) != napi_ok ||
+      napi_create_async_work(
+          env,
+          nullptr,
+          resourceName,
+          ExecuteReleaseDecoder,
+          CompleteReleaseDecoder,
+          context,
+          &context->work) != napi_ok ||
+      napi_queue_async_work(env, context->work) != napi_ok) {
+    if (context->work != nullptr) {
+      napi_delete_async_work(env, context->work);
+    }
+    RejectReleaseDecoder(
+        env,
+        context->deferred,
+        "Failed to queue video decoder release");
+    napi_delete_reference(env, context->decoderReference);
+    delete context;
+    return promise;
+  }
+  return promise;
 }
 
 napi_value CreateVideoFileDecoder(

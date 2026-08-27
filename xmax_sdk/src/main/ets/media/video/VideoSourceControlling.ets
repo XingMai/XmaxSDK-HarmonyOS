@@ -16,7 +16,7 @@ export interface VideoSourceControlling {
    * @param outputWidth 目标视频宽度。
    * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
-   * @returns 无返回值。
+   * @returns 旧视频源释放完成后的 Promise。
    */
   configure(
     filePath: string,
@@ -38,14 +38,14 @@ export interface VideoSourceControlling {
    * 按新的共享时间轴重新输出视频帧。
    *
    * @param timeline 音视频共享播放时间轴。
-   * @returns 无返回值。
+   * @returns 旧视频源释放完成后的 Promise。
    */
-  restart(timeline: MediaTimeline): void;
+  restart(timeline: MediaTimeline): Promise<void>;
 
   /**
    * 停止输出并释放视频文件资源。
    *
-   * @returns 无返回值。
+   * @returns 视频文件资源释放完成后的 Promise。
    */
-  stop(): void;
+  stop(): Promise<void>;
 }

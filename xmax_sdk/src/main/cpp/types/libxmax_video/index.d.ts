@@ -10,7 +10,7 @@ type NativeVideoFileFrameListener = (
 
 export interface NativeVideoFileDecoder {
   /** 停止连续解码并释放文件、解封装器与解码器资源。 */
-  release(): void;
+  release(): Promise<void>;
 }
 
 type NativeAudioFileFrameListener = (

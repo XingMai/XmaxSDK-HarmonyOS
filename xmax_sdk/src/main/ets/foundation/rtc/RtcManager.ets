@@ -558,6 +558,45 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
+   * 更新指定远端用户的音频订阅状态。
+   *
+   * @param userId 远端用户标识。
+   * @param subscribe 是否订阅音频流。
+   * @returns 无返回值。
+   */
+  subscribeRemoteAudio(
+    userId: string,
+    subscribe: boolean
+  ): void {
+    this.checkResult(
+      this.requireRoom().subscribeStreamAudio(userId, subscribe),
+      'subscribeStreamAudio'
+    );
+  }
+
+  /**
+   * 设置指定远端用户的音频播放音量。
+   *
+   * @param userId 远端用户标识。
+   * @param volume RTC 音量值，100 表示原始音量。
+   * @returns 无返回值。
+   */
+  setRemoteAudioVolume(
+    userId: string,
+    volume: number
+  ): void {
+    const key: RemoteStreamKey = {
+      room_id: this.activeRoomId,
+      user_id: userId,
+      stream_index: StreamIndex.kStreamIndexMain
+    };
+    this.checkResult(
+      this.requireEngine().setRemoteAudioPlaybackVolume(key, volume),
+      'setRemoteAudioPlaybackVolume'
+    );
+  }
+
+  /**
    * 创建 RTC 渲染画布并绑定本地主视频流。
    *
    * @param viewId 渲染视图标识。
@@ -689,6 +728,17 @@ export class RtcManager implements RtcManaging {
    * @returns 无返回值。
    */
   private bindRoomEvents(room: RTCRoom): void {
+    room.on(
+      'onUserPublishStreamAudio',
+      (_roomId: string, userId: string, published: boolean): void => {
+        if (this.room !== room) {
+          return;
+        }
+
+        this.listener?.onRemoteAudioPublished(userId, published);
+      }
+    );
+
     room.on(
       'onUserPublishStreamVideo',
       (_roomId: string, userId: string, published: boolean): void => {

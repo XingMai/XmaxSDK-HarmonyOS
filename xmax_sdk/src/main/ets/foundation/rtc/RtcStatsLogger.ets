@@ -13,6 +13,7 @@ const RTC_LOG_CATEGORY: string = 'RTC';
 
 export class RtcStatsLogger {
   static logLocalStreamStats(stats: LocalStreamStats): void {
+    const audio = stats.audio_stats;
     const video = stats.video_stats;
 
     XmaxLogger.debug(
@@ -20,7 +21,8 @@ export class RtcStatsLogger {
 ├─ 分辨率：${video.encoded_frame_width} × ${video.encoded_frame_height}
 ├─ 码率：${video.sent_kbitrate} kbps
 ├─ 帧率：采集 ${video.input_frame_rate} fps，编码 ${video.encoder_output_frame_rate} fps，发送 ${video.sent_frame_rate} fps
-└─ 网络：丢包 ${(video.video_loss_rate * 100).toFixed(2)}%，RTT ${video.rtt} ms${RtcStatsLogger.formatJitter(video.jitter)}`,
+├─ 网络：丢包 ${(video.video_loss_rate * 100).toFixed(2)}%，RTT ${video.rtt} ms${RtcStatsLogger.formatJitter(video.jitter)}
+└─ 音频：${audio.send_kbitrate} kbps，采集 ${audio.record_sample_rate} Hz，发送 ${audio.sent_sample_rate} Hz，${audio.num_channels} 声道`,
       RTC_LOG_CATEGORY
     );
   }

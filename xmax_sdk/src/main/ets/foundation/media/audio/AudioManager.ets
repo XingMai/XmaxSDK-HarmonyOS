@@ -6,6 +6,9 @@ import { AudioManaging } from './AudioManaging';
 /** 使用平台音频渲染器播放本地 PCM 音频帧。 */
 export class AudioManager implements AudioManaging {
 
+  // 音频配置
+  private static readonly DEFAULT_VOLUME: number = 0.45;
+
   // 平台资源
   private renderer: audio.AudioRenderer | null = null;
 
@@ -45,6 +48,7 @@ export class AudioManager implements AudioManaging {
     );
 
     try {
+      await renderer.setVolume(AudioManager.DEFAULT_VOLUME);
       await renderer.start();
       this.renderer = renderer;
     } catch (error) {

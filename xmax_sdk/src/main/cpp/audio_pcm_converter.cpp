@@ -100,8 +100,11 @@ bool AudioPcmConverter::Append(
 
 void AudioPcmConverter::Finish(
     const PacketHandler& handler) {
+  if (packetSamples_.empty()) {
+    return;
+  }
   AppendSilence(
-      cycleSampleCount_ - scheduledSampleCount_,
+      static_cast<int64_t>(kSamplesPerPacket - packetSamples_.size()),
       handler);
 }
 

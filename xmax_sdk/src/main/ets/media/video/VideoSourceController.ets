@@ -63,7 +63,7 @@ export class VideoSourceController implements VideoSourceControlling {
    * @param outputWidth 目标视频宽度。
    * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
-   * @returns 无返回值。
+   * @returns 旧解码器释放完成后的 Promise。
    */
   configure(
     filePath: string,
@@ -117,10 +117,10 @@ export class VideoSourceController implements VideoSourceControlling {
    * 释放当前解码器并按新时间轴重新输出视频帧。
    *
    * @param timeline 新的音视频共享播放时间轴。
-   * @returns 无返回值。
+   * @returns 旧解码器释放完成后的 Promise。
    */
-  restart(timeline: MediaTimeline): void {
-    this.releaseDecoder();
+  async restart(timeline: MediaTimeline): Promise<void> {
+    await this.releaseDecoder();
     this.timeline = timeline;
     this.loopIndex = 0;
     this.resetFrameSampling();
@@ -130,10 +130,10 @@ export class VideoSourceController implements VideoSourceControlling {
   /**
    * 停止输出并清理视频文件状态。
    *
-   * @returns 无返回值。
+   * @returns 解码器释放完成后的 Promise。
    */
-  stop(): void {
-    this.releaseDecoder();
+  async stop(): Promise<void> {
+    const releasePromise: Promise<void> = this.releaseDecoder();
     this.filePath = '';
     this.sourceRotation = VideoRotation.ROTATION_0;
     this.timeline = null;
@@ -142,6 +142,7 @@ export class VideoSourceController implements VideoSourceControlling {
     this.outputWidth = 0;
     this.outputHeight = 0;
     this.resetFrameSampling();
+    await releasePromise;
   }
 
   /**
@@ -238,22 +239,40 @@ export class VideoSourceController implements VideoSourceControlling {
     }
 
     setTimeout((): void => {
-      if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
-        return;
-      }
-
-      this.decoder = null;
-      this.releaseDecoderInstance(endedDecoder);
-      this.loopIndex++;
-      this.resetFrameSampling();
-
-      try {
-        this.decoder = this.createDecoder();
-      } catch (error) {
-        const reason: string = error instanceof Error ? error.message : String(error);
-        this.errorListener(reason);
-      }
+      void this.restartAfterEndOfStream(endedDecoder, loopIndex);
     }, 0);
+  }
+
+  /**
+   * 异步释放已结束的解码器并启动下一轮循环。
+   *
+   * @param endedDecoder 已完成当前循环的解码器。
+   * @param loopIndex 已完成的循环序号。
+   * @returns 下一轮解码器创建完成后的 Promise。
+   */
+  private async restartAfterEndOfStream(
+    endedDecoder: VideoFileFrameDecoder,
+    loopIndex: number
+  ): Promise<void> {
+    if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
+      return;
+    }
+
+    this.decoder = null;
+    await this.releaseDecoderInstance(endedDecoder);
+    if (this.decoder !== null || this.filePath.length === 0 ||
+      this.timeline === null || loopIndex !== this.loopIndex) {
+      return;
+    }
+    this.loopIndex++;
+    this.resetFrameSampling();
+
+    try {
+      this.decoder = this.createDecoder();
+    } catch (error) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.errorListener(reason);
+    }
   }
 
   /**
@@ -290,26 +309,27 @@ export class VideoSourceController implements VideoSourceControlling {
   /**
    * 释放当前视频解码器。
    *
-   * @returns 无返回值。
+   * @returns 当前解码器释放完成后的 Promise。
    */
-  private releaseDecoder(): void {
+  private releaseDecoder(): Promise<void> {
     const decoder: VideoFileFrameDecoder | null = this.decoder;
     this.decoder = null;
 
     if (decoder !== null) {
-      this.releaseDecoderInstance(decoder);
+      return this.releaseDecoderInstance(decoder);
     }
+    return Promise.resolve();
   }
 
   /**
    * 安全释放指定视频解码器并记录释放错误。
    *
    * @param decoder 待释放的视频解码器。
-   * @returns 无返回值。
+   * @returns 指定解码器释放完成后的 Promise。
    */
-  private releaseDecoderInstance(decoder: VideoFileFrameDecoder): void {
+  private async releaseDecoderInstance(decoder: VideoFileFrameDecoder): Promise<void> {
     try {
-      decoder.release();
+      await decoder.release();
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(

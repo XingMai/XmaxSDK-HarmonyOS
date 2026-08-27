@@ -134,6 +134,10 @@ class NativeAudioFileDecoder {
     const bool wasRunning = running_.exchange(false);
     pacingCondition_.notify_all();
 
+    {
+      std::lock_guard<std::mutex> lock(demuxerMutex_);
+    }
+
     if (decoder_ != nullptr) {
       if (wasRunning) {
         OH_AudioCodec_Stop(decoder_);
@@ -277,23 +281,33 @@ class NativeAudioFileDecoder {
       return;
     }
 
-    OH_AVErrCode readResult;
+    OH_AVErrCode readResult = AV_ERR_OK;
+    OH_AVErrCode pushResult = AV_ERR_OK;
     {
       std::lock_guard<std::mutex> lock(decoder->demuxerMutex_);
+      if (!decoder->running_.load() || decoder->inputEnded_) {
+        return;
+      }
       readResult = OH_AVDemuxer_ReadSampleBuffer(
           decoder->demuxer_,
           decoder->trackIndex_,
           buffer);
+      if (readResult == AV_ERR_OK) {
+        OH_AVCodecBufferAttr attr{};
+        const bool endOfStream =
+            OH_AVBuffer_GetBufferAttr(buffer, &attr) == AV_ERR_OK &&
+            (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
+        pushResult = OH_AudioCodec_PushInputBuffer(codec, index);
+        if (pushResult == AV_ERR_OK) {
+          decoder->inputEnded_ = endOfStream;
+        }
+      }
     }
     if (readResult != AV_ERR_OK) {
       decoder->ReportError(
           "读取音频压缩帧失败：" + std::to_string(readResult));
       return;
     }
-
-    const OH_AVErrCode pushResult = OH_AudioCodec_PushInputBuffer(
-        codec,
-        index);
     if (pushResult != AV_ERR_OK) {
       decoder->ReportError(
           "提交音频压缩帧失败：" + std::to_string(pushResult));
@@ -499,6 +513,7 @@ class NativeAudioFileDecoder {
   std::atomic<bool> running_{false};
   std::atomic<bool> reportedError_{false};
   std::mutex demuxerMutex_;
+  bool inputEnded_ = false;
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
 
