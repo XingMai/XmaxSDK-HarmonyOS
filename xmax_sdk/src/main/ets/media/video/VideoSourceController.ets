@@ -151,6 +151,7 @@ export class VideoSourceController implements VideoSourceControlling {
     const loopIndex: number = this.loopIndex;
     return new VideoFileFrameDecoder(
       this.filePath,
+      this.sourceRotation,
       new VideoSourceDecoderListener(
         (frame: VideoFileDecodedFrame): void => {
           this.handleFrame(frame);
@@ -168,7 +169,7 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 将符合采样节奏的解码帧封装为统一视频帧并输出。
+   * 将已转正且符合采样节奏的解码帧封装为统一视频帧并输出。
    *
    * @param frame 视频文件解码帧。
    * @returns 无返回值。
@@ -200,7 +201,7 @@ export class VideoSourceController implements VideoSourceControlling {
           lumaLength / 2
         )
       ],
-      this.sourceRotation
+      VideoRotation.ROTATION_0
     );
 
     try {

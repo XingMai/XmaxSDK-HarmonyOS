@@ -4,6 +4,7 @@ import xmaxVideoNative, {
   NativeVideoFileDecoder
 } from 'libxmax_video.so';
 import { VideoPixelFormat } from './VideoPixelFormat';
+import { VideoRotation } from './VideoRotation';
 
 /** 系统视频解码器连续输出的单个文件视频帧。 */
 export class VideoFileDecodedFrame {
@@ -38,7 +39,7 @@ export interface VideoFileFrameDecoderListener {
 }
 
 /**
- * 使用系统视频解码器按媒体时间戳连续输出 NV12 帧。
+ * 使用系统视频解码器按媒体时间戳连续输出已转正的 NV12 帧。
  *
  * 解码结果由媒体层转换为统一视频帧，并交由后续业务链路处理。
  */
@@ -48,6 +49,7 @@ export class VideoFileFrameDecoder {
 
   constructor(
     videoUri: string,
+    rotation: VideoRotation,
     listener: VideoFileFrameDecoderListener,
     playbackAnchorUs?: number,
     mediaStartUs?: number
@@ -70,6 +72,7 @@ export class VideoFileFrameDecoder {
         sourceSize,
         resolvedPlaybackAnchorUs,
         resolvedMediaStartUs,
+        rotation,
         (
           data: ArrayBuffer | undefined,
           width: number,

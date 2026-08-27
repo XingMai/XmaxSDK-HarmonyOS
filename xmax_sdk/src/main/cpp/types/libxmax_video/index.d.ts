@@ -26,12 +26,13 @@ export interface NativeAudioFileDecoder {
 }
 
 interface XmaxVideoNative {
-  /** 使用系统视频解码器按媒体时间戳连续输出 NV12 帧。 */
+  /** 使用系统视频解码器按媒体时间戳连续输出已转正的 NV12 帧。 */
   createVideoFileDecoder(
     fd: number,
     size: number,
     playbackAnchorUs: number,
     mediaStartUs: number,
+    rotation: number,
     listener: NativeVideoFileFrameListener
   ): NativeVideoFileDecoder;
 

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <sys/stat.h>
@@ -32,6 +33,76 @@ struct DecodedFramePacket {
   std::string error;
 };
 
+bool IsSupportedRotation(int32_t rotation) {
+  return rotation == 0 || rotation == 90 ||
+      rotation == 180 || rotation == 270;
+}
+
+void RotateNv12(
+    const std::vector<uint8_t>& source,
+    int32_t width,
+    int32_t height,
+    int32_t rotation,
+    std::vector<uint8_t>* output) {
+  const int32_t targetWidth = rotation == 180 ? width : height;
+  const int32_t targetHeight = rotation == 180 ? height : width;
+  const size_t sourceLumaLength =
+      static_cast<size_t>(width) * static_cast<size_t>(height);
+  const size_t targetLumaLength =
+      static_cast<size_t>(targetWidth) * static_cast<size_t>(targetHeight);
+  output->resize(targetLumaLength + targetLumaLength / 2);
+
+  const uint8_t* sourceLuma = source.data();
+  uint8_t* targetLuma = output->data();
+  for (int32_t y = 0; y < height; ++y) {
+    for (int32_t x = 0; x < width; ++x) {
+      int32_t targetX = 0;
+      int32_t targetY = 0;
+      if (rotation == 90) {
+        targetX = height - 1 - y;
+        targetY = x;
+      } else if (rotation == 180) {
+        targetX = width - 1 - x;
+        targetY = height - 1 - y;
+      } else {
+        targetX = y;
+        targetY = width - 1 - x;
+      }
+      targetLuma[
+          static_cast<size_t>(targetY) * targetWidth + targetX] =
+          sourceLuma[static_cast<size_t>(y) * width + x];
+    }
+  }
+
+  const uint8_t* sourceChroma = source.data() + sourceLumaLength;
+  uint8_t* targetChroma = output->data() + targetLumaLength;
+  const int32_t sourceChromaWidth = width / 2;
+  const int32_t sourceChromaHeight = height / 2;
+  const int32_t targetChromaStride = targetWidth;
+  for (int32_t y = 0; y < sourceChromaHeight; ++y) {
+    for (int32_t x = 0; x < sourceChromaWidth; ++x) {
+      int32_t targetX = 0;
+      int32_t targetY = 0;
+      if (rotation == 90) {
+        targetX = sourceChromaHeight - 1 - y;
+        targetY = x;
+      } else if (rotation == 180) {
+        targetX = sourceChromaWidth - 1 - x;
+        targetY = sourceChromaHeight - 1 - y;
+      } else {
+        targetX = y;
+        targetY = sourceChromaWidth - 1 - x;
+      }
+      const size_t sourceOffset =
+          static_cast<size_t>(y) * width + x * 2;
+      const size_t targetOffset =
+          static_cast<size_t>(targetY) * targetChromaStride + targetX * 2;
+      targetChroma[targetOffset] = sourceChroma[sourceOffset];
+      targetChroma[targetOffset + 1] = sourceChroma[sourceOffset + 1];
+    }
+  }
+}
+
 class NativeVideoFileDecoder {
  public:
   NativeVideoFileDecoder() = default;
@@ -47,9 +118,11 @@ class NativeVideoFileDecoder {
       int64_t sourceSize,
       int64_t playbackAnchorUs,
       int64_t mediaStartUs,
+      int32_t rotation,
       std::string* error) {
     playbackAnchorUs_ = playbackAnchorUs;
     mediaStartUs_ = mediaStartUs;
+    rotation_ = rotation;
 
     fd_ = dup(sourceFd);
     if (fd_ < 0) {
@@ -363,16 +436,11 @@ class NativeVideoFileDecoder {
     if (!running_.load()) {
       return;
     }
-    auto* packet = new DecodedFramePacket();
-    packet->width = width;
-    packet->height = height;
-    packet->stride = minimumStride;
-    packet->timestampUs = PlaybackTimestampUs(attr.pts);
     const size_t targetLumaLength =
         static_cast<size_t>(minimumStride) * static_cast<size_t>(height);
-    packet->data.resize(targetLumaLength + targetLumaLength / 2);
+    std::vector<uint8_t> packedData(targetLumaLength + targetLumaLength / 2);
     const uint8_t* sourceRow = address + attr.offset;
-    uint8_t* targetRow = packet->data.data();
+    uint8_t* targetRow = packedData.data();
     for (int32_t row = 0; row < height; ++row) {
       std::memcpy(targetRow, sourceRow, minimumStride);
       sourceRow += stride;
@@ -380,11 +448,27 @@ class NativeVideoFileDecoder {
     }
     sourceRow = address + attr.offset +
         static_cast<size_t>(stride) * static_cast<size_t>(sliceHeight);
-    targetRow = packet->data.data() + targetLumaLength;
+    targetRow = packedData.data() + targetLumaLength;
     for (int32_t row = 0; row < height / 2; ++row) {
       std::memcpy(targetRow, sourceRow, minimumStride);
       sourceRow += stride;
       targetRow += minimumStride;
+    }
+
+    auto* packet = new DecodedFramePacket();
+    packet->width = rotation_ == 90 || rotation_ == 270 ? height : width;
+    packet->height = rotation_ == 90 || rotation_ == 270 ? width : height;
+    packet->stride = packet->width;
+    packet->timestampUs = PlaybackTimestampUs(attr.pts);
+    if (rotation_ == 0) {
+      packet->data = std::move(packedData);
+    } else {
+      RotateNv12(
+          packedData,
+          width,
+          height,
+          rotation_,
+          &packet->data);
     }
     Dispatch(packet);
   }
@@ -513,6 +597,7 @@ class NativeVideoFileDecoder {
   std::condition_variable pacingCondition_;
   int64_t playbackAnchorUs_ = 0;
   int64_t mediaStartUs_ = 0;
+  int32_t rotation_ = 0;
 };
 
 NativeVideoFileDecoder* UnwrapDecoder(
@@ -558,8 +643,9 @@ napi_value ReleaseDecoder(
 napi_value CreateVideoFileDecoder(
     napi_env env,
     napi_callback_info info) {
-  size_t argumentCount = 5;
-  napi_value arguments[5] = {
+  size_t argumentCount = 6;
+  napi_value arguments[6] = {
+      nullptr,
       nullptr,
       nullptr,
       nullptr,
@@ -573,11 +659,11 @@ napi_value CreateVideoFileDecoder(
           arguments,
           nullptr,
           nullptr) != napi_ok ||
-      argumentCount != 5) {
+      argumentCount != 6) {
     napi_throw_type_error(
         env,
         nullptr,
-        "Expected fd, size, playback timing and frame listener");
+        "Expected fd, size, playback timing, rotation and frame listener");
     return nullptr;
   }
 
@@ -585,6 +671,7 @@ napi_value CreateVideoFileDecoder(
   double sizeValue = 0;
   double playbackAnchorUs = 0;
   double mediaStartUs = 0;
+  int32_t rotation = 0;
   napi_valuetype listenerType = napi_undefined;
   if (napi_get_value_int32(env, arguments[0], &fd) != napi_ok ||
       napi_get_value_double(env, arguments[1], &sizeValue) != napi_ok ||
@@ -592,9 +679,11 @@ napi_value CreateVideoFileDecoder(
           env, arguments[2], &playbackAnchorUs) != napi_ok ||
       napi_get_value_double(
           env, arguments[3], &mediaStartUs) != napi_ok ||
+      napi_get_value_int32(env, arguments[4], &rotation) != napi_ok ||
       fd < 0 || sizeValue <= 0 ||
       playbackAnchorUs <= 0 ||
-      napi_typeof(env, arguments[4], &listenerType) != napi_ok ||
+      !IsSupportedRotation(rotation) ||
+      napi_typeof(env, arguments[5], &listenerType) != napi_ok ||
       listenerType != napi_function) {
     napi_throw_type_error(env, nullptr, "Video file decoder arguments are invalid");
     return nullptr;
@@ -604,11 +693,12 @@ napi_value CreateVideoFileDecoder(
   std::string error;
   if (!decoder->Initialize(
           env,
-          arguments[4],
+          arguments[5],
           fd,
           static_cast<int64_t>(sizeValue),
           static_cast<int64_t>(playbackAnchorUs),
           static_cast<int64_t>(mediaStartUs),
+          rotation,
           &error)) {
     delete decoder;
     napi_throw_error(env, nullptr, error.c_str());
