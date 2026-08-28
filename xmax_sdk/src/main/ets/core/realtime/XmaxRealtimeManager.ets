@@ -58,6 +58,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private readonly generationManager: XmaxRealtimeGenerationManager;
 
   // 运行状态
+  private closePromise: Promise<void> | null = null;
+  private closingResources: boolean = false;
   private terminationPromise: Promise<void> | null = null;
   private terminationFinalState: RealtimeConnectionState | null = null;
   private operationVersion: number = 0;
@@ -399,7 +401,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 断开当前实时连接并清理生成和房间资源。
+   * 断开当前实时连接并清理生成和房间资源，同时保留本地媒体和预览。
    *
    * @returns 连接终止完成后的 Promise；重复调用时返回同一个终止任务。
    */
@@ -414,6 +416,42 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     return this.beginTermination(RealtimeConnectionState.DISCONNECTED);
+  }
+
+  /**
+   * 立即静默媒体和渲染，随后异步释放连接、本地媒体及 RTC Engine。
+   *
+   * @returns 全部实时资源释放完成后的 Promise；重复调用时返回同一个关闭任务。
+   */
+  close(): Promise<void> {
+    if (this.closePromise !== null) {
+      return this.closePromise;
+    }
+
+    this.closingResources = true;
+    this.operationVersion++;
+    this.mediaController.setLocalAudioPreviewEnabled(false);
+    this.mediaController.prepareForClose();
+    this.connectionManager.prepareForClose();
+
+    const closePromise: Promise<void> = this.releaseRealtimeResources();
+    this.closePromise = closePromise;
+    closePromise.then(
+      (): void => {
+        if (this.closePromise === closePromise) {
+          this.closePromise = null;
+          this.closingResources = false;
+        }
+      },
+      (): void => {
+        if (this.closePromise === closePromise) {
+          this.closePromise = null;
+          this.closingResources = false;
+        }
+      }
+    );
+
+    return closePromise;
   }
 
   /**
@@ -544,6 +582,39 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
+   * 按照先退房、后释放本地来源和 Engine 的顺序完成关闭。
+   *
+   * @returns 全部资源释放完成后的 Promise。
+   */
+  private async releaseRealtimeResources(): Promise<void> {
+    let closeError: Object | null = null;
+
+    try {
+      await this.disconnect();
+    } catch (error) {
+      closeError = error;
+    }
+
+    try {
+      await this.mediaController.stopLocalStream();
+    } catch (error) {
+      if (closeError === null) {
+        closeError = error;
+      } else {
+        const reason: string = error instanceof Error ? error.message : String(error);
+        XmaxLogger.error(
+          `关闭本地媒体失败\n└─ 原因：${reason}`,
+          'Realtime'
+        );
+      }
+    }
+
+    if (closeError !== null) {
+      throw XmaxError.from(closeError);
+    }
+  }
+
+  /**
    * 保存并发布新的实时状态。
    *
    * @param state 新的实时状态。
@@ -624,7 +695,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     this.operationVersion++;
-    this.mediaController.setLocalAudioPreviewEnabled(true);
+    if (!this.closingResources) {
+      this.mediaController.setLocalAudioPreviewEnabled(true);
+    }
     this.terminationFinalState = finalState;
     const taskId: string = this.state.taskId ?? '';
     const terminationPromise: Promise<void> = Promise.resolve().then(

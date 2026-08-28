@@ -86,6 +86,26 @@ export class XmaxRealtimeConnectionManager {
   }
 
   /**
+   * 立即停止心跳并解除远端视频渲染绑定。
+   *
+   * 该方法不退出 RTC 房间，也不关闭服务端会话。
+   *
+   * @returns 无返回值。
+   */
+  prepareForClose(): void {
+    this.sessionService.stopHeartbeat();
+    try {
+      this.renderController.resetRemoteTrack(this.activeRemoteTrack);
+    } catch (error) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      XmaxLogger.error(
+        `静默远端视频渲染失败\n└─ 原因：${reason}`,
+        'Realtime'
+      );
+    }
+  }
+
+  /**
    * 创建服务端会话、加入 RTC 房间并发布本地媒体流。
    *
    * @param model 服务端使用的实时生成模型名称。

@@ -44,6 +44,7 @@ export class VideoController {
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
+  private acceptsFrames: boolean = false;
 
   /**
    * 创建视频媒体 Controller。
@@ -73,12 +74,21 @@ export class VideoController {
       this.mediaService,
       this.audioManager,
       (frame: VideoFrame): void => {
+        if (!this.acceptsFrames) {
+          return;
+        }
         this.streamController.pushLocalVideoFrame(frame);
       },
       (frame: AudioFrame): void => {
+        if (!this.acceptsFrames) {
+          return;
+        }
         this.streamController.pushLocalAudioFrame(frame);
       },
       (message: string): void => {
+        if (!this.acceptsFrames) {
+          return;
+        }
         errorListener(new XmaxError(
           XmaxErrorCode.MEDIA_ERROR,
           message
@@ -127,8 +137,8 @@ export class VideoController {
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalVideoStream(): Promise<void> {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
     const hasAudio: boolean = this.mediaSourceController.hasAudio;
+    this.prepareForStop();
     this.activeTrack = null;
     await this.mediaSourceController.stop();
 
@@ -143,7 +153,18 @@ export class VideoController {
         );
       }
     }
+  }
 
+  /**
+   * 立即阻断文件音视频帧输出并解除本地预览绑定。
+   *
+   * @returns 无返回值。
+   */
+  prepareForStop(): void {
+    this.acceptsFrames = false;
+    this.mediaSourceController.setLocalAudioPreviewEnabled(false);
+
+    const track: RealtimeVideoTrack | null = this.activeTrack;
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
       this.rtcManager.unbindLocalVideo();
@@ -193,11 +214,13 @@ export class VideoController {
       }
 
       this.registerPreview(track);
+      this.acceptsFrames = true;
       await this.mediaSourceController.start();
       this.activeTrack = track;
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);
     } catch (error) {
+      this.acceptsFrames = false;
       const hasAudio: boolean = this.mediaSourceController.hasAudio;
       await this.mediaSourceController.stop();
 

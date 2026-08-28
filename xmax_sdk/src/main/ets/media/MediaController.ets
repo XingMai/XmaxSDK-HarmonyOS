@@ -30,6 +30,7 @@ type LocalMediaCreation = () => Promise<RealtimeMediaStream>;
 class ActiveLocalMediaSource {
 
   readonly controller: LocalMediaController;
+  closing: boolean = false;
   operationPromise: Promise<RealtimeMediaStream> | null = null;
   stopPromise: Promise<void> | null = null;
 
@@ -114,6 +115,35 @@ export class MediaController implements MediaControlling {
   get hasAudio(): boolean {
     return this.activeSource?.controller === this.videoController &&
       this.videoController.hasAudio;
+  }
+
+  /** @inheritdoc */
+  prepareForClose(): void {
+    const source: ActiveLocalMediaSource | null = this.activeSource;
+    if (source === null) {
+      return;
+    }
+
+    source.closing = true;
+    try {
+      this.prepareControllerForStop(source.controller);
+    } catch (error) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      XmaxLogger.error(
+        `静默本地媒体失败\n└─ 原因：${reason}`,
+        'Realtime'
+      );
+    }
+  }
+
+  /** @inheritdoc */
+  stopLocalStream(): Promise<void> {
+    const source: ActiveLocalMediaSource | null = this.activeSource;
+    if (source === null) {
+      return Promise.resolve();
+    }
+
+    return this.stopSource(source.controller);
   }
 
   /**
@@ -370,6 +400,7 @@ export class MediaController implements MediaControlling {
       return source.stopPromise;
     }
 
+    source.closing = true;
     const stopPromise: Promise<void> = this.performStop(source);
     source.stopPromise = stopPromise;
 
@@ -429,13 +460,33 @@ export class MediaController implements MediaControlling {
   }
 
   /**
+   * 将同步静默请求分发给当前媒体类型对应的子 Controller。
+   *
+   * @param controller 需要立即停止输出的媒体子 Controller。
+   * @returns 无返回值。
+   */
+  private prepareControllerForStop(controller: LocalMediaController): void {
+    if (controller === this.cameraController) {
+      this.cameraController.prepareForStop();
+      return;
+    }
+    if (controller === this.videoController) {
+      this.videoController.prepareForStop();
+      return;
+    }
+
+    this.imageController.prepareForStop();
+  }
+
+  /**
    * 确保创建或替换任务仍然持有本地媒体所有权。
    *
    * @param source 发起操作时记录的活动来源。
    * @returns 无返回值。
    */
   private ensureCreationActive(source: ActiveLocalMediaSource): void {
-    if (this.activeSource === source && source.stopPromise === null) {
+    if (this.activeSource === source && !source.closing &&
+      source.stopPromise === null) {
       return;
     }
 

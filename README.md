@@ -196,7 +196,7 @@ const generationContext = new RealtimeContext(prompt, referencePath);
 await realtimeManager.startGeneration(generationContext);
 ```
 
-### 4. Stop and disconnect
+### 4. Stop and close
 
 ```ts
 /**
@@ -205,8 +205,8 @@ await realtimeManager.startGeneration(generationContext);
  */
 await realtimeManager.stopGeneration();
 
-// Disconnects from the realtime session when it is no longer needed.
-await realtimeManager.disconnect();
+// Closes the realtime session and releases local media and RTC resources.
+await realtimeManager.close();
 ```
 
 ### 5. Upload a reference image

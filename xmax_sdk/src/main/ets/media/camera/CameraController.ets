@@ -159,13 +159,17 @@ export class CameraController {
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalCameraStream(): Promise<void> {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
+    this.prepareForStop();
     this.activeTrack = null;
+  }
 
-    if (track !== null) {
-      VideoRenderRegistry.unregister(track);
-      this.rtcManager.unbindLocalVideo();
-    }
+  /**
+   * 立即停止相机采集并解除本地预览绑定。
+   *
+   * @returns 无返回值。
+   */
+  prepareForStop(): void {
+    const track: RealtimeVideoTrack | null = this.activeTrack;
 
     try {
       this.rtcManager.stopVideoCapture();
@@ -175,6 +179,11 @@ export class CameraController {
         `停止 RTC 相机采集失败\n└─ 原因：${reason}`,
         'Realtime'
       );
+    }
+
+    if (track !== null) {
+      VideoRenderRegistry.unregister(track);
+      this.rtcManager.unbindLocalVideo();
     }
   }
 

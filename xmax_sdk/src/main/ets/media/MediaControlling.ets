@@ -19,6 +19,18 @@ export interface MediaControlling extends InteractionControlling {
   readonly hasAudio: boolean;
 
   /**
+   * 立即阻断当前本地媒体输出并解除预览绑定。
+   *
+   * 该方法只执行可同步完成的静默操作，完整资源释放由 `stopLocalStream` 完成。
+   *
+   * @returns 无返回值。
+   */
+  prepareForClose(): void;
+
+  /** @returns 当前本地媒体来源及 RTC Engine 释放完成后的 Promise。 */
+  stopLocalStream(): Promise<void>;
+
+  /**
    * 设置摄像头预览就绪监听器。
    *
    * @param listener 预览就绪监听器；传入空值时清除监听器。

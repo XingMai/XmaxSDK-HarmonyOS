@@ -253,8 +253,13 @@ export class RealtimeViewModel {
   private async closeRealtime(preservesLocalInput: boolean): Promise<void> {
     this.generationRevision++;
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-    const localVideoPath: string = this.localVideoPath;
-    const localImagePath: string = this.localImagePath;
+    let closePromise: Promise<void> | null = null;
+    if (manager !== null) {
+      manager.setCameraPreviewReadyListener(null);
+      manager.setStateListener(null);
+      manager.setErrorListener(null);
+      closePromise = manager.close();
+    }
     this.realtimeManager = null;
     if (!preservesLocalInput) {
       this.localVideoPath = '';
@@ -278,18 +283,8 @@ export class RealtimeViewModel {
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
     this.state.errorMessage = '';
-    if (manager !== null) {
-      manager.setCameraPreviewReadyListener(null);
-      manager.setStateListener(null);
-      try {
-        await manager.disconnect();
-      } finally {
-        await this.stopLocalInput(
-          manager,
-          localVideoPath,
-          localImagePath
-        );
-      }
+    if (closePromise !== null) {
+      await closePromise;
     }
     this.state.connectionState = RealtimeConnectionState.DISCONNECTED;
   }

@@ -149,11 +149,20 @@ export interface XmaxRealtimeManaging {
   connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream>;
 
   /**
-   * 断开实时连接。
+   * 断开实时连接并保留当前本地媒体流和预览。
    *
    * @returns 断开完成后的 Promise。
    */
   disconnect(): Promise<void>;
+
+  /**
+   * 关闭当前实时生命周期并释放本地媒体、连接和 RTC Engine。
+   *
+   * 调用后会立即停止媒体推帧并解绑视频渲染，剩余资源在返回的 Promise 中异步释放。
+   *
+   * @returns 全部实时资源释放完成后的 Promise；重复调用时返回同一个关闭任务。
+   */
+  close(): Promise<void>;
 
   /**
    * 开始生成或更新当前生成条件。

@@ -38,6 +38,7 @@ export class ImageController {
 
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
+  private acceptsFrames: boolean = false;
 
   /**
    * 创建图片媒体 Controller。
@@ -64,9 +65,15 @@ export class ImageController {
       this.imageManager,
       this.mediaService,
       (frame: VideoFrame): void => {
+        if (!this.acceptsFrames) {
+          return;
+        }
         this.streamController.pushLocalVideoFrame(frame);
       },
       (message: string): void => {
+        if (!this.acceptsFrames) {
+          return;
+        }
         errorListener(new XmaxError(
           XmaxErrorCode.MEDIA_ERROR,
           message
@@ -110,10 +117,20 @@ export class ImageController {
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalImageStream(): Promise<void> {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
+    this.prepareForStop();
     this.activeTrack = null;
+  }
+
+  /**
+   * 立即停止图片帧输出并解除本地预览绑定。
+   *
+   * @returns 无返回值。
+   */
+  prepareForStop(): void {
+    this.acceptsFrames = false;
     this.imageSourceController.stop();
 
+    const track: RealtimeVideoTrack | null = this.activeTrack;
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
       this.rtcManager.unbindLocalVideo();
@@ -145,11 +162,13 @@ export class ImageController {
       this.rtcManager.useExternalVideoSource();
 
       this.registerPreview(track);
+      this.acceptsFrames = true;
       this.imageSourceController.start();
       this.activeTrack = track;
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);
     } catch (error) {
+      this.acceptsFrames = false;
       this.imageSourceController.stop();
 
       if (track !== null) {
