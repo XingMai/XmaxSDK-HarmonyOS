@@ -13,6 +13,7 @@ import { MediaControlling } from '../../media/MediaControlling';
 import { RenderController } from '../../rendering/RenderController';
 import { RenderControlling } from '../../rendering/RenderControlling';
 import { ApiServicing } from '../../service/network/ApiServicing';
+import { RealtimeCameraPreviewReadyListener } from '../../service/realtime/RealtimeCameraPreview';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
@@ -160,6 +161,18 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    */
   setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void {
     this.streamController.setPerformanceAlarmListener(listener);
+  }
+
+  /**
+   * 设置本地摄像头预览就绪监听器。
+   *
+   * @param listener 预览就绪监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
+  setCameraPreviewReadyListener(
+    listener: RealtimeCameraPreviewReadyListener | null
+  ): void {
+    this.mediaController.setCameraPreviewReadyListener(listener);
   }
 
   /**

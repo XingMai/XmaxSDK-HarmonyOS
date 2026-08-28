@@ -1,4 +1,4 @@
-/** 实时生成启动期间显示的加载遮罩。 */
+/** 本地预览或实时生成准备期间显示的加载遮罩。 */
 @Component
 export struct RealtimeLoadingView {
   build() {
@@ -7,7 +7,7 @@ export struct RealtimeLoadingView {
         .width(54)
         .height(50)
         .objectFit(ImageFit.Contain)
-        .accessibilityText('正在开始生成')
+        .accessibilityText('正在加载')
     }
     .width('100%')
     .height('100%')

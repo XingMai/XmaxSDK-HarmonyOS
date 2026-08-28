@@ -1,12 +1,14 @@
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   DefaultTrajectoryEffectRenderer,
   TrajectoryEffectRendering,
   VideoContentMode,
   XmaxVideoView
 } from '@xmax/sdk';
+import { XLabApplicationLifecycle } from '../../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from './config/XLabConfiguration';
 import {
   RealtimeCategoryState,
@@ -24,6 +26,8 @@ import { ReferenceUploader } from './reference/ReferenceUploader';
 
 const CAMERA_SWITCH_BLUR_RADIUS: number = 48;
 const LOCAL_FILE_VIEW_TOP_INSET: number = 84;
+const LOG_DOMAIN: number = 0x0000;
+const LOG_TAG: string = 'RealtimePage';
 
 @Component
 struct CancelGenerationButton {
@@ -71,7 +75,14 @@ export struct RealtimePage {
   @State private cameraSwitchBlurRadius: number = 0;
   @State private cameraSwitchRotation: number = 0;
   @State private isPickingLocalMedia: boolean = false;
+  @StorageLink(XLabApplicationLifecycle.FOREGROUND_STORAGE_KEY)
+  @Watch('onApplicationForegroundChanged')
+  private isApplicationForeground: boolean = true;
   private isPickingReference: boolean = false;
+
+  // 生命周期协调
+  private lifecycleOperationVersion: number = 0;
+  private realtimeCleanup: Promise<void> | null = null;
 
   private localContentMode(): VideoContentMode {
     return this.hasLocalFile() ?
@@ -121,16 +132,37 @@ export struct RealtimePage {
       return;
     }
 
+    const lifecycleVersion: number = this.lifecycleOperationVersion;
     this.isCameraSwitchTransitionActive = true;
     this.cameraSwitchBlurRadius = 0;
     this.cameraSwitchRotation = 0;
 
     await this.coverCameraPreview();
+    if (lifecycleVersion !== this.lifecycleOperationVersion) {
+      this.resetCameraSwitchTransition();
+      return;
+    }
 
     const switchPromise: Promise<void> = this.viewModel.switchCamera();
     await this.animateCameraSwitch();
+    if (lifecycleVersion !== this.lifecycleOperationVersion) {
+      this.resetCameraSwitchTransition();
+      return;
+    }
+
     await switchPromise;
+    if (lifecycleVersion !== this.lifecycleOperationVersion) {
+      this.resetCameraSwitchTransition();
+      return;
+    }
+
     await this.finishCameraSwitchTransition();
+  }
+
+  private resetCameraSwitchTransition(): void {
+    this.isCameraSwitchTransitionActive = false;
+    this.cameraSwitchBlurRadius = 0;
+    this.cameraSwitchRotation = 0;
   }
 
   private coverCameraPreview(): Promise<void> {
@@ -178,27 +210,98 @@ export struct RealtimePage {
   }
 
   aboutToAppear(): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     if (this.hasLocalImage()) {
       this.viewModel.selectCategory('mox');
+    }
+
+    this.viewModel.onMessage = (message: string): void => {
+      promptAction.showToast({ message: message });
+    };
+    if (this.isApplicationForeground) {
+      this.resumeRealtime();
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.viewModel.onMessage = null;
+    this.suspendRealtime(false);
+  }
+
+  private onApplicationForegroundChanged(): void {
+    if (this.isApplicationForeground) {
+      this.resumeRealtime();
+      return;
+    }
+
+    this.dismissKeyboard();
+    this.suspendRealtime(true);
+  }
+
+  private resumeRealtime(): void {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const operationVersion: number = ++this.lifecycleOperationVersion;
+    const pendingCleanup: Promise<void> | null = this.realtimeCleanup;
+
+    void this.restoreRealtimeAfterCleanup(
+      context,
+      operationVersion,
+      pendingCleanup
+    );
+  }
+
+  private async restoreRealtimeAfterCleanup(
+    context: common.UIAbilityContext,
+    operationVersion: number,
+    pendingCleanup: Promise<void> | null
+  ): Promise<void> {
+    if (pendingCleanup !== null) {
+      await pendingCleanup;
+    }
+    if (operationVersion !== this.lifecycleOperationVersion ||
+      !this.isApplicationForeground) {
+      return;
     }
 
     this.viewModel.setReferenceUploader(
       new ReferenceUploader(context, XLabConfiguration.currentApiKey())
     );
-    this.viewModel.onMessage = (message: string): void => {
-      promptAction.showToast({ message: message });
-    };
-    void this.viewModel.connect(
+    await this.viewModel.resume(
       context,
       this.localVideoPath,
       this.localImagePath
     );
   }
 
-  aboutToDisappear(): void {
-    this.viewModel.onMessage = null;
-    void this.viewModel.disconnect();
+  private suspendRealtime(preservesLocalInput: boolean): void {
+    this.lifecycleOperationVersion++;
+    this.resetCameraSwitchTransition();
+
+    if (this.realtimeCleanup !== null) {
+      return;
+    }
+
+    const cleanup: Promise<void> = this.cleanupRealtime(preservesLocalInput);
+    this.realtimeCleanup = cleanup;
+  }
+
+  private async cleanupRealtime(preservesLocalInput: boolean): Promise<void> {
+    try {
+      if (preservesLocalInput) {
+        await this.viewModel.suspend();
+      } else {
+        await this.viewModel.disconnect();
+      }
+    } catch (error) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      hilog.error(
+        LOG_DOMAIN,
+        LOG_TAG,
+        'Failed to clean up realtime resources: %{public}s',
+        message
+      );
+    } finally {
+      this.realtimeCleanup = null;
+    }
   }
 
   private async presentReferencePhotoPicker(categoryId: string): Promise<void> {
@@ -313,7 +416,8 @@ export struct RealtimePage {
               .visibility(this.state.isRemoteVideoVisible ? Visibility.Visible : Visibility.Hidden)
           }
 
-          if (this.state.isGenerationStarting) {
+          if (this.state.isLocalPreviewLoading ||
+            this.state.isGenerationStarting) {
             RealtimeLoadingView()
               .transition(TransitionEffect.OPACITY.animation({
                 duration: 300,

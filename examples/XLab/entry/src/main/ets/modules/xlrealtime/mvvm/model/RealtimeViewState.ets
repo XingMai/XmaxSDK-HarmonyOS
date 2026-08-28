@@ -54,6 +54,7 @@ export class RealtimeViewState {
   connectionState: RealtimeConnectionState = RealtimeConnectionState.IDLE;
   localVideoTrack: RealtimeVideoTrack | null = null;
   remoteVideoTrack: RealtimeVideoTrack | null = null;
+  isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;
   errorMessage: string = '';

@@ -4,6 +4,7 @@ import { VideoFrame } from '../media/video/VideoFrame';
 import { VideoContentMode } from '../media/video/VideoContentMode';
 import { RemoteStream } from './RemoteStream';
 import { RoomJoinConfiguration } from './RoomJoinConfiguration';
+import { RtcCameraPreviewReadyListener } from './RtcCameraPreviewReadyListener';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
@@ -253,6 +254,16 @@ export interface RtcManaging {
    * @returns 无返回值。
    */
   setEventListener(listener: RtcEventListener | null): void;
+
+  /**
+   * 设置摄像头预览就绪监听器。
+   *
+   * @param listener 预览就绪监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
+  setCameraPreviewReadyListener(
+    listener: RtcCameraPreviewReadyListener | null
+  ): void;
 
   /**
    * 设置 RTC 质量事件监听器。

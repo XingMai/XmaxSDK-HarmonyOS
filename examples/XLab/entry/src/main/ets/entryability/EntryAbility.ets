@@ -1,6 +1,7 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { XLabApplicationLifecycle } from '../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
 import { XLabModelSelection } from '../modules/xlrealtime/config/XLabModelSelection';
 
@@ -9,7 +10,16 @@ const TAG: string = 'EntryAbility';
 
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    XLabApplicationLifecycle.initialize();
     hilog.info(DOMAIN, TAG, 'XLab created');
+  }
+
+  onForeground(): void {
+    XLabApplicationLifecycle.setForeground(true);
+  }
+
+  onBackground(): void {
+    XLabApplicationLifecycle.setForeground(false);
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

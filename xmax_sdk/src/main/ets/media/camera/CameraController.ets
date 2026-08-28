@@ -17,6 +17,7 @@ import {
 import { ImageSize } from '../../service/media/ImageSize';
 import { MediaService } from '../../service/media/MediaService';
 import { MediaServicing } from '../../service/media/MediaServicing';
+import { RealtimeCameraPreviewReadyListener } from '../../service/realtime/RealtimeCameraPreview';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import {
@@ -71,6 +72,18 @@ export class CameraController {
   /** @returns 当前活动的本地相机视频轨道；尚未创建时返回空值。 */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
+  }
+
+  /**
+   * 设置摄像头预览就绪监听器。
+   *
+   * @param listener 预览就绪监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
+  setPreviewReadyListener(
+    listener: RealtimeCameraPreviewReadyListener | null
+  ): void {
+    this.rtcManager.setCameraPreviewReadyListener(listener);
   }
 
   /**

@@ -76,6 +76,7 @@ export class RealtimeViewModel {
     this.connecting = true;
     this.localVideoPath = localVideoPath;
     this.localImagePath = localImagePath;
+    this.state.isLocalPreviewLoading = true;
     this.state.errorMessage = '';
 
     let connectingManager: XmaxRealtimeManaging | null = null;
@@ -91,6 +92,11 @@ export class RealtimeViewModel {
       );
       connectingManager = manager;
       this.realtimeManager = manager;
+      manager.setCameraPreviewReadyListener((): void => {
+        if (this.realtimeManager === manager) {
+          this.state.isLocalPreviewLoading = false;
+        }
+      });
       manager.setErrorListener((error: XmaxError): void => {
         if (this.realtimeManager === manager) {
           this.state.errorMessage = error.message;
@@ -117,6 +123,9 @@ export class RealtimeViewModel {
         localImagePath
       );
       this.state.localVideoTrack = localStream.videoTrack ?? null;
+      if (localVideoPath.length > 0 || localImagePath.length > 0) {
+        this.state.isLocalPreviewLoading = false;
+      }
 
       if (this.realtimeManager !== manager) {
         await this.stopLocalInput(
@@ -143,6 +152,20 @@ export class RealtimeViewModel {
     } finally {
       this.connecting = false;
     }
+  }
+
+  async resume(
+    context: common.UIAbilityContext,
+    fallbackVideoPath: string = '',
+    fallbackImagePath: string = ''
+  ): Promise<void> {
+    const hasPreservedInput: boolean = this.localVideoPath.length > 0 ||
+      this.localImagePath.length > 0;
+    await this.connect(
+      context,
+      hasPreservedInput ? this.localVideoPath : fallbackVideoPath,
+      hasPreservedInput ? this.localImagePath : fallbackImagePath
+    );
   }
 
   async switchCamera(): Promise<void> {
@@ -219,24 +242,44 @@ export class RealtimeViewModel {
     );
   }
 
+  async suspend(): Promise<void> {
+    await this.closeRealtime(true);
+  }
+
   async disconnect(): Promise<void> {
+    await this.closeRealtime(false);
+  }
+
+  private async closeRealtime(preservesLocalInput: boolean): Promise<void> {
     this.generationRevision++;
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     const localVideoPath: string = this.localVideoPath;
     const localImagePath: string = this.localImagePath;
     this.realtimeManager = null;
-    this.localVideoPath = '';
-    this.localImagePath = '';
+    if (!preservesLocalInput) {
+      this.localVideoPath = '';
+      this.localImagePath = '';
+    }
     this.moxReferenceSourcePath = '';
     this.moxReferenceRemoteUrl = '';
+    if (this.selectedReferenceItem !== null) {
+      this.selectedReferenceItem.isSelected = false;
+      this.selectedReferenceItem = null;
+    }
+    this.submittedPrompt = '';
+    this.generationInputMode = GenerationInputMode.REFERENCE;
+    this.state.selectedReferenceId = '';
     this.state.localVideoTrack = null;
     this.state.remoteVideoTrack = null;
+    this.state.isLocalPreviewLoading = true;
     this.connecting = false;
     this.switchingCamera = false;
     this.changingLocalMedia = false;
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
+    this.state.errorMessage = '';
     if (manager !== null) {
+      manager.setCameraPreviewReadyListener(null);
       manager.setStateListener(null);
       try {
         await manager.disconnect();
@@ -546,6 +589,7 @@ export class RealtimeViewModel {
     const previousImagePath: string = this.localImagePath;
     this.changingLocalMedia = true;
     const changeRevision: number = ++this.generationRevision;
+    this.state.isLocalPreviewLoading = true;
     this.state.errorMessage = '';
 
     let changed: boolean = false;
@@ -577,6 +621,7 @@ export class RealtimeViewModel {
       }
 
       this.state.localVideoTrack = stream.videoTrack ?? null;
+      this.state.isLocalPreviewLoading = false;
       if (shouldReconnect) {
         const remoteStream: RealtimeMediaStream = await manager.connect(stream);
         this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;

@@ -26,6 +26,7 @@ import {
   VideoEncodePreference,
   VideoEncoderConfig,
   VideoFrameData,
+  VideoFrameInfo,
   VideoSourceType
 } from '@bytertc/volcenginertc';
 import { AudioFrame } from '../media/audio/AudioFrame';
@@ -39,6 +40,7 @@ import { VideoFrame } from '../media/video/VideoFrame';
 import { VideoContentMode } from '../media/video/VideoContentMode';
 import { RemoteStream } from './RemoteStream';
 import { RoomJoinConfiguration } from './RoomJoinConfiguration';
+import { RtcCameraPreviewReadyListener } from './RtcCameraPreviewReadyListener';
 import {
   RtcEngineLease,
   RtcEngineManager
@@ -69,10 +71,15 @@ export class RtcManager implements RtcManaging {
   // 事件监听
   private listener: RtcEventListener | null = null;
   private qualityListener: RtcQualityListener | null = null;
+  private cameraPreviewReadyListener: RtcCameraPreviewReadyListener | null = null;
 
   // 运行状态
   private localVideoMirrorType: MirrorType = MirrorType.kMirrorTypeNone;
   private activeRoomId: string = '';
+  private isCameraVideoSourceActive: boolean = false;
+  private hasCapturedFirstLocalVideoFrame: boolean = false;
+  private hasBoundLocalVideoCanvas: boolean = false;
+  private hasReportedCameraPreviewReady: boolean = false;
 
   /**
    * 创建 RTC Manager。
@@ -123,6 +130,19 @@ export class RtcManager implements RtcManaging {
       RtcStatsLogger.logSystemStats(stats);
     });
     engine.on(
+      'onFirstLocalVideoFrameCaptured',
+      (
+        index: StreamIndex,
+        _info: VideoFrameInfo
+      ): void => {
+        if (this.engine !== engine || index !== StreamIndex.kStreamIndexMain) {
+          return;
+        }
+
+        this.markFirstLocalVideoFrameCaptured();
+      }
+    );
+    engine.on(
       'onPerformanceAlarms',
       (
         _mode: PerformanceAlarmMode,
@@ -151,6 +171,9 @@ export class RtcManager implements RtcManaging {
     const lease: RtcEngineLease | null = this.engineLease;
     this.engineLease = null;
     this.remoteStreamKeys.clear();
+    this.cameraPreviewReadyListener = null;
+    this.resetCameraPreviewReadiness(false);
+    this.hasBoundLocalVideoCanvas = false;
 
     try {
       await this.leaveRoom();
@@ -160,6 +183,7 @@ export class RtcManager implements RtcManaging {
         try {
           engine.off('onSEIMessageReceived');
           engine.off('onSysStats');
+          engine.off('onFirstLocalVideoFrameCaptured');
           engine.off('onPerformanceAlarms');
         } finally {
           await RtcEngineManager.release(lease);
@@ -204,28 +228,36 @@ export class RtcManager implements RtcManaging {
     frameRate: number
   ): void {
     const engine: RTCEngine = this.requireEngine();
-    this.checkResult(
-      engine.setVideoSourceType(
-        StreamIndex.kStreamIndexMain,
-        VideoSourceType.kVideoSourceTypeInternal
-      ),
-      'setVideoSourceType'
-    );
+    this.resetCameraPreviewReadiness(false);
 
-    this.checkResult(
-      engine.setVideoCaptureConfig({
-        capture_preference: CapturePreference.kManual,
-        width: width,
-        height: height,
-        frame_rate: frameRate
-      }),
-      'setVideoCaptureConfig'
-    );
+    try {
+      this.checkResult(
+        engine.setVideoSourceType(
+          StreamIndex.kStreamIndexMain,
+          VideoSourceType.kVideoSourceTypeInternal
+        ),
+        'setVideoSourceType'
+      );
 
-    this.checkResult(
-      engine.startVideoCapture(),
-      'startVideoCapture'
-    );
+      this.checkResult(
+        engine.setVideoCaptureConfig({
+          capture_preference: CapturePreference.kManual,
+          width: width,
+          height: height,
+          frame_rate: frameRate
+        }),
+        'setVideoCaptureConfig'
+      );
+
+      this.resetCameraPreviewReadiness(true);
+      this.checkResult(
+        engine.startVideoCapture(),
+        'startVideoCapture'
+      );
+    } catch (error) {
+      this.resetCameraPreviewReadiness(false);
+      throw XmaxError.from(error);
+    }
   }
 
   /**
@@ -235,11 +267,15 @@ export class RtcManager implements RtcManaging {
    */
   stopVideoCapture(): void {
     const engine: RTCEngine | null = this.engine;
-    if (engine !== null) {
-      this.checkResult(
-        engine.stopVideoCapture(),
-        'stopVideoCapture'
-      );
+    try {
+      if (engine !== null) {
+        this.checkResult(
+          engine.stopVideoCapture(),
+          'stopVideoCapture'
+        );
+      }
+    } finally {
+      this.resetCameraPreviewReadiness(false);
     }
   }
 
@@ -270,6 +306,7 @@ export class RtcManager implements RtcManaging {
    */
   useExternalVideoSource(): void {
     const engine: RTCEngine = this.requireEngine();
+    this.resetCameraPreviewReadiness(false);
     this.checkResult(
       engine.setVideoSourceType(
         StreamIndex.kStreamIndexMain,
@@ -620,6 +657,8 @@ export class RtcManager implements RtcManaging {
       this.requireEngine().setLocalVideoMirrorType(this.localVideoMirrorType),
       'setLocalVideoMirrorType'
     );
+
+    this.markLocalVideoCanvasBound();
   }
 
   /**
@@ -628,11 +667,15 @@ export class RtcManager implements RtcManaging {
    * @returns 无返回值。
    */
   unbindLocalVideo(): void {
-    if (this.engine !== null) {
-      this.engine.setLocalVideoCanvas(
-        StreamIndex.kStreamIndexMain,
-        RtcVideoConverter.createHiddenCanvas()
-      );
+    try {
+      if (this.engine !== null) {
+        this.engine.setLocalVideoCanvas(
+          StreamIndex.kStreamIndexMain,
+          RtcVideoConverter.createHiddenCanvas()
+        );
+      }
+    } finally {
+      this.hasBoundLocalVideoCanvas = false;
     }
   }
 
@@ -712,6 +755,19 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
+   * 设置摄像头预览就绪监听器。
+   *
+   * @param listener 预览就绪监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
+  setCameraPreviewReadyListener(
+    listener: RtcCameraPreviewReadyListener | null
+  ): void {
+    this.cameraPreviewReadyListener = listener;
+    this.notifyCameraPreviewReadyIfNeeded();
+  }
+
+  /**
    * 设置 RTC 网络质量和性能告警监听器。
    *
    * @param listener RTC 质量事件监听器；传入空值时清除监听器。
@@ -719,6 +775,54 @@ export class RtcManager implements RtcManaging {
    */
   setQualityListener(listener: RtcQualityListener | null): void {
     this.qualityListener = listener;
+  }
+
+  /**
+   * 重置摄像头预览就绪条件。
+   *
+   * @param cameraSourceActive 当前是否启用了 RTC 内部摄像头源。
+   * @returns 无返回值。
+   */
+  private resetCameraPreviewReadiness(cameraSourceActive: boolean): void {
+    this.isCameraVideoSourceActive = cameraSourceActive;
+    this.hasCapturedFirstLocalVideoFrame = false;
+    this.hasReportedCameraPreviewReady = false;
+  }
+
+  /** 记录 RTC 已完成本地摄像头首帧采集。 */
+  private markFirstLocalVideoFrameCaptured(): void {
+    this.hasCapturedFirstLocalVideoFrame = true;
+    this.notifyCameraPreviewReadyIfNeeded();
+  }
+
+  /** 记录本地视频渲染画布已经完成绑定。 */
+  private markLocalVideoCanvasBound(): void {
+    this.hasBoundLocalVideoCanvas = true;
+    this.notifyCameraPreviewReadyIfNeeded();
+  }
+
+  /** 在首帧采集和画布绑定均完成后通知一次预览就绪。 */
+  private notifyCameraPreviewReadyIfNeeded(): void {
+    const listener: RtcCameraPreviewReadyListener | null =
+      this.cameraPreviewReadyListener;
+    if (!this.isCameraVideoSourceActive ||
+      !this.hasCapturedFirstLocalVideoFrame ||
+      !this.hasBoundLocalVideoCanvas ||
+      this.hasReportedCameraPreviewReady ||
+      listener === null) {
+      return;
+    }
+
+    this.hasReportedCameraPreviewReady = true;
+    try {
+      listener();
+    } catch (error) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      XmaxLogger.error(
+        `摄像头预览就绪监听器执行失败\n└─ 原因：${reason}`,
+        'RTC'
+      );
+    }
   }
 
   /**

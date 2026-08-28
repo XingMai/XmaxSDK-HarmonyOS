@@ -14,6 +14,9 @@ export {
   RealtimeContext
 } from './src/main/ets/service/realtime/RealtimeContext';
 export {
+  RealtimeCameraPreviewReadyListener
+} from './src/main/ets/service/realtime/RealtimeCameraPreview';
+export {
   RealtimeErrorListener
 } from './src/main/ets/service/realtime/RealtimeError';
 export {
