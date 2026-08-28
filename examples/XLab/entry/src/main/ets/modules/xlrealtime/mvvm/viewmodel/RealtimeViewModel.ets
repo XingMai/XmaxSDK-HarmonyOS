@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CameraPosition,
   RealtimeConfiguration,
@@ -21,6 +22,9 @@ import { ReferenceCategory } from '../../reference/ReferenceCategory';
 import { ReferenceDataSource } from '../../reference/ReferenceDataSource';
 import { ReferenceUploading } from '../../reference/ReferenceUploader';
 import { RealtimeReferenceItemState, RealtimeViewState } from '../model/RealtimeViewState';
+
+const LOG_DOMAIN: number = 0x0000;
+const LOG_TAG: string = 'RealtimeViewModel';
 
 enum GenerationInputMode {
   REFERENCE = 'reference',
@@ -146,8 +150,11 @@ export class RealtimeViewModel {
     } catch (error) {
       if (connectingManager === null ||
         this.realtimeManager === connectingManager) {
-        this.state.errorMessage = this.errorMessage(error);
+        const message: string = this.errorMessage(error);
+        this.state.errorMessage = message;
         this.state.remoteVideoTrack = null;
+        this.state.isLocalPreviewLoading = false;
+        this.logPreviewError(message);
       }
     } finally {
       this.connecting = false;
@@ -635,7 +642,9 @@ export class RealtimeViewModel {
       if (this.realtimeManager === manager) {
         this.state.localVideoTrack = stream?.videoTrack ?? null;
         this.state.remoteVideoTrack = null;
+        this.state.isLocalPreviewLoading = false;
         this.state.isGenerationStarting = false;
+        this.logPreviewError(this.errorMessage(error));
         this.presentError(error);
       }
     } finally {
@@ -739,5 +748,14 @@ export class RealtimeViewModel {
     const message: string = this.errorMessage(error);
     this.state.errorMessage = message;
     this.onMessage?.(message);
+  }
+
+  private logPreviewError(message: string): void {
+    hilog.error(
+      LOG_DOMAIN,
+      LOG_TAG,
+      'Failed to load local preview: %{public}s',
+      message
+    );
   }
 }
