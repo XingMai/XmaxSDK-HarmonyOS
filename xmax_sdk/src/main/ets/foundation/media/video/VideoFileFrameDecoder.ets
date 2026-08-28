@@ -55,7 +55,8 @@ export class VideoFileFrameDecoder {
     frameIntervalUs: number,
     listener: VideoFileFrameDecoderListener,
     playbackAnchorUs?: number,
-    mediaStartUs?: number
+    mediaStartUs?: number,
+    cycleDurationUs?: number
   ) {
     const resolvedPlaybackAnchorUs: number = playbackAnchorUs ??
       systemDateTime.getUptime(
@@ -79,6 +80,7 @@ export class VideoFileFrameDecoder {
         outputWidth,
         outputHeight,
         frameIntervalUs,
+        cycleDurationUs ?? 0,
         (
           data: ArrayBuffer | undefined,
           width: number,

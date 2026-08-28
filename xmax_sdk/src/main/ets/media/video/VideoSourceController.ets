@@ -30,6 +30,7 @@ export class VideoSourceController implements VideoSourceControlling {
 
   // 视频文件资源
   private decoder: VideoFileFrameDecoder | null = null;
+  private decoderReleasePromise: Promise<void> | null = null;
   private filePath: string = '';
   private sourceRotation: VideoRotation = VideoRotation.ROTATION_0;
 
@@ -72,7 +73,7 @@ export class VideoSourceController implements VideoSourceControlling {
     outputHeight: number,
     frameRate: number
   ): void {
-    if (this.decoder !== null) {
+    if (this.decoder !== null || this.decoderReleasePromise !== null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Stop the current video source before configuring another file'
@@ -178,7 +179,8 @@ export class VideoSourceController implements VideoSourceControlling {
         }
       ),
       timeline.playbackAnchorForLoop(loopIndex),
-      timeline.mediaStartUs
+      timeline.mediaStartUs,
+      timeline.cycleDurationUs
     );
   }
 
@@ -258,8 +260,7 @@ export class VideoSourceController implements VideoSourceControlling {
       return;
     }
 
-    this.decoder = null;
-    await this.releaseDecoderInstance(endedDecoder);
+    await this.releaseDecoder();
     if (this.decoder !== null || this.filePath.length === 0 ||
       this.timeline === null || loopIndex !== this.loopIndex) {
       return;
@@ -311,14 +312,27 @@ export class VideoSourceController implements VideoSourceControlling {
    *
    * @returns 当前解码器释放完成后的 Promise。
    */
-  private releaseDecoder(): Promise<void> {
+  private async releaseDecoder(): Promise<void> {
     const decoder: VideoFileFrameDecoder | null = this.decoder;
     this.decoder = null;
+    const pendingRelease: Promise<void> | null = this.decoderReleasePromise;
+
+    if (pendingRelease !== null) {
+      await pendingRelease;
+    }
 
     if (decoder !== null) {
-      return this.releaseDecoderInstance(decoder);
+      const releasePromise: Promise<void> =
+        this.releaseDecoderInstance(decoder);
+      this.decoderReleasePromise = releasePromise;
+      try {
+        await releasePromise;
+      } finally {
+        if (this.decoderReleasePromise === releasePromise) {
+          this.decoderReleasePromise = null;
+        }
+      }
     }
-    return Promise.resolve();
   }
 
   /**

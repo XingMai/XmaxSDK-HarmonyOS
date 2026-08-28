@@ -36,6 +36,7 @@ interface XmaxVideoNative {
     outputWidth: number,
     outputHeight: number,
     frameIntervalUs: number,
+    cycleDurationUs: number,
     listener: NativeVideoFileFrameListener
   ): NativeVideoFileDecoder;
 
