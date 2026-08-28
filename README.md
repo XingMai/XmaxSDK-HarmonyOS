@@ -37,13 +37,13 @@ Native HarmonyOS SDK, providing access to Xmax real-time interactive video gener
 
 XmaxSDK relies on the VolcEngine RTC SDK for HarmonyOS. Since the RTC SDK is not yet available in the official OHPM Registry, manual integration is currently required.
 
-- Download Xmax SDK [`xmaxsdk-1.0.0.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.0/xmaxsdk-1.0.0.har) from GitHub Releases.
+- Download Xmax SDK [`xmaxsdk-1.0.1.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.1/xmaxsdk-1.0.1.har) from GitHub Releases.
 - Download VolcEngine RTC SDK from the [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof?from=from_copylink).
 
 Add both HAR files to the `libs` directory of your application module:
 
 ```text
-entry/libs/xmaxsdk-1.0.0.har
+entry/libs/xmaxsdk-1.0.1.har
 entry/libs/VolcEngineRTCToB-Release.har
 ```
 
@@ -52,7 +52,7 @@ Add XmaxSDK to the module-level `oh-package.json5`:
 ```json5
 {
   "dependencies": {
-    "@xmax/sdk": "file:./libs/xmaxsdk-1.0.0.har"
+    "@xmax/sdk": "file:./libs/xmaxsdk-1.0.1.har"
   }
 }
 ```
