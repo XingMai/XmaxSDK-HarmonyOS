@@ -4,6 +4,7 @@ import {
 } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { systemShare } from '@kit.ShareKit';
 import { RealtimeModel, XMAX_SDK_VERSION } from '@xmax/sdk';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
 import { XLabModelSelection } from '../modules/xlrealtime/config/XLabModelSelection';
@@ -456,7 +457,7 @@ struct SdkFeatureCard {
 
           Column() {
             Text(this.title)
-              .fontSize(18)
+              .fontSize(16)
               .fontWeight(FontWeight.Bold)
               .fontColor('#F4F7FB')
 
@@ -544,6 +545,31 @@ struct Index {
 
   private openStoragePlayground(): void {
     void router.pushUrl({ url: 'modules/xlstorage/StoragePage' });
+  }
+
+  private async openUIExtensionPlayground(): Promise<void> {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    await XLabConfiguration.persistApiKey(context, this.realtimeApiKey);
+
+    const sharedData = new systemShare.SharedData({
+      utd: 'general.text',
+      content: 'XmaxSDK UIExtensionAbility lifecycle test',
+      title: 'XmaxSDK UIExtensionAbility'
+    });
+    const controller = new systemShare.ShareController(sharedData);
+
+    await controller.show(context, {
+      selectionMode: systemShare.SelectionMode.SINGLE,
+      previewMode: systemShare.SharePreviewMode.DEFAULT
+    });
+  }
+
+  private presentUIExtensionPlayground(): void {
+    void this.openUIExtensionPlayground().catch((error: Error): void => {
+      promptAction.showToast({
+        message: `打开 UIExtensionAbility 失败：${error.message}`
+      });
+    });
   }
 
   private openRealtimePlayground(
@@ -837,6 +863,21 @@ struct Index {
           .margin({ top: 30, bottom: 14 })
 
           SdkFeatureCard({
+            categoryLabel: 'HARMONYOS / UI EXTENSION',
+            watermark: 'EXT',
+            accentColor: '#FF2E88',
+            icon: $r('app.media.sdk_feature_ui_extension'),
+            iconLabel: 'ABILITY',
+            title: 'UIExtensionAbility',
+            subtitle: '在 UIExtensionAbility 中验证实时生命周期',
+            tags: ['SHARE', 'RTC', 'LIFECYCLE'],
+            highlightedTag: 'LIFECYCLE',
+            onOpen: (): void => {
+              this.presentUIExtensionPlayground();
+            }
+          })
+
+          SdkFeatureCard({
             categoryLabel: 'SDK RENDERING / TRAJECTORY',
             watermark: 'FX',
             accentColor: '#FF8FD8',
@@ -850,6 +891,7 @@ struct Index {
               void this.presentLocalImagePicker(true);
             }
           })
+            .margin({ top: 14 })
 
           SdkFeatureCard({
             categoryLabel: 'SDK SERVICE / STORAGE',

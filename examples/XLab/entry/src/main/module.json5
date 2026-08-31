@@ -26,7 +26,8 @@
         "reason": "$string:reason_camera",
         "usedScene": {
           "abilities": [
-            "EntryAbility"
+            "EntryAbility",
+            "XLabShareExtensionAbility"
           ],
           "when": "inuse"
         }
@@ -36,7 +37,8 @@
         "reason": "$string:reason_microphone",
         "usedScene": {
           "abilities": [
-            "EntryAbility"
+            "EntryAbility",
+            "XLabShareExtensionAbility"
           ],
           "when": "inuse"
         }
@@ -59,6 +61,30 @@
             ],
             "actions": [
               "ohos.want.action.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "XLabShareExtensionAbility",
+        "srcEntry": "./ets/extensionability/XLabShareExtensionAbility.ets",
+        "type": "share",
+        "exported": true,
+        "label": "$string:EntryAbility_label",
+        "icon": "$media:layered_image",
+        "skills": [
+          {
+            "actions": [
+              "ohos.want.action.sendData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "utd": "general.text",
+                "maxFileSupported": 1
+              }
             ]
           }
         ]
