@@ -71,4 +71,4 @@ export { ImageSize } from './src/main/ets/service/media/ImageSize';
 export { MediaServicing } from './src/main/ets/service/media/MediaServicing';
 export { XmaxClient } from './src/main/ets/core/XmaxClient';
 
-export const XMAX_SDK_VERSION: string = '1.0.1';
+export const XMAX_SDK_VERSION: string = '1.0.2';
