@@ -22,9 +22,9 @@ export class XLabModelSelection {
       'RealtimeModel.X2_0'
     ),
     new XLabModelOption(
-      RealtimeModel.X2_PLATFORM_TESTING,
-      'X2 Platform Testing',
-      'RealtimeModel.X2_PLATFORM_TESTING'
+      RealtimeModel.X2_0_SLA,
+      'X2.0 SLA',
+      'RealtimeModel.X2_0_SLA'
     )
   ];
 
@@ -39,8 +39,8 @@ export class XLabModelSelection {
     const selectedModel: string | undefined = AppStorage.get<string>(
       XLabModelSelection.STORAGE_KEY
     );
-    if (selectedModel === RealtimeModel.X2_PLATFORM_TESTING) {
-      return RealtimeModel.X2_PLATFORM_TESTING;
+    if (selectedModel === RealtimeModel.X2_0_SLA) {
+      return RealtimeModel.X2_0_SLA;
     }
     return XLabModelSelection.DEFAULT_MODEL;
   }
