@@ -4,6 +4,7 @@
 **/.cxx/
 node_modules/
 .idea/
+.cicd/
 local.properties
 .DS_Store
 *.har
