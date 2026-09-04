@@ -1,7 +1,9 @@
 /** SDK 支持的实时生成模型。 */
 export enum RealtimeModel {
 
-  X2_0 = 'x2.0'
+  X2_0 = 'x2.0',
+
+  X2_PLATFORM_TESTING = 'x2-platform-testing'
 }
 
 /** 表示提交给实时服务的模型定义。 */

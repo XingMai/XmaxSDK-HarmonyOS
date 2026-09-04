@@ -6,7 +6,7 @@ export class MediaService implements MediaServicing {
 
   // 模型约束
   private static readonly MINIMUM_MODEL_PIXELS: number = 600000;
-  private static readonly MAXIMUM_MODEL_PIXELS: number = 1280000;
+  private static readonly MAXIMUM_MODEL_PIXELS: number = 2100000;
   private static readonly MODEL_SIZE_ALIGNMENT: number = 32;
 
   /**

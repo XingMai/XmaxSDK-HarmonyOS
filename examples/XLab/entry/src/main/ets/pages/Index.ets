@@ -7,7 +7,10 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { systemShare } from '@kit.ShareKit';
 import { RealtimeModel, XMAX_SDK_VERSION } from '@xmax/sdk';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
-import { XLabModelSelection } from '../modules/xlrealtime/config/XLabModelSelection';
+import {
+  XLabModelOption,
+  XLabModelSelection
+} from '../modules/xlrealtime/config/XLabModelSelection';
 
 @Component
 struct ConsoleTag {
@@ -89,7 +92,7 @@ struct ModelRegistryCard {
 
         Blank()
 
-        Text('1 MODEL')
+        Text(`${XLabModelSelection.OPTIONS.length} MODELS`)
           .fontSize(8)
           .fontColor('#70FFFFFF')
           .letterSpacing(0.8)
@@ -158,41 +161,43 @@ struct ModelRegistryCard {
         .margin({ top: 12, bottom: 4 })
         .color('#18FFFFFF')
 
-      Row() {
-        Text('◆')
-          .fontSize(7)
-          .fontColor(this.selectedModel === RealtimeModel.X2_0 ? '#8EF0C8' : '#66FFFFFF')
+      ForEach(XLabModelSelection.OPTIONS, (option: XLabModelOption) => {
+        Row() {
+          Text('◆')
+            .fontSize(7)
+            .fontColor(this.selectedModel === option.model ? '#8EF0C8' : '#66FFFFFF')
 
-        Column() {
-          Text('X2.0')
-            .fontSize(13)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(this.selectedModel === RealtimeModel.X2_0 ? '#F0F2F5' : '#A8B0BC')
+          Column() {
+            Text(option.title)
+              .fontSize(13)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.selectedModel === option.model ? '#F0F2F5' : '#A8B0BC')
 
-          Text('RealtimeModel.X2_0')
-          .margin({ top: 3 })
-          .fontSize(8)
-          .fontColor(this.selectedModel === RealtimeModel.X2_0 ? '#70FFFFFF' : '#4FFFFFFF')
+            Text(option.symbol)
+              .margin({ top: 3 })
+              .fontSize(8)
+              .fontColor(this.selectedModel === option.model ? '#70FFFFFF' : '#4FFFFFFF')
+          }
+          .margin({ left: 10 })
+          .alignItems(HorizontalAlign.Start)
+
+          Blank()
+
+          ConsoleTag({
+            label: this.selectedModel === option.model ? 'ACTIVE' : 'SELECT',
+            tagColor: this.selectedModel === option.model ? '#8EF0C8' : '#80FFFFFF',
+            tagBackground: this.selectedModel === option.model ? '#168EF0C8' : '#0AFFFFFF'
+          })
         }
-        .margin({ left: 10 })
-        .alignItems(HorizontalAlign.Start)
-
-        Blank()
-
-        ConsoleTag({
-          label: this.selectedModel === RealtimeModel.X2_0 ? 'ACTIVE' : 'SELECT',
-          tagColor: this.selectedModel === RealtimeModel.X2_0 ? '#8EF0C8' : '#80FFFFFF',
-          tagBackground: this.selectedModel === RealtimeModel.X2_0 ? '#168EF0C8' : '#0AFFFFFF'
+        .width('100%')
+        .height(56)
+        .padding({ left: 10, right: 8 })
+        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : '#00000000')
+        .borderRadius(10)
+        .onClick((): void => {
+          this.onSelect(option.model);
         })
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 10, right: 8 })
-      .backgroundColor(this.selectedModel === RealtimeModel.X2_0 ? '#108EF0C8' : '#00000000')
-      .borderRadius(10)
-      .onClick((): void => {
-        this.onSelect(RealtimeModel.X2_0);
-      })
+      }, (option: XLabModelOption): string => option.model)
     }
     .width('100%')
     .padding(18)

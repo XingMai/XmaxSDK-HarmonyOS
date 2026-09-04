@@ -734,7 +734,7 @@ export class RealtimeViewModel {
   }
 
   private videoFormat(): RealtimeVideoFormat {
-    return new RealtimeVideoFormat(832, 1472, 24);
+    return new RealtimeVideoFormat(1024, 1920, 30);
   }
 
   private errorMessage(error: Object): string {
