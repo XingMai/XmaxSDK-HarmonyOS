@@ -1,6 +1,6 @@
 {
   "name": "@xmax/sdk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Xmax realtime generation SDK for HarmonyOS",
   "keywords": [
     "ai",
