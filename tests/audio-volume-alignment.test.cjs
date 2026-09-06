@@ -142,6 +142,7 @@ test('local volume propagates through media controllers even before a video sour
 function streamFixture() {
   const events = [], errors = [];
   const load = loadEts({
+    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
     '@kit.ArkTS': { util: { TextEncoder: class {
       encodeInto(text) { return new Uint8Array(Buffer.from(text)); }
     } } },

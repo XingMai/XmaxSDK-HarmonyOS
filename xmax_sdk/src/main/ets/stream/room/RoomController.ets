@@ -1,3 +1,4 @@
+import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
 import {
   XmaxError,
   XmaxErrorCode,
@@ -29,6 +30,8 @@ export class RoomController implements RoomControlling {
   // 流层组件
   private readonly heartbeat: RoomHeartbeat;
 
+  private readonly timing: RealtimeTiming;
+
   // 房间资源
   private localUserId: string = '';
 
@@ -36,8 +39,10 @@ export class RoomController implements RoomControlling {
    * 创建房间 Controller。
    *
    * @param rtcManager 提供房间连接和消息发送能力的 RTC Manager。
+   * @param timing 与实时 Manager 共享的启动耗时记录。
    */
-  constructor(rtcManager: RtcManaging) {
+  constructor(rtcManager: RtcManaging, timing: RealtimeTiming = new RealtimeTiming()) {
+    this.timing = timing;
     this.rtcManager = rtcManager;
     this.heartbeat = new RoomHeartbeat(rtcManager);
   }
@@ -58,12 +63,14 @@ export class RoomController implements RoomControlling {
     this.heartbeat.stop();
     this.localUserId = '';
 
+    this.timing.beginRoomJoin();
     await this.rtcManager.joinRoom(new RoomJoinConfiguration(
       connection.roomId,
       connection.userId,
       connection.token
     ));
 
+    this.timing.finishRoomJoin();
     this.localUserId = connection.userId;
     this.heartbeat.start(connection.userId);
   }

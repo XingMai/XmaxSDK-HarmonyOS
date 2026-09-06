@@ -6,8 +6,9 @@ const { loadEts } = require('./ets-loader.cjs');
 const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 const outcome = promise => promise.then(value => ({ value }), error => ({ error }));
 
-function fixture(t) {
-  const timers = new Map(), events = [], messages = [], observations = [], errors = [];
+function fixture(t, timingOptions = {}) {
+  const timers = new Map(), events = [], messages = [], observations = [], errors = [], timingLogs = [];
+  let now = 0;
   let timerId = 0, rtc, media;
   let Track, Format, MediaStream;
   class FakeRtc {
@@ -20,7 +21,10 @@ function fixture(t) {
     renderLibraryName() { return 'rtc'; }
     bindRemoteVideo() { events.push('bind-surface'); }
     unbindRemoteVideo() {}
-    async joinRoom() {}
+    async joinRoom() {
+      now += timingOptions.roomMs ?? 0;
+      if (timingOptions.roomError) throw timingOptions.roomError;
+    }
     async leaveRoom() {}
     publishLocalVideo() {}
     unpublishLocalVideo() {}
@@ -28,7 +32,11 @@ function fixture(t) {
     setRemoteAudioVolume() { events.push('audio-volume'); }
     subscribeRemoteAudio(user, enabled) { events.push(`audio:${user}:${enabled}`); }
     subscribeRemoteVideo() {}
-    sendRoomMessage(text) { messages.push(JSON.parse(text)); }
+    sendRoomMessage(text) {
+      const event = JSON.parse(text);
+      messages.push(event);
+      if (event.event === 'start') now += timingOptions.signalMs ?? 0;
+    }
   }
   class FakeMedia {
     constructor() { media = this; this.hasAudio = false; }
@@ -45,6 +53,7 @@ function fixture(t) {
     async stopLocalStream() { this.track = null; }
   }
   const load = loadEts({
+    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => now * 1000000 } },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     '@kit.BasicServicesKit': { deviceInfo: { distributionOSVersion: '5.1.0', productModel: 'Test' } },
     '@kit.ArkTS': { util: {
@@ -52,13 +61,18 @@ function fixture(t) {
       Base64Helper: class { encodeToStringSync(bytes) { return Buffer.from(bytes).toString('base64'); } },
       TextEncoder: class { encodeInto(text) { return new Uint8Array(Buffer.from(text)); } }
     } },
-    XmaxLogger: { XmaxLogger: { debug() {}, info() {}, warn() {}, error() {} } },
+    XmaxLogger: { XmaxLogger: { debug() {}, info(message, category, option) {
+      if (category === 'Timing') timingLogs.push({ message: typeof message === 'function' ? message() : message, option });
+    }, warn() {}, error() {} } },
     RtcManager: { RtcManager: FakeRtc }, MediaController: { MediaController: FakeMedia },
     EncodingController: { EncodingController: class {} },
     QualityController: { QualityController: class {} },
     RoomHeartbeat: { RoomHeartbeat: class { start() {} stop() {} } },
     RealtimeSessionService: { RealtimeSessionService: class {
-      async createSession() { return { id: 'session', connection: {
+      async createSession() {
+        now += timingOptions.sessionMs ?? 0;
+        if (timingOptions.sessionError) throw timingOptions.sessionError;
+        return { id: 'session', connection: {
         roomId: 'room', userId: 'user', token: 'test', botName: 'bot'
       } }; }
       startHeartbeat() {} stopHeartbeat() {} async closeSession() {}
@@ -82,6 +96,7 @@ function fixture(t) {
   const remote = new RemoteStream('room', 'bot');
   t.after(async () => { await manager.close(); assert.equal(timers.size, 0); });
   return { load, rtc, media, manager, events, messages, observations, errors, timers, State, XmaxError, Code,
+    timingLogs, advance(ms) { now += ms; },
     remote, RemoteStream,
     async begin() {
       const local = new MediaStream('local', media.track);
@@ -99,6 +114,99 @@ function fixture(t) {
     }
   };
 }
+
+test('startup timing spans session creation, RTC join, signaling, matched SEI and usable first frame', async t => {
+  const f = fixture(t, { sessionMs: 10, roomMs: 20, signalMs: 2 });
+  const first = await f.begin();
+  assert.deepEqual(f.timingLogs, []);
+  f.advance(100); f.sei(first.task); await settle();
+  assert.deepEqual(f.timingLogs, []);
+  f.advance(25); f.frame(); await first.pending;
+  assert.equal(f.timingLogs.length, 1);
+  assert.equal(f.timingLogs[0].option, 2);
+  for (const detail of ['总耗时：157.0 ms',
+    '实时连接：30.0 ms', '等待生成结果流确认：102.0 ms',
+    '结果流确认到首帧就绪：25.0 ms']) assert.ok(f.timingLogs[0].message.includes(detail), detail);
+  await f.manager.stopGeneration();
+  const second = await f.begin();
+  f.advance(10); f.sei(second.task); await settle();
+  f.advance(3); f.frame(); await second.pending;
+  assert.equal(f.timingLogs.length, 2);
+  assert.match(f.timingLogs[1].message, /总耗时：15.0 ms/);
+  assert.doesNotMatch(f.timingLogs[1].message, /服务端会话创建|实时连接：/);
+});
+
+test('rejected concurrent calls and condition updates do not reset startup timing or produce extra reports', async t => {
+  const f = fixture(t), first = await f.begin();
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  f.advance(50);
+  await assert.rejects(f.manager.startGeneration(new RealtimeContext('overlap')), { code: f.Code.INVALID_CONFIGURATION });
+  f.sei(first.task); await settle();
+  f.advance(10); f.frame(); await first.pending;
+  assert.equal(f.timingLogs.length, 1);
+  assert.match(f.timingLogs[0].message, /总耗时：60.0 ms/);
+  await f.manager.startGeneration(new RealtimeContext('update'));
+  assert.equal(f.timingLogs.length, 1);
+});
+
+test('cancelled startup emits no timing report and a retry ignores the old task SEI', async t => {
+  const f = fixture(t), first = await f.begin();
+  f.advance(20); f.sei(first.task); await settle();
+  await f.manager.stopGeneration();
+  assert.equal((await first.pending).error.code, f.Code.CANCELLED);
+  assert.deepEqual(f.timingLogs, []);
+  const second = await f.begin();
+  f.advance(10); f.sei(first.task); f.frame(); await settle();
+  assert.deepEqual(f.timingLogs, []);
+  f.advance(20); f.sei(second.task); await settle();
+  f.advance(5); f.frame(); await second.pending;
+  assert.equal(f.timingLogs.length, 1);
+  assert.match(f.timingLogs[0].message, /总耗时：35.0 ms/);
+  assert.match(f.timingLogs[0].message, /等待生成结果流确认：30.0 ms/);
+});
+
+test('generation confirmation and first-frame timeouts report the correct stage without changing the error', async t => {
+  for (const [matched, milliseconds, stage] of [
+    [false, 30000, '正在等待生成结果流确认'], [true, 10000, '结果流已确认，正在等待首帧']
+  ]) {
+    const f = fixture(t), first = await f.begin();
+    if (matched) { f.sei(first.task); await settle(); }
+    f.advance(milliseconds); f.runTimer(milliseconds);
+    const result = await first.pending;
+    assert.equal(result.error.code, f.Code.TIMEOUT);
+    assert.equal(f.errors[0], result.error);
+    assert.equal(f.timingLogs.length, 1);
+    assert.ok(f.timingLogs[0].message.includes(`停留阶段：${stage}`));
+    assert.ok(f.timingLogs[0].message.includes(`已耗时：${milliseconds.toFixed(1)} ms`));
+    assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  }
+});
+
+test('session and room failures report their connection stage after cleanup', async t => {
+  for (const [field, stage] of [['sessionError', '服务端会话创建'], ['roomError', '正在连接 RTC 房间']]) {
+    const options = { sessionMs: 10, roomMs: 20 };
+    const f = fixture(t, options);
+    const error = new f.XmaxError(f.Code.NETWORK_ERROR, 'connection failed');
+    options[field] = error;
+    const first = await f.begin();
+    assert.equal((await first.pending).error, error);
+    assert.equal(f.timingLogs.length, 1);
+    assert.ok(f.timingLogs[0].message.includes(`停留阶段：${stage}`));
+    assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+    assert.equal(f.messages.some(message => message.event === 'start'), false);
+  }
+});
+
+test('synchronous stop from the GENERATING listener does not produce a successful timing report', async t => {
+  const f = fixture(t);
+  f.manager.setStateListener(state => {
+    if (state.connectionState === f.State.GENERATING) void f.manager.stopGeneration();
+  });
+  const first = await f.begin();
+  f.sei(first.task); await settle(); f.frame();
+  assert.equal((await first.pending).error.code, f.Code.CANCELLED);
+  assert.deepEqual(f.timingLogs, []);
+});
 
 test('GENERATING and one-call return wait for a usable frame without requiring a mounted view', async t => {
   const f = fixture(t), { pending, task } = await f.begin();

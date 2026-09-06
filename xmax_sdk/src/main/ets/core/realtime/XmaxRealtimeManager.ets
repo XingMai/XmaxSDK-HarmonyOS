@@ -30,6 +30,7 @@ import { StreamController } from '../../stream/StreamController';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { MediaService } from '../../service/media/MediaService';
 import { RealtimeMediaSource } from './RealtimeMediaSource';
+import { RealtimeTiming, RealtimeTimingRun } from './RealtimeTiming';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 import {
   RealtimeCoordinator,
@@ -64,6 +65,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   // 实时管理组件
   private readonly connectionManager: XmaxRealtimeConnectionManager;
   private readonly generationManager: XmaxRealtimeGenerationManager;
+
+  private readonly timing: RealtimeTiming = new RealtimeTiming();
 
   // 生命周期协调
   private readonly coordinator: RealtimeCoordinator;
@@ -108,7 +111,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           this.renderController.failRemoteFrameWait(error);
         }
         this.errorManager.handle(error);
-      }
+      },
+      this.timing
     );
     this.mediaController = new MediaController(
       context,
@@ -128,7 +132,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       apiService,
       this.mediaController,
       this.renderController,
-      this.streamController
+      this.streamController,
+      this.timing
     );
     this.generationManager = new XmaxRealtimeGenerationManager(
       this.mediaController,
@@ -396,13 +401,27 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const scope: RealtimeTerminationScope = input instanceof RealtimeMediaStream &&
       this.connectionManager.currentSessionId.length === 0 ?
       RealtimeTerminationScope.CONNECTION : RealtimeTerminationScope.GENERATION;
-    return this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, scope,
+    let measurement: RealtimeTimingRun | null = null;
+    const operation = this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, scope,
       async (token: RealtimeOperationToken): Promise<void | RealtimeMediaStream> => {
-        if (input instanceof RealtimeMediaStream) {
-          return await this.startGenerationWithStream(input, context, token);
+        // 只在获得操作所有权后开始计时；更新条件与被拒绝的并发调用不重置统计。
+        if (this.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
+          measurement = this.timing.begin();
         }
-        await this.performStartGeneration(input, token);
+        try {
+          if (input instanceof RealtimeMediaStream) {
+            return await this.startGenerationWithStream(input, context, token);
+          }
+          await this.performStartGeneration(input, token);
+        } finally {
+          this.timing.endOperation(measurement);
+        }
       });
+    return operation.catch((error: Object): void | RealtimeMediaStream => {
+      // Coordinator 已完成取消或错误清理；使用该操作的记录，避免影响较新的重试。
+      this.timing.finishFailure(error, measurement);
+      throw XmaxError.from(error);
+    });
   }
 
   private async startGenerationWithStream(localStream: RealtimeMediaStream, context: RealtimeContext | undefined,
@@ -466,6 +485,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         throw RealtimeOperationToken.cancelledError();
       }
       this.coordinator.commit(new RealtimeState(RealtimeConnectionState.GENERATING, sessionId, taskId), token);
+      this.timing.finish(taskId);
     } catch (error) {
       this.restoreLocalAudioPreview();
       throw XmaxError.from(error);

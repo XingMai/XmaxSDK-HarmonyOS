@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const { loadEts } = require('./ets-loader.cjs');
 
 const platform = {
+    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
   '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
   '@kit.ArkTS': { util: {
     generateRandomUUID: () => randomUUID(),

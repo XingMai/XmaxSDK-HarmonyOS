@@ -8,6 +8,7 @@ function fixture(extra = {}, globals = {}) {
     hilog[level] = (_domain, _tag, format, message) => logs.push({ level, format, message });
   }
   const load = loadEts({
+    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
     '@kit.PerformanceAnalysisKit': { hilog },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     '@kit.BasicServicesKit': { deviceInfo: { distributionOSVersion: '5.1.0', productModel: 'Test model' } },

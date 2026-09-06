@@ -1,3 +1,4 @@
+import { RealtimeTiming } from '../core/realtime/RealtimeTiming';
 import { util } from '@kit.ArkTS';
 import {
   XmaxError,
@@ -64,6 +65,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
   private roomId: string = '';
   private botName: string = '';
 
+  private readonly timing: RealtimeTiming;
+
   // 本地流状态
   private localAudioPublished: boolean = false;
 
@@ -83,14 +86,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
    * @param rtcManager 提供 RTC 引擎基础能力的 Manager。
    * @param remoteStreamListener 接收远端视频流变化的监听器。
    * @param errorListener 接收没有对应等待 Promise 的 RTC 异步错误。
+   * @param timing 与实时 Manager 共享的启动耗时记录。
    */
   constructor(
     rtcManager: RtcManaging,
     remoteStreamListener: RemoteStreamListener,
-    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => {},
+    timing: RealtimeTiming = new RealtimeTiming()
   ) {
+    this.timing = timing;
     this.rtcManager = rtcManager;
-    this.roomController = new RoomController(rtcManager);
+    this.roomController = new RoomController(rtcManager, timing);
     this.encodingController = new EncodingController(rtcManager);
     this.qualityController = new QualityController(rtcManager);
     this.remoteStreamListener = remoteStreamListener;
@@ -186,9 +192,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ): Promise<void> {
+    this.timing.beginSignal(taskId);
     const confirmation: Promise<void> = this.beginGenerationConfirmation(taskId);
     try {
       this.roomController.startGeneration(taskId, videoFormat, context);
+      this.timing.finishSignal(taskId);
       return confirmation;
     } catch (error) {
       // 只拒绝已创建的等待 Promise，避免另抛异常留下未处理的取消拒绝。
@@ -313,6 +321,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
 
+    this.timing.matchSEI(taskId);
     try {
       this.remoteStreamListener(stream);
       if (this.currentTask?.id !== taskId) {

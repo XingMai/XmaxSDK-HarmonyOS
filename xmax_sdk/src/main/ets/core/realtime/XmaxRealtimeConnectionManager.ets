@@ -1,3 +1,4 @@
+import { RealtimeTiming } from './RealtimeTiming';
 import {
   XmaxError,
   XmaxErrorCode
@@ -25,6 +26,8 @@ type ConnectionHeartbeatFailureHandler = (
 /** 协调服务端会话、RTC 房间、本地发布和远端媒体资源。 */
 export class XmaxRealtimeConnectionManager {
 
+  private readonly timing: RealtimeTiming;
+
   // 服务层组件
   private readonly sessionService: RealtimeSessionServicing;
 
@@ -46,13 +49,16 @@ export class XmaxRealtimeConnectionManager {
    * @param mediaController 远端轨迹交互使用的统一媒体组件。
    * @param renderController 视频轨道、远端画面和轨迹绑定的统一渲染组件。
    * @param streamController RTC 房间、媒体流和信令的统一流组件。
+   * @param timing 与实时 Manager 共享的启动耗时记录。
    */
   constructor(
     apiService: ApiServicing,
     mediaController: MediaControlling,
     renderController: RenderControlling,
-    streamController: StreamControlling
+    streamController: StreamControlling,
+    timing: RealtimeTiming = new RealtimeTiming()
   ) {
+    this.timing = timing;
     // 服务层组件
     this.sessionService = new RealtimeSessionService(apiService);
 
@@ -112,11 +118,14 @@ export class XmaxRealtimeConnectionManager {
     isCurrent: ConnectionValidity,
     onHeartbeatFailure: ConnectionHeartbeatFailureHandler
   ): Promise<RealtimeMediaStream> {
+    this.timing.beginConnection();
     let session: RealtimeSession | null = null;
     let sessionActivated: boolean = false;
 
     try {
+      this.timing.beginSessionCreation();
       session = await this.sessionService.createSession(model);
+      this.timing.finishSessionCreation();
       this.ensureCurrent(isCurrent);
 
       const connection: RealtimeSessionConnection | undefined = session.connection;
@@ -152,6 +161,7 @@ export class XmaxRealtimeConnectionManager {
       sessionActivated = true;
       this.ensureCurrent(isCurrent);
 
+      this.timing.finishConnection();
       return new RealtimeMediaStream(StreamId.REMOTE, remoteTrack);
     } catch (error) {
       if (isCurrent()) {

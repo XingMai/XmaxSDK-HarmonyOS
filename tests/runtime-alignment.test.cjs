@@ -16,6 +16,7 @@ function fixture({ device = { distributionOSVersion: ' 5.1.0 ', productModel: ' 
   const requests = [];
   let destroyed = 0;
   const load = loadEts({
+    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
     '@kit.BasicServicesKit': { deviceInfo: device },
     '@kit.ArkTS': { util: {
       generateRandomUUID: () => uuid(),
