@@ -461,7 +461,7 @@ local video files.
 
 ## Dependencies
 
-- <ins><strong>VolcEngine RTC SDK for HarmonyOS</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
 - <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download via object storage.
 
 <br>
