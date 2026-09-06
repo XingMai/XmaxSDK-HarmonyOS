@@ -155,7 +155,7 @@ export interface XmaxRealtimeManaging {
   /**
    * 断开实时连接并保留当前本地媒体流和预览。
    *
-   * @returns 断开完成后的 Promise。
+   * @returns 受影响的操作结束、会话回滚和连接清理完成后的 Promise。
    */
   disconnect(): Promise<void>;
 
@@ -189,9 +189,11 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 停止当前生成任务。
+   * 在 CONNECTED 或 GENERATING 状态停止当前或尚在启动的生成任务，保留连接和本地预览。
+   * 其他状态直接返回；CONNECTING 时不会取消连接或后续自动生成。
+   * 需要取消建连中的一键生成时，调用 disconnect() 或 close()。
    *
-   * @returns 停止完成后的 Promise。
+   * @returns 受影响的操作结束和生成清理完成后的 Promise。
    */
   stopGeneration(): Promise<void>;
 }

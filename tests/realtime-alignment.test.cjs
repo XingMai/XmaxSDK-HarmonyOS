@@ -78,7 +78,7 @@ function managerFixture() {
       return { id: `session-${calls.sessions.length}`, connection: { roomId: 'room', botName: 'bot' } };
     }
     async closeSession(id) { calls.closed.push(id); }
-    startHeartbeat() {}
+    startHeartbeat(id, onFailure) { this.heartbeat = error => onFailure(id, error); }
     stopHeartbeat() {}
   }
   const load = loadEts({ ...platform,
@@ -100,7 +100,7 @@ function managerFixture() {
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const manager = new XmaxRealtimeManager({}, { model: { name: 'x2.0-sla' } }, {});
-  return { manager, media, stream, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
+  return { manager, media, stream, api, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
     create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
@@ -175,33 +175,61 @@ test('missing context and foreign stream are rejected before creating a session'
   assert.equal(f.calls.sessions.length, 0);
 });
 
-test('stop while connecting cancels automatic generation and restores local audio preview', async () => {
+test('stop while connecting returns immediately and one-call generation continues like iOS', async () => {
   const f = managerFixture(), local = await f.create(), gate = f.holdSession();
   const pending = outcome(f.manager.startGeneration(local, new f.Context('test')));
   assert.equal(f.calls.audio.at(-1), false);
-  await f.manager.stopGeneration();
-  gate.resolve();
-  assert.equal((await pending).error.code, 'CANCELLED');
+  const audio = [...f.calls.audio], stops = [...f.calls.stops];
+  const stopping = f.manager.stopGeneration();
+  let stopped = false;
+  stopping.then(() => { stopped = true; });
+  await settle();
+  assert.equal(stopped, true);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTING);
+  assert.deepEqual(f.calls.audio, audio);
+  assert.deepEqual(f.calls.stops, stops);
   assert.equal(f.calls.starts.length, 0);
-  assert.equal(f.calls.audio.at(-1), true);
-  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  gate.resolve();
+  assert.ok((await pending).value.videoTrack);
+  assert.equal(f.calls.starts.length, 1);
+  assert.equal(f.calls.audio.at(-1), false);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
 });
 
-test('stop from the synchronous CONNECTING listener also cancels one-call generation', async () => {
+test('stop from the synchronous CONNECTING listener does not cancel one-call generation', async () => {
   const f = managerFixture(), local = await f.create();
   f.manager.setStateListener(state => {
     if (state.connectionState === f.State.CONNECTING) void f.manager.stopGeneration();
   });
+  const remote = await f.manager.startGeneration(local, new f.Context('test'));
+  assert.ok(remote.videoTrack);
+  assert.equal(f.calls.starts.length, 1);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+});
+
+test('stop from the CONNECTED listener cancels automatic generation while retaining the connection', async () => {
+  const f = managerFixture(), local = await f.create();
+  f.manager.setStateListener(state => {
+    if (state.connectionState === f.State.CONNECTED) void f.manager.stopGeneration();
+  });
   await assert.rejects(f.manager.startGeneration(local, new f.Context('test')), { code: 'CANCELLED' });
   assert.equal(f.calls.starts.length, 0);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.calls.audio.at(-1), true);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
 });
 
 test('close during connection rolls back the late session without reopening audio or generation', async () => {
   const f = managerFixture(), local = await f.create(), gate = f.holdSession();
   const pending = outcome(f.manager.startGeneration(local, new f.Context('test')));
-  await f.manager.close();
+  const closing = f.manager.close();
+  let closed = false;
+  closing.then(() => { closed = true; });
+  await settle();
+  assert.equal(closed, false);
   const audioCount = f.calls.audio.length;
   gate.resolve();
+  await closing;
   assert.equal((await pending).error.code, 'CANCELLED');
   assert.equal(f.calls.audio.length, audioCount);
   assert.equal(f.calls.audio.at(-1), false);
@@ -215,7 +243,10 @@ test('a cancelled start cannot stop a newer generation or restore its muted prev
   await f.manager.connect(local);
   f.holdGeneration();
   const old = outcome(f.manager.startGeneration(new f.Context('old')));
-  void f.manager.stopGeneration();
+  const stopping = f.manager.stopGeneration();
+  await assert.rejects(f.manager.startGeneration(local, new f.Context('too soon')),
+    { code: 'INVALID_CONFIGURATION' });
+  await stopping;
   const newer = f.manager.startGeneration(local, new f.Context('new'));
   const newTask = f.stream.currentGenerationTaskId;
   assert.equal((await old).error.code, 'CANCELLED');
@@ -225,6 +256,117 @@ test('a cancelled start cannot stop a newer generation or restore its muted prev
   await newer;
   assert.equal(f.media.interactionTask, newTask);
   assert.equal(f.manager.currentState.taskId, newTask);
+});
+
+test('close upgrades a pending stop on an established connection and releases local media', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.connect(local);
+  f.holdGeneration();
+  const running = outcome(f.manager.startGeneration(new f.Context('test')));
+  const stopping = f.manager.stopGeneration();
+  const closing = f.manager.close();
+  assert.equal(stopping, closing);
+  assert.equal(f.calls.audio.at(-1), false);
+  await closing;
+  assert.equal((await running).error.code, f.Code.CANCELLED);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.equal(f.stream.currentGenerationTaskId, '');
+  assert.equal(f.media.currentTrack, null);
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+});
+
+test('disconnect still cancels one-call connection after stopGeneration returns without action', async () => {
+  const f = managerFixture(), local = await f.create(), gate = f.holdSession();
+  const running = outcome(f.manager.startGeneration(local, new f.Context('test')));
+  await f.manager.stopGeneration();
+  const disconnecting = f.manager.disconnect();
+  let disconnected = false;
+  disconnecting.then(() => { disconnected = true; });
+  const audio = [...f.calls.audio];
+  await f.manager.stopGeneration(); // DISCONNECTING is also a no-op.
+  await settle();
+  assert.equal(disconnected, false);
+  assert.deepEqual(f.calls.audio, audio);
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+  gate.resolve();
+  await disconnecting;
+  assert.equal((await running).error.code, f.Code.CANCELLED);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.equal(f.calls.starts.length, 0);
+  assert.ok(f.media.currentTrack);
+  assert.equal(f.calls.audio.at(-1), true);
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+});
+
+test('connection failure after a no-op generation stop reports the original error', async () => {
+  const f = managerFixture(), local = await f.create(), gate = f.holdSession();
+  const error = new f.XmaxError(f.Code.NETWORK_ERROR, 'session request failed');
+  const running = outcome(f.manager.startGeneration(local, new f.Context('test')));
+  await f.manager.stopGeneration();
+  gate.reject(error);
+  assert.equal((await running).error, error);
+  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.equal(f.calls.starts.length, 0);
+  assert.equal(f.calls.audio.at(-1), true);
+});
+
+test('stop is a no-op outside CONNECTED and GENERATING, including ERROR with a retained session', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.stopGeneration();
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.deepEqual(f.calls.audio, []);
+  assert.deepEqual(f.calls.stops, []);
+  await f.manager.connect(local);
+  f.holdGeneration();
+  const running = outcome(f.manager.startGeneration(new f.Context('test')));
+  const failure = new f.XmaxError(f.Code.TIMEOUT, 'generation confirmation timed out');
+  f.calls.starts.at(-1).gate.reject(failure);
+  assert.equal((await running).error, failure);
+  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.deepEqual(f.calls.closed, []);
+  const stops = [...f.calls.stops], audio = [...f.calls.audio];
+  await f.manager.stopGeneration();
+  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.deepEqual(f.calls.stops, stops);
+  assert.deepEqual(f.calls.audio, audio);
+  await f.manager.disconnect();
+  const disconnectedStops = [...f.calls.stops], disconnectedAudio = [...f.calls.audio];
+  await f.manager.stopGeneration();
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.deepEqual(f.calls.stops, disconnectedStops);
+  assert.deepEqual(f.calls.audio, disconnectedAudio);
+});
+
+test('heartbeat failure cancels startup, closes the session and only then notifies the fatal listener', async () => {
+  const f = managerFixture(), local = await f.create(), received = [];
+  await f.manager.connect(local);
+  f.holdGeneration();
+  const running = outcome(f.manager.startGeneration(new f.Context('test')));
+  f.manager.setErrorListener(error => received.push({ error,
+    state: f.manager.currentState.connectionState,
+    closed: [...f.calls.closed], task: f.stream.currentGenerationTaskId
+  }));
+  const failure = new f.XmaxError(f.Code.SESSION_ERROR, 'heartbeat failed', 1004, 503);
+  await f.api.heartbeat(failure);
+  assert.equal((await running).error, failure);
+  assert.deepEqual(received, [{ error: failure, state: f.State.ERROR, closed: ['session-1'], task: '' }]);
+  assert.notEqual(f.media.currentTrack, null);
+});
+
+test('stop-signal failure is logged without a fatal callback and preserves the connected preview', async () => {
+  const f = managerFixture(), local = await f.create(), errors = [];
+  await f.manager.startGeneration(local, new f.Context('test'));
+  f.manager.setErrorListener(error => errors.push(error));
+  const stop = f.stream.stopGeneration.bind(f.stream);
+  f.stream.stopGeneration = task => {
+    stop(task);
+    throw new f.XmaxError(f.Code.RTC_ERROR, 'stop signal failed');
+  };
+  await f.manager.stopGeneration();
+  assert.deepEqual(errors, []);
+  assert.equal(f.stream.currentGenerationTaskId, '');
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.audio.at(-1), true);
 });
 
 test('switchCamera preserves track/session/format and restores the last generation context', async () => {
@@ -588,6 +730,7 @@ test('XLab cancellation during one-call connection leaves local preview without 
   await settle();
   assert.equal(f.manager.currentState.connectionState, f.State.CONNECTING);
   f.viewModel.cancelGeneration();
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
   gate.resolve();
   await settle();
   assert.equal(f.calls.starts.length, 0);
@@ -595,4 +738,50 @@ test('XLab cancellation during one-call connection leaves local preview without 
   assert.equal(f.viewModel.state.isGenerationStarting, false);
   assert.equal(f.viewModel.state.errorMessage, '');
   assert.ok(f.viewModel.state.localVideoTrack);
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+});
+
+test('XLab replaces input during connection by closing the old session and generating only the latest prompt', async () => {
+  const f = exampleFixture(), gate = f.holdSession();
+  await f.viewModel.connect({});
+  await settle();
+  f.viewModel.state.selectedCategoryId = 'free';
+  f.viewModel.submitPrompt('old prompt');
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTING);
+  f.viewModel.submitPrompt('new prompt');
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+  f.viewModel.submitPrompt('latest prompt');
+  gate.resolve();
+  await settle();
+  await settle();
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.equal(f.calls.sessions.length, 2);
+  assert.equal(f.calls.starts.length, 1);
+  assert.equal(f.calls.starts[0].context.prompt, 'latest prompt');
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.ok(f.viewModel.state.remoteVideoTrack);
+  assert.ok(f.viewModel.state.localVideoTrack);
+  assert.equal(f.viewModel.state.errorMessage, '');
+});
+
+test('XLab cancellation after connecting retains the session and local preview', async () => {
+  const f = exampleFixture();
+  await f.viewModel.connect({});
+  await settle();
+  f.holdGeneration();
+  f.viewModel.state.selectedCategoryId = 'mox';
+  f.viewModel.startMoxGeneration();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.starts.length, 1);
+  f.viewModel.cancelGeneration();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.stream.currentGenerationTaskId, '');
+  assert.equal(f.viewModel.state.remoteVideoTrack, null);
+  assert.ok(f.viewModel.state.localVideoTrack);
+  assert.equal(f.viewModel.state.errorMessage, '');
 });

@@ -139,7 +139,7 @@ test('10-second first-frame timeout stops the task, restores preview audio and a
   assert.equal(failure.code, f.Code.TIMEOUT);
   assert.equal(failure.message, 'Remote video first frame timed out');
   assert.deepEqual(f.errors, [failure]);
-  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
   assert.equal(f.messages.at(-1).event, 'stop');
   assert.equal(f.messages.at(-1).uid, first.task);
   assert.equal(f.media.previewAudio, true);

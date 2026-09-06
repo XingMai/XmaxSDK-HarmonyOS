@@ -1,5 +1,6 @@
 import { util } from '@kit.ArkTS';
 import { RUNTIME_PLATFORM } from '../../foundation/runtime/RuntimeInfo';
+import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import {
   XmaxError,
   XmaxErrorCode
@@ -10,6 +11,7 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 import { StreamControlling } from '../../stream/StreamControlling';
 
 type GenerationValidity = () => void;
+type GenerationConfirmationWait = (confirmation: Promise<void>) => Promise<void>;
 
 const TASK_ID_PREFIX: string = `task-${RUNTIME_PLATFORM}-`;
 
@@ -49,7 +51,8 @@ export class XmaxRealtimeGenerationManager {
   async start(
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext | undefined,
-    ensureCurrent: GenerationValidity
+    ensureCurrent: GenerationValidity,
+    waitForConfirmation?: GenerationConfirmationWait
   ): Promise<string> {
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
@@ -66,14 +69,18 @@ export class XmaxRealtimeGenerationManager {
       resolvedContext
     );
     try {
-      await confirmation;
+      await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
       this.mediaController.start(taskId, videoFormat);
       this.currentContext = resolvedContext;
       return taskId;
     } catch (error) {
-      this.stop(taskId);
+      try {
+        this.stop(taskId);
+      } catch (cleanupError) {
+        XmaxLogger.error(`取消生成等待失败\n└─ 原因：${XmaxError.from(cleanupError).message}`, 'Realtime');
+      }
       throw XmaxError.from(error);
     }
   }

@@ -411,10 +411,14 @@ await realtime.startGeneration(new RealtimeContext('将人物服装替换成参�
 this.remoteVideoTrack = remoteStream.videoTrack;
 ```
 
-Only one connection/start transition may run at a time. `stopGeneration()` also
-cancels a pending generation start, including the automatic start after an
-in-flight connection. It retains that connection; use `disconnect()` to cancel
-and close the session as well. A cancelled operation rejects with
+Only one local-media, connection, generation, or camera-switch operation may run
+at a time. Overlapping operations and new operations during cleanup reject with
+`XmaxErrorCode.INVALID_CONFIGURATION`; await the current operation before retrying.
+`stopGeneration()` only acts when a session exists and the state is `CONNECTED`
+or `GENERATING`. It can cancel a pending generation start on that connection.
+In `CONNECTING` or any other state, it returns immediately; an in-flight one-call
+generation still continues after connecting. Use `disconnect()` or `close()` to
+cancel that workflow. A cancelled operation rejects with
 `XmaxErrorCode.CANCELLED`.
 
 ### Switch cameras or change capture specifications
@@ -470,6 +474,17 @@ await realtime.close();
 remote connection and local preview. `disconnect()` closes the remote session
 while preserving the local preview. `close()` releases all local media and RTC
 resources and should be called when the realtime workflow is no longer required.
+
+When applicable, these methods wait for affected operations and resource cleanup to finish.
+For example, closing while a session request is pending waits for the late session
+to be rolled back. Concurrent stop/disconnect/close requests share a cleanup task
+and expand its scope as needed. Cleanup failures are logged while the remaining
+resources continue to be released.
+
+A fatal generation-start failure enters `ERROR` after generation cleanup, then
+notifies the error listener. If the connection is still open, generation can be
+retried on the same connection. Heartbeat failures clean up the connection before
+reporting the error. Recoverable input errors leave the current lifecycle intact.
 
 ## Touch Interaction
 

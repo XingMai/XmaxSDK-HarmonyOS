@@ -549,9 +549,12 @@ export class RealtimeViewModel {
     this.generationRevision++;
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     if (this.switchingCamera || this.generationUpdating) {
-      // 即使仍在连接中，也使旧的一键生成失效；切镜头时阻止恢复旧条件。
+      // 连接中需要断开才能取消旧的一键生成；已连接时只停止生成，保留会话。
       if (manager !== null) {
-        void manager.stopGeneration().catch((error: Object): void => {
+        const state: RealtimeConnectionState = manager.currentState.connectionState;
+        const stopping: Promise<void> = state === RealtimeConnectionState.CONNECTING ||
+          state === RealtimeConnectionState.DISCONNECTING ? manager.disconnect() : manager.stopGeneration();
+        void stopping.catch((error: Object): void => {
           if (this.realtimeManager === manager) {
             this.presentError(error);
           }

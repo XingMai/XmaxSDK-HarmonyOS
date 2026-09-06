@@ -26,10 +26,15 @@ import {
   RealtimeStateListener
 } from '../../service/realtime/RealtimeState';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamController } from '../../stream/StreamController';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
+import {
+  RealtimeCoordinator,
+  RealtimeOperationKind,
+  RealtimeOperationToken,
+  RealtimeTerminationScope
+} from './RealtimeCoordinator';
 import { XmaxRealtimeConnectionManager } from './XmaxRealtimeConnectionManager';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
 import { XmaxRealtimeGenerationManager } from './XmaxRealtimeGenerationManager';
@@ -58,16 +63,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private readonly connectionManager: XmaxRealtimeConnectionManager;
   private readonly generationManager: XmaxRealtimeGenerationManager;
 
-  // 运行状态
-  private closePromise: Promise<void> | null = null;
-  private closingResources: boolean = false;
-  private terminationPromise: Promise<void> | null = null;
-  private terminationFinalState: RealtimeConnectionState | null = null;
-  private operationVersion: number = 0;
-  private generationVersion: number = 0;
-  private switchingCamera: boolean = false;
-  private state: RealtimeState = new RealtimeState(RealtimeConnectionState.IDLE);
-  private stateListener: RealtimeStateListener | null = null;
+  // 生命周期协调
+  private readonly coordinator: RealtimeCoordinator;
 
   /**
    * 创建实时生成业务 Manager 并完成内部依赖装配。
@@ -134,11 +131,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.mediaController,
       this.streamController
     );
+    this.coordinator = new RealtimeCoordinator(this.errorManager,
+      (scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> =>
+        this.cleanup(scope, taskId));
   }
 
   /** @returns 当前实时连接与生成状态。 */
   get currentState(): RealtimeState {
-    return this.state;
+    return this.coordinator.currentState;
   }
 
   /**
@@ -148,8 +148,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setStateListener(listener: RealtimeStateListener | null): void {
-    this.stateListener = listener;
-    this.notifyStateListener(this.state);
+    this.coordinator.setStateListener(listener);
   }
 
   /**
@@ -223,712 +222,320 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.mediaController.setCameraPreviewReadyListener(listener);
   }
 
-  /**
-   * 创建并启动本地相机流。
-   *
-   * @param videoFormat 相机流使用的视频输出格式。
-   * @param position 初始摄像头位置；默认使用前置摄像头。
-   * @returns 当前 Manager 持有的本地相机媒体流。
-   */
-  async createLocalCameraStream(
+  /** 创建并启动本地相机流。 */
+  createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition = CameraPosition.FRONT
   ): Promise<RealtimeMediaStream> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local camera stream is unavailable during a realtime connection'
-      ));
-    }
-
-    return this.observeError(this.mediaController.createLocalCameraStream(
-      videoFormat,
-      position
-    ));
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
+        this.ensureLocalMediaCanChange();
+        const stream = await this.mediaController.createLocalCameraStream(videoFormat, position);
+        token.ensureCurrent();
+        return stream;
+      });
   }
 
-  /**
-   * 停止本地相机流并释放对应预览资源。
-   *
-   * @returns 停止操作完成后的 Promise。
-   */
-  async stopLocalCameraStream(): Promise<void> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Disconnect realtime before stopping the local camera stream'
-      ));
-    }
-
-    await this.observeError(this.mediaController.stopLocalCameraStream());
+  /** 停止本地相机流并释放预览资源。 */
+  stopLocalCameraStream(): Promise<void> {
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalMediaCanChange();
+        await this.mediaController.stopLocalCameraStream();
+        token.ensureCurrent();
+      });
   }
 
-  /**
-   * 切换当前相机流使用的前后置摄像头。
-   *
-   * @returns 摄像头切换后的本地媒体流。
-   */
-  async switchCamera(): Promise<RealtimeMediaStream> {
-    const wasGenerating: boolean = this.state.connectionState === RealtimeConnectionState.GENERATING;
-    if (this.closingResources || this.switchingCamera || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING ||
-      (!wasGenerating && this.streamController.currentGenerationTaskId.length > 0)) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Camera switching is unavailable while realtime is transitioning'
-      ));
-    }
-
-    this.switchingCamera = true;
-    const operationVersion: number = this.operationVersion;
-    try {
-      const generationVersion: number = this.generationVersion + (wasGenerating ? 1 : 0);
-      const stopping: Promise<void> = wasGenerating ? this.stopGeneration() : Promise.resolve();
-      await stopping;
-      this.ensureOperation(operationVersion);
-      const stream: RealtimeMediaStream = await this.mediaController.switchCamera();
-      this.ensureOperation(operationVersion);
-      if (wasGenerating) {
-        // 与 iOS 一致，为新镜头的采集画面留出稳定时间。
-        await new Promise<void>((resolve: () => void): void => {
-          setTimeout(resolve, 500);
-        });
-        this.ensureGenerationOperation(operationVersion, generationVersion);
-        await this.performStartGeneration();
-      }
-      return stream;
-    } catch (error) {
-      throw this.reportError(error);
-    } finally {
-      this.switchingCamera = false;
-    }
+  /** 切换摄像头，生成中切换时保留连接并恢复当前生成条件。 */
+  switchCamera(): Promise<RealtimeMediaStream> {
+    return this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, RealtimeTerminationScope.CONNECTION,
+      async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
+        const current: RealtimeState = this.currentState;
+        const wasGenerating: boolean = current.connectionState === RealtimeConnectionState.GENERATING;
+        if (current.connectionState === RealtimeConnectionState.CONNECTING ||
+          current.connectionState === RealtimeConnectionState.DISCONNECTING ||
+          (!wasGenerating && this.streamController.currentGenerationTaskId.length > 0)) {
+          throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+            'Camera switching is unavailable while realtime is transitioning');
+        }
+        if (wasGenerating) {
+          this.generationManager.stop(current.taskId ?? '');
+          this.restoreLocalAudioPreview();
+          this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED, current.sessionId), token);
+        }
+        const stream: RealtimeMediaStream = await this.mediaController.switchCamera();
+        token.ensureCurrent();
+        if (wasGenerating) {
+          await token.delay(500);
+          await this.performStartGeneration(undefined, token);
+        }
+        return stream;
+      });
   }
 
-  /**
-   * 从本地视频文件创建并启动媒体流。
-   *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式；未传入时根据文件信息计算。
-   * @returns 当前 Manager 持有的本地视频媒体流。
-   */
-  async createLocalVideoStream(
-    filePath: string,
-    videoFormat?: RealtimeVideoFormat
-  ): Promise<RealtimeMediaStream> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local video stream is unavailable during a realtime connection'
-      ));
-    }
-
-    return this.observeError(this.mediaController.createLocalVideoStream(
-      filePath,
-      videoFormat
-    ));
+  /** 从本地视频文件创建并启动媒体流，保留鸿蒙模型的输入尺寸规则。 */
+  createLocalVideoStream(filePath: string, videoFormat?: RealtimeVideoFormat): Promise<RealtimeMediaStream> {
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
+        this.ensureLocalMediaCanChange();
+        const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
+        token.ensureCurrent();
+        return stream;
+      });
   }
 
-  /**
-   * 停止本地视频文件流并释放对应预览资源。
-   *
-   * @returns 停止操作完成后的 Promise。
-   */
-  async stopLocalVideoStream(): Promise<void> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Disconnect realtime before stopping the local video stream'
-      ));
-    }
-
-    await this.observeError(this.mediaController.stopLocalVideoStream());
+  /** 停止本地视频流并释放预览资源。 */
+  stopLocalVideoStream(): Promise<void> {
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalMediaCanChange();
+        await this.mediaController.stopLocalVideoStream();
+        token.ensureCurrent();
+      });
   }
 
-  /**
-   * 从图片输入创建持续输出帧的媒体流。
-   *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 可选的视频输出格式；未传入时根据图片信息计算。
-   * @returns 当前 Manager 持有的本地图片媒体流。
-   */
-  async createLocalImageStream(
+  /** 从图片输入创建持续输出帧的媒体流。 */
+  createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local image stream is unavailable during a realtime connection'
-      ));
-    }
-
-    return this.observeError(this.mediaController.createLocalImageStream(
-      source,
-      videoFormat
-    ));
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
+        this.ensureLocalMediaCanChange();
+        const stream = await this.mediaController.createLocalImageStream(source, videoFormat);
+        token.ensureCurrent();
+        return stream;
+      });
   }
 
-  /**
-   * 停止本地图片流并释放对应预览资源。
-   *
-   * @returns 停止操作完成后的 Promise。
-   */
-  async stopLocalImageStream(): Promise<void> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Disconnect realtime before stopping the local image stream'
-      ));
-    }
-
-    await this.observeError(this.mediaController.stopLocalImageStream());
+  /** 停止本地图片流并释放预览资源。 */
+  stopLocalImageStream(): Promise<void> {
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalMediaCanChange();
+        await this.mediaController.stopLocalImageStream();
+        token.ensureCurrent();
+      });
   }
 
-  /**
-   * 使用当前 Manager 创建的本地流建立实时连接。
-   *
-   * @param localStream 已创建并处于活动状态的本地媒体流。
-   * @returns 连接建立后用于显示生成结果的远端媒体流。
-   */
-  async connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream> {
-    if (this.closingResources || this.switchingCamera ||
-      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Realtime connection is already open'
-      ));
-    }
+  /** 使用当前 Manager 创建的本地流建立实时连接。 */
+  connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream> {
+    return this.coordinator.run(RealtimeOperationKind.CONNECTION, RealtimeTerminationScope.CONNECTION,
+      (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => this.performConnect(localStream, token));
+  }
 
-    const track: RealtimeVideoTrack | undefined = localStream.videoTrack;
-    const videoFormat: RealtimeVideoFormat | undefined = track?.videoFormat;
-    if (track === undefined || videoFormat === undefined ||
-      !this.mediaController.owns(localStream)) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'The local stream must be created and started by this realtime manager'
-      ));
+  private async performConnect(localStream: RealtimeMediaStream,
+    token: RealtimeOperationToken): Promise<RealtimeMediaStream> {
+    token.ensureCurrent();
+    const current: RealtimeState = this.currentState;
+    if (this.connectionManager.currentSessionId.length > 0 ||
+      current.connectionState === RealtimeConnectionState.CONNECTING ||
+      current.connectionState === RealtimeConnectionState.DISCONNECTING) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Realtime connection is already open');
     }
-
+    const videoFormat: RealtimeVideoFormat | undefined = localStream.videoTrack?.videoFormat;
+    if (videoFormat === undefined || !this.mediaController.owns(localStream)) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'The local stream must be created and started by this realtime manager');
+    }
     this.generationManager.reset();
-    const operationVersion: number = ++this.operationVersion;
-    this.emitState(new RealtimeState(RealtimeConnectionState.CONNECTING));
-
-    try {
-      const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
-        this.options.model.name,
-        videoFormat,
-        this.mediaController.hasAudio,
-        (): boolean => this.isOperationCurrent(operationVersion),
-        async (
-          sessionId: string,
-          error: XmaxError
-        ): Promise<void> => {
-          await this.handleHeartbeatFailure(sessionId, error);
-        }
-      );
-
-      const sessionId: string = this.connectionManager.currentSessionId;
-      if (sessionId.length === 0) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
-      }
-
-      this.emitState(new RealtimeState(RealtimeConnectionState.CONNECTED, sessionId));
-      this.ensureOperation(operationVersion);
-
-      return remoteStream;
-    } catch (error) {
-      if (!this.isOperationCurrent(operationVersion)) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
-      }
-
-      const xmaxError: XmaxError = this.reportError(error);
-      this.emitState(new RealtimeState(RealtimeConnectionState.ERROR));
-
-      throw xmaxError;
+    this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTING), token);
+    const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
+      this.options.model.name, videoFormat, this.mediaController.hasAudio,
+      (): boolean => token.isCurrent,
+      (sessionId: string, error: XmaxError): Promise<void> => this.handleHeartbeatFailure(sessionId, error));
+    token.ensureCurrent();
+    const sessionId: string = this.connectionManager.currentSessionId;
+    if (sessionId.length === 0) {
+      throw RealtimeOperationToken.cancelledError();
     }
+    this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED, sessionId), token);
+    return remoteStream;
   }
 
-  /**
-   * 断开当前实时连接并清理生成和房间资源，同时保留本地媒体和预览。
-   *
-   * @returns 连接终止完成后的 Promise；重复调用时返回同一个终止任务。
-   */
+  /** 取消连接/生成，等待回滚和清理完成，保留本地媒体与预览。 */
   disconnect(): Promise<void> {
-    if (this.terminationPromise !== null) {
-      this.terminationFinalState = RealtimeConnectionState.DISCONNECTED;
-      return this.terminationPromise;
-    }
-    if (this.state.connectionState === RealtimeConnectionState.IDLE ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTED) {
+    const current: RealtimeState = this.currentState;
+    if ((current.connectionState === RealtimeConnectionState.IDLE ||
+      current.connectionState === RealtimeConnectionState.DISCONNECTED) &&
+      !this.coordinator.hasOperation(RealtimeOperationKind.CONNECTION) &&
+      !this.coordinator.hasOperation(RealtimeOperationKind.GENERATION)) {
       return Promise.resolve();
     }
-
-    return this.beginTermination(RealtimeConnectionState.DISCONNECTED);
+    return this.coordinator.terminate(RealtimeTerminationScope.CONNECTION, RealtimeConnectionState.DISCONNECTED);
   }
 
-  /**
-   * 立即静默媒体和渲染，随后异步释放连接、本地媒体及 RTC Engine。
-   *
-   * @returns 全部实时资源释放完成后的 Promise；重复调用时返回同一个关闭任务。
-   */
+  /** 立即静默媒体，等待进行中的操作结束后释放所有实时资源。 */
   close(): Promise<void> {
-    if (this.closePromise !== null) {
-      return this.closePromise;
-    }
-
-    this.closingResources = true;
-    this.operationVersion++;
-    this.mediaController.setLocalAudioPreviewEnabled(false);
-    this.mediaController.prepareForClose();
-    this.connectionManager.prepareForClose();
-
-    const closePromise: Promise<void> = this.releaseRealtimeResources();
-    this.closePromise = closePromise;
-    closePromise.then(
-      (): void => {
-        if (this.closePromise === closePromise) {
-          this.closePromise = null;
-          this.closingResources = false;
-        }
-      },
-      (): void => {
-        if (this.closePromise === closePromise) {
-          this.closePromise = null;
-          this.closingResources = false;
-        }
+    const wasClosing: boolean = this.coordinator.isClosing;
+    const closing: Promise<void> = this.coordinator.terminate(
+      RealtimeTerminationScope.ALL, RealtimeConnectionState.DISCONNECTED);
+    if (!wasClosing) {
+      try {
+        this.mediaController.setLocalAudioPreviewEnabled(false);
+        this.mediaController.prepareForClose();
+      } catch (error) {
+        this.logCleanupFailure('静默本地媒体失败', error);
       }
-    );
-
-    return closePromise;
+      this.connectionManager.prepareForClose();
+    }
+    return closing;
   }
 
-  /**
-   * 开始生成，或在已经生成时更新当前生成条件。
-   *
-   * @param context 可选的生成条件；首次开始生成时必须提供。
-   * @returns 远端结果流确认开始后的 Promise。
-   */
+  /** 开始生成；生成中再次调用则更新条件。传入本地流时按需建立连接。 */
   startGeneration(context?: RealtimeContext): Promise<void>;
-  startGeneration(
-    localStream: RealtimeMediaStream,
-    context?: RealtimeContext
-  ): Promise<RealtimeMediaStream>;
-  async startGeneration(
-    input?: RealtimeContext | RealtimeMediaStream,
-    context?: RealtimeContext
-  ): Promise<void | RealtimeMediaStream> {
-    if (this.closingResources || this.switchingCamera) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Generation is unavailable while realtime is transitioning'
-      ));
-    }
-    if (input instanceof RealtimeMediaStream) {
-      return this.startGenerationWithStream(input, context);
-    }
-    await this.performStartGeneration(input);
+  startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext): Promise<RealtimeMediaStream>;
+  startGeneration(input?: RealtimeContext | RealtimeMediaStream,
+    context?: RealtimeContext): Promise<void | RealtimeMediaStream> {
+    const scope: RealtimeTerminationScope = input instanceof RealtimeMediaStream &&
+      this.connectionManager.currentSessionId.length === 0 ?
+      RealtimeTerminationScope.CONNECTION : RealtimeTerminationScope.GENERATION;
+    return this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, scope,
+      async (token: RealtimeOperationToken): Promise<void | RealtimeMediaStream> => {
+        if (input instanceof RealtimeMediaStream) {
+          return await this.startGenerationWithStream(input, context, token);
+        }
+        await this.performStartGeneration(input, token);
+      });
   }
 
-  /** 复用已有连接，或在用户开始生成时创建连接。 */
-  private async startGenerationWithStream(
-    localStream: RealtimeMediaStream,
-    context?: RealtimeContext
-  ): Promise<RealtimeMediaStream> {
+  private async startGenerationWithStream(localStream: RealtimeMediaStream, context: RealtimeContext | undefined,
+    token: RealtimeOperationToken): Promise<RealtimeMediaStream> {
     if (!this.mediaController.owns(localStream)) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'The local stream must be created and started by this realtime manager'
-      ));
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'The local stream must be created and started by this realtime manager');
     }
-    const connected: boolean = this.state.connectionState === RealtimeConnectionState.CONNECTED ||
-      this.state.connectionState === RealtimeConnectionState.GENERATING;
-    if (connected) {
-      const remoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
-      if (remoteStream === null) {
-        throw this.reportError(new XmaxError(XmaxErrorCode.RTC_ERROR,
-          'Realtime connection has no remote stream'));
+    let remoteStream: RealtimeMediaStream;
+    if (this.connectionManager.currentSessionId.length > 0) {
+      const activeRemoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
+      if (activeRemoteStream === null) {
+        throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Realtime connection has no remote stream');
       }
-      await this.performStartGeneration(context);
-      return remoteStream;
+      remoteStream = activeRemoteStream;
+    } else {
+      if (context === undefined) {
+        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+          'A realtime context is required for the first generation');
+      }
+      this.mediaController.setLocalAudioPreviewEnabled(false);
+      remoteStream = await this.performConnect(localStream, token);
+      token.setFailureScope(RealtimeTerminationScope.GENERATION);
     }
-    if (this.isConnecting() || this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'Realtime connection is transitioning'));
-    }
-    // connect() 开启新的会话并清除旧条件；先校验，避免无条件时创建空会话。
-    if (context === undefined) {
-      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'A realtime context is required for the first generation'));
-    }
+    token.ensureCurrent();
+    await this.performStartGeneration(context, token);
+    return remoteStream;
+  }
 
+  private async performStartGeneration(context: RealtimeContext | undefined,
+    token: RealtimeOperationToken): Promise<void> {
+    token.ensureCurrent();
+    const sessionId: string = this.connectionManager.currentSessionId;
+    const videoFormat: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
+    let current: RealtimeState = this.currentState;
+    if (current.connectionState === RealtimeConnectionState.ERROR && sessionId.length > 0) {
+      current = new RealtimeState(RealtimeConnectionState.CONNECTED, sessionId);
+      this.coordinator.commit(current, token);
+    }
+    if (sessionId.length === 0 || videoFormat === undefined ||
+      (current.connectionState !== RealtimeConnectionState.CONNECTED &&
+      current.connectionState !== RealtimeConnectionState.GENERATING)) {
+      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
+        'Realtime connection is not open').withSeverity(XmaxErrorSeverity.RECOVERABLE);
+    }
+    if (current.connectionState === RealtimeConnectionState.GENERATING && current.taskId !== undefined) {
+      this.generationManager.update(current.taskId, videoFormat, context);
+      token.ensureCurrent();
+      return;
+    }
     this.mediaController.setLocalAudioPreviewEnabled(false);
-    const generationVersion: number = this.generationVersion;
-    const connection: Promise<RealtimeMediaStream> = this.connect(localStream);
-    const operationVersion: number = this.operationVersion;
     try {
-      const remoteStream: RealtimeMediaStream = await connection;
-      this.ensureGenerationOperation(operationVersion, generationVersion);
-      await this.performStartGeneration(context);
-      return remoteStream;
-    } catch (error) {
-      if (this.isOperationCurrent(operationVersion) && generationVersion === this.generationVersion) {
-        this.restoreLocalAudioPreview();
+      const taskId: string = await this.generationManager.start(videoFormat, context,
+        (): void => token.ensureCurrent(),
+        (confirmation: Promise<void>): Promise<void> => token.wait(confirmation));
+      token.ensureCurrent();
+      await token.wait(this.renderController.waitUntilRemoteFrameReady());
+      token.ensureCurrent();
+      this.streamController.activateRemoteAudio();
+      if (this.connectionManager.currentSessionId !== sessionId) {
+        throw RealtimeOperationToken.cancelledError();
       }
+      this.coordinator.commit(new RealtimeState(RealtimeConnectionState.GENERATING, sessionId, taskId), token);
+    } catch (error) {
+      this.restoreLocalAudioPreview();
       throw XmaxError.from(error);
     }
   }
 
-  private async performStartGeneration(context?: RealtimeContext): Promise<void> {
-    const sessionId: string = this.connectionManager.currentSessionId;
-    const videoFormat: RealtimeVideoFormat | undefined =
-      this.mediaController.currentVideoFormat;
-    const connected: boolean = this.state.connectionState === RealtimeConnectionState.CONNECTED ||
-      this.state.connectionState === RealtimeConnectionState.GENERATING;
-    if (!connected || sessionId.length === 0 || videoFormat === undefined) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.RTC_ERROR,
-        'Realtime connection is not open'
-      ).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+  /** 已连接时停止当前或尚在启动的生成，保留连接；其他状态直接返回。 */
+  stopGeneration(): Promise<void> {
+    const current: RealtimeState = this.currentState;
+    if (this.connectionManager.currentSessionId.length === 0 ||
+      (current.connectionState !== RealtimeConnectionState.CONNECTED &&
+      current.connectionState !== RealtimeConnectionState.GENERATING)) {
+      return Promise.resolve();
     }
+    return this.coordinator.terminate(RealtimeTerminationScope.GENERATION);
+  }
 
-    const activeTaskId: string | undefined = this.state.connectionState ===
-      RealtimeConnectionState.GENERATING ? this.state.taskId : undefined;
-    if (activeTaskId !== undefined) {
-      try {
-        this.generationManager.update(activeTaskId, videoFormat, context);
-      } catch (error) {
-        throw this.reportError(error);
-      }
-
-      return;
-    }
-
-    if (this.streamController.currentGenerationTaskId.length > 0) {
-      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'Realtime generation is already starting'));
-    }
-    const generationVersion: number = ++this.generationVersion;
-    const operationVersion: number = this.operationVersion;
-    this.mediaController.setLocalAudioPreviewEnabled(false);
-    let startedTaskId: string = '';
-    try {
-      const taskId: string = await this.generationManager.start(
-        videoFormat,
-        context,
-        (): void => {
-          this.ensureGenerationOperation(operationVersion, generationVersion);
-        }
-      );
-      startedTaskId = taskId;
-      this.ensureGenerationOperation(operationVersion, generationVersion);
-      await this.renderController.waitUntilRemoteFrameReady();
-      this.ensureGenerationOperation(operationVersion, generationVersion);
-      if (this.connectionManager.currentSessionId !== sessionId) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
-      }
-      this.streamController.activateRemoteAudio();
-      this.ensureGenerationOperation(operationVersion, generationVersion);
-
-      this.emitState(new RealtimeState(
-        RealtimeConnectionState.GENERATING,
-        sessionId,
-        taskId
-      ));
-      this.ensureGenerationOperation(operationVersion, generationVersion);
-    } catch (error) {
-      if (startedTaskId.length > 0) {
-        try {
-          this.generationManager.stop(startedTaskId);
-        } catch (cleanupError) {
-          this.reportError(XmaxError.from(cleanupError).withSeverity(XmaxErrorSeverity.RECOVERABLE));
-        }
-      }
-      if (this.isOperationCurrent(operationVersion) && generationVersion === this.generationVersion) {
-        this.restoreLocalAudioPreview();
-      }
-      throw this.reportError(error);
+  private ensureLocalMediaCanChange(): void {
+    const current: RealtimeState = this.currentState;
+    if (this.connectionManager.currentSessionId.length > 0 ||
+      current.connectionState === RealtimeConnectionState.CONNECTING ||
+      current.connectionState === RealtimeConnectionState.DISCONNECTING) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'Disconnect realtime before changing the local media stream');
     }
   }
 
-  /**
-   * 停止当前生成任务并恢复已连接状态。
-   *
-   * @returns 停止信号发送完成后的 Promise。
-   */
-  async stopGeneration(): Promise<void> {
-    this.generationVersion++;
-    this.restoreLocalAudioPreview();
-    const sessionId: string = this.connectionManager.currentSessionId;
-    if (sessionId.length === 0 ||
-      (this.state.connectionState !== RealtimeConnectionState.CONNECTED &&
-      this.state.connectionState !== RealtimeConnectionState.GENERATING)) {
-      return;
-    }
-
-    const wasGenerating: boolean =
-      this.state.connectionState === RealtimeConnectionState.GENERATING;
+  /** 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。 */
+  private async cleanup(scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> {
     try {
-      this.generationManager.stop(this.state.taskId ?? '');
-      if (wasGenerating) {
-        this.emitState(new RealtimeState(
-          RealtimeConnectionState.CONNECTED,
-          sessionId
-        ));
-      }
-    } catch (error) {
-      throw this.reportError(error);
-    }
-  }
-
-  /**
-   * 按照先退房、后释放本地来源和 Engine 的顺序完成关闭。
-   *
-   * @returns 全部资源释放完成后的 Promise。
-   */
-  private async releaseRealtimeResources(): Promise<void> {
-    let closeError: Object | null = null;
-
-    try {
-      await this.disconnect();
-    } catch (error) {
-      closeError = error;
-    }
-
-    try {
-      await this.mediaController.stopLocalStream();
-    } catch (error) {
-      if (closeError === null) {
-        closeError = error;
+      if (scope >= RealtimeTerminationScope.CONNECTION) {
+        this.generationManager.reset(taskId);
       } else {
-        const reason: string = error instanceof Error ? error.message : String(error);
-        XmaxLogger.error(
-          `关闭本地媒体失败\n└─ 原因：${reason}`,
-          'Realtime'
-        );
+        this.generationManager.stop(taskId);
+      }
+    } catch (error) {
+      this.logCleanupFailure('停止实时生成失败', error);
+    }
+    let sessionId: string | undefined;
+    if (scope >= RealtimeTerminationScope.CONNECTION) {
+      sessionId = this.connectionManager.currentSessionId || undefined;
+      try {
+        sessionId = (await this.connectionManager.disconnect()) ?? sessionId;
+      } catch (error) {
+        this.logCleanupFailure('断开实时连接失败', error);
       }
     }
-
-    if (closeError !== null) {
-      throw XmaxError.from(closeError);
+    if (scope === RealtimeTerminationScope.ALL) {
+      try {
+        await this.mediaController.stopLocalStream();
+      } catch (error) {
+        this.logCleanupFailure('关闭本地媒体失败', error);
+      }
+    } else {
+      this.restoreLocalAudioPreview();
     }
+    return sessionId;
   }
 
-  /** 只有当前媒体生命周期仍然开放时才恢复本地音频。 */
   private restoreLocalAudioPreview(): void {
-    if (!this.closingResources) {
+    if (!this.coordinator.isClosing) {
       this.mediaController.setLocalAudioPreviewEnabled(true);
     }
   }
 
-  private ensureGenerationOperation(operationVersion: number, generationVersion: number): void {
-    this.ensureOperation(operationVersion);
-    if (generationVersion !== this.generationVersion) {
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime generation was cancelled');
-    }
-  }
-
-  /**
-   * 保存并发布新的实时状态。
-   *
-   * @param state 新的实时状态。
-   * @returns 无返回值。
-   */
-  private emitState(state: RealtimeState): void {
-    this.state = state;
-    this.notifyStateListener(state);
-  }
-
-  /**
-   * 安全调用当前状态监听器。
-   *
-   * @param state 需要通知给接入方的实时状态。
-   * @returns 无返回值。
-   */
-  private notifyStateListener(state: RealtimeState): void {
-    const listener: RealtimeStateListener | null = this.stateListener;
-    if (listener === null) {
-      return;
-    }
-
-    try {
-      listener(state);
-    } catch (error) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      XmaxLogger.error(
-        `实时状态监听器执行失败\n└─ 原因：${reason}`,
-        'Realtime'
-      );
-    }
-  }
-
-  /** @returns 当前是否处于实时连接建立阶段。 */
-  private isConnecting(): boolean {
-    return this.state.connectionState === RealtimeConnectionState.CONNECTING;
-  }
-
-  /**
-   * 判断异步操作是否仍属于当前生命周期版本。
-   *
-   * @param operationVersion 操作启动时记录的生命周期版本。
-   * @returns 版本仍然有效时返回 `true`。
-   */
-  private isOperationCurrent(operationVersion: number): boolean {
-    return operationVersion === this.operationVersion;
-  }
-
-  /**
-   * 确保异步操作仍然有效，过期时抛出取消错误。
-   *
-   * @param operationVersion 操作启动时记录的生命周期版本。
-   * @returns 无返回值。
-   */
-  private ensureOperation(operationVersion: number): void {
-    if (!this.isOperationCurrent(operationVersion)) {
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
-    }
-  }
-
-  /**
-   * 创建或复用实时连接终止任务。
-   *
-   * @param finalState 清理成功后需要发布的最终状态。
-   * @param fallbackSessionId 当前连接资源已经丢失时使用的会话标识。
-   * @returns 实时连接终止完成后的 Promise。
-   */
-  private beginTermination(
-    finalState: RealtimeConnectionState,
-    fallbackSessionId?: string
-  ): Promise<void> {
-    if (this.terminationPromise !== null) {
-      if (finalState === RealtimeConnectionState.DISCONNECTED) {
-        this.terminationFinalState = finalState;
-      }
-
-      return this.terminationPromise;
-    }
-
-    this.operationVersion++;
-    this.restoreLocalAudioPreview();
-    this.terminationFinalState = finalState;
-    const taskId: string = this.state.taskId ?? '';
-    const terminationPromise: Promise<void> = Promise.resolve().then(
-      (): Promise<void> => this.terminateConnection(
-        taskId,
-        fallbackSessionId
-      )
-    );
-    this.terminationPromise = terminationPromise;
-    this.emitState(new RealtimeState(RealtimeConnectionState.DISCONNECTING));
-
-    return terminationPromise;
-  }
-
-  /**
-   * 依次清理生成任务、房间连接和服务端会话。
-   *
-   * @param taskId 终止前仍处于活动状态的生成任务标识。
-   * @param fallbackSessionId 当前连接资源已经丢失时使用的会话标识。
-   * @returns 全部终止步骤完成后的 Promise。
-   */
-  private async terminateConnection(
-    taskId: string,
-    fallbackSessionId?: string
-  ): Promise<void> {
-    const activeSessionId: string = this.connectionManager.currentSessionId;
-    let sessionId: string | undefined = fallbackSessionId ??
-      (activeSessionId.length > 0 ? activeSessionId : undefined);
-    let terminationError: XmaxError | null = null;
-
-    try {
-      this.generationManager.reset(taskId);
-    } catch (error) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      XmaxLogger.error(
-        `重置生成任务失败\n└─ 原因：${reason}`,
-        'Realtime'
-      );
-    }
-
-    try {
-      const disconnectedSessionId: string | undefined =
-        await this.connectionManager.disconnect(fallbackSessionId);
-      sessionId = disconnectedSessionId ?? sessionId;
-    } catch (error) {
-      terminationError = this.reportError(error);
-    } finally {
-      let finalState: RealtimeConnectionState = this.terminationFinalState ??
-        RealtimeConnectionState.ERROR;
-      if (terminationError !== null) {
-        finalState = RealtimeConnectionState.ERROR;
-      }
-
-      this.terminationPromise = null;
-      this.terminationFinalState = null;
-      this.emitState(new RealtimeState(finalState, sessionId));
-    }
-
-    if (terminationError !== null) {
-      throw terminationError;
-    }
-  }
-
-  /**
-   * 处理房间心跳失败并终止对应的实时连接。
-   *
-   * @param sessionId 发生心跳错误的会话标识。
-   * @param error 心跳请求产生的错误。
-   * @returns 错误上报和连接终止完成后的 Promise。
-   */
-  private async handleHeartbeatFailure(
-    sessionId: string,
-    error: XmaxError
-  ): Promise<void> {
+  private handleHeartbeatFailure(sessionId: string, error: XmaxError): Promise<void> {
     if (this.connectionManager.currentSessionId !== sessionId) {
-      return;
+      return Promise.resolve();
     }
-
-    this.errorManager.handle(error.withSeverity(XmaxErrorSeverity.FATAL));
-    // 致命错误监听器可能已同步发起关闭，避免重复终止旧会话。
-    if (this.connectionManager.currentSessionId !== sessionId ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      return;
-    }
-    await this.beginTermination(RealtimeConnectionState.ERROR, sessionId);
+    return this.coordinator.terminateWithError(error, RealtimeTerminationScope.CONNECTION);
   }
 
-  /**
-   * 观察异步操作并将失败统一转换和上报为 `XmaxError`。
-   *
-   * @param operation 需要观察的异步操作。
-   * @returns 原异步操作成功返回的结果。
-   */
-  private async observeError<T>(operation: Promise<T>): Promise<T> {
-    try {
-      return await operation;
-    } catch (error) {
-      throw this.reportError(error);
-    }
+  private logCleanupFailure(title: string, error: Object): void {
+    XmaxLogger.error(`${title}\n└─ 原因：${XmaxError.from(error).message}`, 'Realtime');
   }
 
-  /**
-   * 将错误交给统一错误组件记录并通知接入方。
-   *
-   * @param error 待处理的错误对象。
-   * @returns 规范化后的 `XmaxError`。
-   */
   private reportError(error: Object): XmaxError {
     return this.errorManager.handle(XmaxError.from(error));
   }

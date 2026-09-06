@@ -364,6 +364,13 @@ export class MediaController implements MediaControlling {
       return stream;
     } catch (error) {
       if (source.stopPromise === null) {
+        // Coordinator 会先等待创建操作结束再清理。若创建完成时已被关闭，
+        // 必须释放刚创建的媒体，不能仅清除所有权并销毁 RTC。
+        try {
+          await this.stopController(source.controller);
+        } catch (cleanupError) {
+          XmaxLogger.error(`回滚本地媒体失败\n└─ 原因：${XmaxError.from(cleanupError).message}`, 'Realtime');
+        }
         await this.destroyRtcSafely('本地媒体创建回滚失败');
 
         if (this.activeSource === source) {
