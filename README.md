@@ -366,6 +366,14 @@ const remoteStream = await realtime.startGeneration(
 this.remoteVideoTrack = remoteStream.videoTrack;
 ```
 
+As on iOS, the SDK matches the task's SEI, waits for a usable remote video frame,
+activates remote audio, and then emits `RealtimeConnectionState.GENERATING` before
+the call returns. While waiting for the frame, the state remains `CONNECTED`.
+Frame readiness does not require a mounted video view and has a 10-second timeout
+after SEI confirmation. Each new generation waits for a new frame, including when
+reusing the same RTC stream. A timeout or cancellation stops that generation;
+remote audio is also unsubscribed when generation stops.
+
 Creating a local stream only starts local preview. The call above creates the
 server session; subsequent calls reuse the connection and remote track. During
 an active generation, a new context updates the current task. After
@@ -381,7 +389,7 @@ this.remoteVideoTrack = resumedStream.videoTrack;
 ```
 
 A new connection requires a context. The local stream must still belong to this
-manager. Generation completion and the first rendered frame are separate events:
+manager. A usable first frame and its actual display are separate events:
 assign the returned remote track to the component so RTC can render it.
 
 The explicit connection and context-only generation APIs remain supported:

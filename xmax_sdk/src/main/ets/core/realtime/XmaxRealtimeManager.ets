@@ -92,6 +92,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     // 渲染层组件
     this.renderController = new RenderController(this.rtcManager, (error: XmaxError): void => {
+      if (error.severity === XmaxErrorSeverity.FATAL) {
+        this.renderController.failRemoteFrameWait(error);
+      }
       this.errorManager.handle(error);
     });
 
@@ -102,6 +105,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.renderController.setRemoteStream(stream);
       },
       (error: XmaxError): void => {
+        if (error.severity === XmaxErrorSeverity.FATAL) {
+          this.renderController.failRemoteFrameWait(error);
+        }
         this.errorManager.handle(error);
       }
     );
@@ -110,6 +116,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.rtcManager,
       this.streamController,
       (error: XmaxError): void => {
+        if (error.severity === XmaxErrorSeverity.FATAL) {
+          this.renderController.failRemoteFrameWait(error);
+        }
         this.errorManager.handle(error);
       }
     );
@@ -585,6 +594,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const generationVersion: number = ++this.generationVersion;
     const operationVersion: number = this.operationVersion;
     this.mediaController.setLocalAudioPreviewEnabled(false);
+    let startedTaskId: string = '';
     try {
       const taskId: string = await this.generationManager.start(
         videoFormat,
@@ -593,10 +603,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           this.ensureGenerationOperation(operationVersion, generationVersion);
         }
       );
+      startedTaskId = taskId;
+      this.ensureGenerationOperation(operationVersion, generationVersion);
+      await this.renderController.waitUntilRemoteFrameReady();
       this.ensureGenerationOperation(operationVersion, generationVersion);
       if (this.connectionManager.currentSessionId !== sessionId) {
         throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
       }
+      this.streamController.activateRemoteAudio();
+      this.ensureGenerationOperation(operationVersion, generationVersion);
 
       this.emitState(new RealtimeState(
         RealtimeConnectionState.GENERATING,
@@ -605,6 +620,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ));
       this.ensureGenerationOperation(operationVersion, generationVersion);
     } catch (error) {
+      if (startedTaskId.length > 0) {
+        try {
+          this.generationManager.stop(startedTaskId);
+        } catch (cleanupError) {
+          this.reportError(XmaxError.from(cleanupError).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+        }
+      }
       if (this.isOperationCurrent(operationVersion) && generationVersion === this.generationVersion) {
         this.restoreLocalAudioPreview();
       }

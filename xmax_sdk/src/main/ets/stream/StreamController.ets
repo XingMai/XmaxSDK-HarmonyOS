@@ -25,7 +25,6 @@ import { RoomControlling } from './room/RoomControlling';
 import { StreamControlling } from './StreamControlling';
 
 const GENERATION_START_TIMEOUT_MS: number = 30000;
-const GENERATION_START_DELAY_MS: number = 150;
 const DEFAULT_REMOTE_AUDIO_VOLUME: number = 100;
 type RemoteStreamListener = (stream: RemoteStream | null) => void;
 
@@ -70,6 +69,9 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
   // 生成状态
   private currentTask: GenerationTask | null = null;
+  private activeRemoteStream: RemoteStream | null = null;
+  private remoteAudioActive: boolean = false;
+  private readonly subscribedRemoteAudioUsers: Set<string> = new Set();
   private generationStartTimer: number = -1;
   private generationStartResolve: (() => void) | null = null;
   private generationStartReject: ((reason: XmaxError) => void) | null = null;
@@ -186,6 +188,16 @@ export class StreamController implements StreamControlling, RtcEventListener {
   }
 
   /** @inheritdoc */
+  activateRemoteAudio(): void {
+    const stream: RemoteStream | null = this.activeRemoteStream;
+    if (this.currentTask === null || stream === null) {
+      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote generation audio stream is unavailable');
+    }
+    this.subscribeRemoteAudio(stream.userId);
+    this.remoteAudioActive = true;
+  }
+
+  /** @inheritdoc */
   updateGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
@@ -225,13 +237,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     try {
-      if (published) {
-        this.rtcManager.setRemoteAudioVolume(
-          userId,
-          DEFAULT_REMOTE_AUDIO_VOLUME
-        );
+      if (published && this.remoteAudioActive && this.activeRemoteStream?.userId === userId) {
+        this.subscribeRemoteAudio(userId);
+      } else if (!published) {
+        this.unsubscribeRemoteAudio(userId);
       }
-      this.rtcManager.subscribeRemoteAudio(userId, published);
     } catch (error) {
       this.handleRtcEventError(XmaxError.from(error).withSeverity(
         published ? XmaxErrorSeverity.FATAL : XmaxErrorSeverity.RECOVERABLE
@@ -255,7 +265,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
     try {
       if (!published) {
-        this.clearRemoteStream();
+        if (this.activeRemoteStream?.userId === userId) {
+          this.remoteAudioActive = false;
+          this.activeRemoteStream = null;
+          this.unsubscribeRemoteAudio(userId);
+          this.clearRemoteStream();
+        }
         return;
       }
       this.rtcManager.subscribeRemoteVideo(userId, true);
@@ -290,6 +305,10 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
     try {
       this.remoteStreamListener(stream);
+      if (this.currentTask?.id !== taskId) {
+        return;
+      }
+      this.activeRemoteStream = stream;
     } catch (error) {
       this.rejectGenerationStart(taskId, XmaxError.from(error));
       return;
@@ -307,6 +326,26 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
     this.errorListener(error);
+  }
+
+  private subscribeRemoteAudio(userId: string): void {
+    if (this.subscribedRemoteAudioUsers.has(userId)) {
+      return;
+    }
+    this.rtcManager.setRemoteAudioVolume(userId, DEFAULT_REMOTE_AUDIO_VOLUME);
+    this.rtcManager.subscribeRemoteAudio(userId, true);
+    this.subscribedRemoteAudioUsers.add(userId);
+  }
+
+  private unsubscribeRemoteAudio(userId: string): void {
+    if (!this.subscribedRemoteAudioUsers.delete(userId)) {
+      return;
+    }
+    try {
+      this.rtcManager.subscribeRemoteAudio(userId, false);
+    } catch (error) {
+      this.errorListener(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+    }
   }
 
   /** 配置当前房间及目标远端用户。 */
@@ -350,12 +389,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return '';
     }
 
-    this.clearRemoteStream();
     this.rejectGenerationStart(
       currentTaskId,
       new XmaxError(XmaxErrorCode.CANCELLED, reason)
     );
     this.currentTask = null;
+    this.activeRemoteStream = null;
+    this.remoteAudioActive = false;
+    this.subscribedRemoteAudioUsers.forEach((userId: string): void => {
+      this.unsubscribeRemoteAudio(userId);
+    });
+    this.clearRemoteStream();
     return currentTaskId;
   }
 
@@ -389,7 +433,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     });
   }
 
-  /** 延迟完成指定生成任务的远端流等待。 */
+  /** SEI 匹配后立即完成流确认，Core 随后等待真正可用的远端首帧。 */
   private resolveGenerationStart(taskId: string): void {
     if (this.currentTask?.id !== taskId ||
       this.generationStartResolve === null) {
@@ -397,21 +441,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     const resolve: () => void = this.generationStartResolve;
-    this.generationStartResolve = null;
-
-    if (this.generationStartTimer >= 0) {
-      clearTimeout(this.generationStartTimer);
-    }
-
-    this.generationStartTimer = setTimeout((): void => {
-      if (this.currentTask?.id !== taskId ||
-        this.generationStartReject === null) {
-        return;
-      }
-
-      this.clearGenerationStartWaiter();
-      resolve();
-    }, GENERATION_START_DELAY_MS);
+    this.clearGenerationStartWaiter();
+    resolve();
   }
 
   /** 拒绝指定生成任务的远端流等待。 */

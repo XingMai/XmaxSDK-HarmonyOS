@@ -207,6 +207,7 @@ test('subscription failure rejects startup promptly, or forwards a running failu
   f.stream.onRemoteVideoPublished('bot', true);
   assert.equal(f.received.length, 1);
   assert.equal(f.received[0].severity, f.Severity.FATAL);
+  f.stream.subscribedRemoteAudioUsers.add('bot');
   f.stream.onRemoteAudioPublished('bot', false);
   assert.equal(f.received.at(-1).severity, f.Severity.RECOVERABLE);
 });
@@ -220,8 +221,10 @@ test('synchronous start signal failure returns one rejected promise with the ori
   f.stream.stopGeneration('task');
 });
 
-test('audio volume callback errors are forwarded without escaping the RTC event callback', () => {
+test('audio volume callback errors are forwarded for an activated remote stream', () => {
   const f = streamFixture();
+  f.stream.remoteAudioActive = true;
+  f.stream.activeRemoteStream = { roomId: 'room', userId: 'bot' };
   f.rtc.setRemoteAudioVolume = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'volume failed'); };
   assert.doesNotThrow(() => f.stream.onRemoteAudioPublished('bot', true));
   assert.equal(f.received.length, 1);
@@ -235,6 +238,7 @@ test('remote surface bind failure reaches the fatal listener without escaping th
   const { RemoteStream } = f.load('foundation/rtc/RemoteStream.ets');
   const { VideoRenderRegistry } = f.load('rendering/video/VideoRenderRegistry.ets');
   const render = new RenderController({
+    setRemoteVideoFrameListener() {}, observeRemoteVideoFrames() {},
     setRemoteVideoRenderedListener() {}, renderLibraryName() { return 'rtc'; },
     bindRemoteVideo() { throw new f.XmaxError(f.Code.RTC_ERROR, 'bind failed'); },
     unbindRemoteVideo() {}

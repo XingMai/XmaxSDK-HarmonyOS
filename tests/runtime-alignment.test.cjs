@@ -201,8 +201,7 @@ test('signaling uid, outgoing SEI and incoming confirmation share the full Harmo
     assert.deepEqual([...timers.values()].map(t => t.ms), [30000]);
     stream.onSeiMessageReceived(remote, task);
     assert.deepEqual(remoteStreams, [remote]);
-    assert.deepEqual([...timers.values()].map(t => t.ms), [150]);
-    const [id, timer] = [...timers][0]; timers.delete(id); timer.callback();
+    assert.equal(timers.size, 0); // SEI confirmation has no artificial delay.
     assert.equal(await starting, task);
     assert.deepEqual(mediaStarts, [task]);
     manager.update(task, f.format, new f.Context('changed'));

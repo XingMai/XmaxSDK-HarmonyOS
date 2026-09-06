@@ -96,6 +96,9 @@ export interface StreamControlling {
     context: RealtimeContext
   ): Promise<void>;
 
+  /** 首帧可用后激活已匹配生成流的远端音频。 */
+  activateRemoteAudio(): void;
+
   /**
    * 发送生成条件变更信令。
    *

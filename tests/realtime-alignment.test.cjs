@@ -51,6 +51,7 @@ function managerFixture() {
     constructor() { stream = this; this.currentGenerationTaskId = ''; }
     async connect(_connection, _audio, ensure) { ensure(); }
     async disconnect() { this.stopGeneration(''); }
+    activateRemoteAudio() {}
     beginGeneration(task, format, context) {
       this.currentGenerationTaskId = task;
       const gate = deferred();
@@ -83,7 +84,10 @@ function managerFixture() {
     MediaController: { MediaController: FakeMedia },
     StreamController: { StreamController: FakeStream },
     RealtimeSessionService: { RealtimeSessionService: FakeSessionService },
-    RenderController: { RenderController: class { registerRemoteTrack() {} resetRemoteTrack() {} } }
+    RenderController: { RenderController: class {
+      registerRemoteTrack() {} resetRemoteTrack() {} failRemoteFrameWait() {}
+      async waitUntilRemoteFrameReady() {}
+    } }
   }, { setTimeout: callback => { timers.push(callback); return timers.length; } });
   ({ RealtimeVideoTrack: Track, updateRealtimeVideoTrackPosition: updatePosition } = load('service/realtime/RealtimeVideoTrack.ets'));
   ({ RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets'));

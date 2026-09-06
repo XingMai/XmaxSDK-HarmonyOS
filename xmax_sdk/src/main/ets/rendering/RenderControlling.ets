@@ -1,4 +1,5 @@
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
+import { XmaxError } from '../foundation/errors/XmaxError';
 import { InteractionControlling } from '../media/interaction/InteractionControlling';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 
@@ -12,6 +13,12 @@ export interface RenderControlling {
    * @returns 无返回值。
    */
   setRemoteStream(stream: RemoteStream | null): void;
+
+  /** 等待本次 SEI 匹配后出现的首个可用远端帧，超时或流被清除时拒绝。 */
+  waitUntilRemoteFrameReady(): Promise<void>;
+
+  /** 使启动期间的异步致命错误立即结束首帧等待。 */
+  failRemoteFrameWait(error: XmaxError): void;
 
   /**
    * 为远端视频轨道注册画面和轨迹交互绑定。

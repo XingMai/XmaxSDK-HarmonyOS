@@ -7,6 +7,7 @@ import {
   AudioSourceType,
   CapturePreference,
   ExternalAudioFrame,
+  IVideoFrame,
   LocalStreamStats,
   MirrorType,
   NetworkQualityStats,
@@ -14,6 +15,7 @@ import {
   PerformanceAlarmReason,
   RemoteStreamKey,
   RemoteStreamStats,
+  RemoteVideoSinkPosition,
   RoomProfileType,
   RTCEngine,
   RTCRoom,
@@ -23,10 +25,13 @@ import {
   SysStats,
   UserInfo,
   VideoCanvas,
+  VideoApplyRotation,
   VideoEncodePreference,
   VideoEncoderConfig,
   VideoFrameData,
   VideoFrameInfo,
+  VideoPixelFormat,
+  VideoSinkMirrorType,
   VideoSourceType
 } from '@bytertc/volcenginertc';
 import { AudioFrame } from '../media/audio/AudioFrame';
@@ -45,7 +50,7 @@ import {
   RtcEngineLease,
   RtcEngineManager
 } from './RtcEngineManager';
-import { RtcManaging, RtcRemoteVideoRenderedListener } from './RtcManaging';
+import { RtcManaging, RtcRemoteVideoFrameListener, RtcRemoteVideoRenderedListener } from './RtcManaging';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
 import { RtcQualityListener } from './RtcQualityListener';
@@ -72,6 +77,8 @@ export class RtcManager implements RtcManaging {
   private listener: RtcEventListener | null = null;
   private remoteVideoRenderedListener: RtcRemoteVideoRenderedListener | null = null;
   private readonly renderedRemoteStreams: Set<string> = new Set();
+  private remoteVideoFrameListener: RtcRemoteVideoFrameListener | null = null;
+  private readonly observedRemoteStreams: Set<string> = new Set();
   private qualityListener: RtcQualityListener | null = null;
   private cameraPreviewReadyListener: RtcCameraPreviewReadyListener | null = null;
 
@@ -115,7 +122,8 @@ export class RtcManager implements RtcManaging {
     const engine: RTCEngine = lease.engine;
 
     engine.on('onSEIMessageReceived', (key: RemoteStreamKey, message: ArrayBuffer): void => {
-      if (this.engine !== engine || key.room_id !== this.activeRoomId) {
+      if (this.engine !== engine || key.room_id !== this.activeRoomId ||
+        key.stream_index !== StreamIndex.kStreamIndexMain) {
         return;
       }
 
@@ -133,6 +141,19 @@ export class RtcManager implements RtcManaging {
         const stream = new RemoteStream(key.room_id, key.user_id);
         this.renderedRemoteStreams.add(stream.key());
         this.remoteVideoRenderedListener?.(stream);
+      });
+    engine.on('onRemoteVideoFrame',
+      (key: RemoteStreamKey, position: RemoteVideoSinkPosition, frame: IVideoFrame): void => {
+        if (this.engine !== engine || key.room_id !== this.activeRoomId ||
+          key.stream_index !== StreamIndex.kStreamIndexMain ||
+          position !== RemoteVideoSinkPosition.kRemoteVideoSinkPositionAfterPostProcess ||
+          frame.width <= 0 || frame.height <= 0) {
+          return;
+        }
+        const stream = new RemoteStream(key.room_id, key.user_id);
+        if (this.observedRemoteStreams.has(stream.key())) {
+          this.remoteVideoFrameListener?.(stream);
+        }
       });
     engine.on('onSysStats', (stats: SysStats): void => {
       if (this.engine !== engine) {
@@ -184,6 +205,7 @@ export class RtcManager implements RtcManaging {
     this.engineLease = null;
     this.remoteStreamKeys.clear();
     this.renderedRemoteStreams.clear();
+    this.observedRemoteStreams.clear();
     this.cameraPreviewReadyListener = null;
     this.resetCameraPreviewReadiness(false);
     this.hasBoundLocalVideoCanvas = false;
@@ -196,6 +218,7 @@ export class RtcManager implements RtcManaging {
         try {
           engine.off('onSEIMessageReceived');
           engine.off('onFirstRemoteVideoFrameRendered');
+          engine.off('onRemoteVideoFrame');
           engine.off('onSysStats');
           engine.off('onFirstLocalVideoFrameCaptured');
           engine.off('onPerformanceAlarms');
@@ -525,6 +548,7 @@ export class RtcManager implements RtcManaging {
     this.activeRoomId = '';
     this.remoteStreamKeys.clear();
     this.renderedRemoteStreams.clear();
+    this.observedRemoteStreams.clear();
 
     cancelPendingJoin?.();
 
@@ -745,6 +769,40 @@ export class RtcManager implements RtcManaging {
   /** @inheritdoc */
   hasRenderedRemoteVideo(stream: RemoteStream): boolean {
     return this.renderedRemoteStreams.has(stream.key());
+  }
+
+  /** @inheritdoc */
+  setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void {
+    this.remoteVideoFrameListener = listener;
+  }
+
+  /** @inheritdoc */
+  observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void {
+    const streamId: string = stream.key();
+    if (!enabled && !this.observedRemoteStreams.delete(streamId)) {
+      return;
+    }
+    const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(streamId);
+    if (key === undefined || this.engine === null) {
+      if (!enabled) {
+        return;
+      }
+      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable');
+    }
+    if (enabled) {
+      this.observedRemoteStreams.add(streamId);
+    }
+    try {
+      this.checkResult(this.engine.setRemoteVideoSinkWithConfig(key, {
+        position: RemoteVideoSinkPosition.kRemoteVideoSinkPositionAfterPostProcess,
+        pixel_format: VideoPixelFormat.kVideoPixelFormatI420,
+        apply_rotation: VideoApplyRotation.kVideoApplyRotationDefault,
+        mirror_type: VideoSinkMirrorType.kVideoSinkMirrorTypeOFF
+      }, enabled), 'setRemoteVideoSinkWithConfig');
+    } catch (error) {
+      this.observedRemoteStreams.delete(streamId);
+      throw XmaxError.from(error);
+    }
   }
 
   /**

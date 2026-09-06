@@ -10,6 +10,7 @@ import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
 export type RtcRemoteVideoRenderedListener = (stream: RemoteStream) => void;
+export type RtcRemoteVideoFrameListener = (stream: RemoteStream) => void;
 
 /** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
 export interface RtcManaging {
@@ -246,6 +247,12 @@ export interface RtcManaging {
 
   /** 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。 */
   hasRenderedRemoteVideo(stream: RemoteStream): boolean;
+
+  /** 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。 */
+  setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void;
+
+  /** 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。 */
+  observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void;
 
   /**
    * 向当前 RTC 房间发送消息。
