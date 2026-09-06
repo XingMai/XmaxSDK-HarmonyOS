@@ -47,8 +47,6 @@ struct HdrSurfaceBufferPacket {
   int64_t timestampUs = 0;
 };
 
-constexpr size_t MAX_HDR_SURFACE_QUEUE_SIZE = 1;
-
 bool IsSupportedRotation(int32_t rotation) {
   return rotation == 0 || rotation == 90 ||
       rotation == 180 || rotation == 270;
@@ -520,8 +518,8 @@ class NativeVideoFileDecoder {
       if (wasRunning) {
         OH_VideoDecoder_Stop(decoder_);
       }
-      StopHdrVideoProcessor();
       StopHdrSurfaceWorker();
+      StopHdrVideoProcessor();
       OH_VideoDecoder_Destroy(decoder_);
       decoder_ = nullptr;
     } else if (hdrSurfaceWorker_.joinable()) {
@@ -553,7 +551,9 @@ class NativeVideoFileDecoder {
  private:
   void StopHdrSurfaceWorker() {
     {
-      std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
+      // Use the wait predicate's mutex so stop cannot notify between the
+      // worker checking an empty queue and actually entering its wait.
+      std::lock_guard<std::mutex> queueLock(hdrSurfaceQueueMutex_);
       hdrSurfaceWorkerRunning_.store(false);
     }
     hdrSurfaceCondition_.notify_all();
@@ -594,17 +594,6 @@ class NativeVideoFileDecoder {
       ReleaseHdrOutputSurface();
       return false;
     }
-    const OH_OnFrameAvailableListener listener{
-        this,
-        OnHdrFrameAvailable
-    };
-    if (OH_NativeImage_SetOnFrameAvailableListener(
-            hdrOutputSurface_, listener) != 0) {
-      *error = "注册 HDR Vivid SDR 帧回调失败";
-      ReleaseHdrOutputSurface();
-      return false;
-    }
-
     VideoProcessing_ErrorCode processingResult =
         OH_VideoProcessing_Create(
             &hdrVideoProcessor_,
@@ -662,6 +651,9 @@ class NativeVideoFileDecoder {
         OH_VideoProcessingCallback_BindOnState(
             hdrProcessingCallback_, OnHdrProcessingState) !=
             VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessingCallback_BindOnNewOutputBuffer(
+            hdrProcessingCallback_, OnHdrProcessingOutputBuffer) !=
+            VIDEO_PROCESSING_SUCCESS ||
         OH_VideoProcessing_RegisterCallback(
             hdrVideoProcessor_, hdrProcessingCallback_, this) !=
             VIDEO_PROCESSING_SUCCESS) {
@@ -703,7 +695,6 @@ class NativeVideoFileDecoder {
       hdrProcessorInputWindow_ = nullptr;
     }
     if (hdrOutputSurface_ != nullptr) {
-      OH_NativeImage_UnsetOnFrameAvailableListener(hdrOutputSurface_);
       hdrOutputWindow_ = nullptr;
       OH_NativeImage_Destroy(&hdrOutputSurface_);
     }
@@ -713,10 +704,11 @@ class NativeVideoFileDecoder {
     hdrEndOfStreamPending_ = false;
   }
 
-  static void OnHdrFrameAvailable(void* context) {
+  static void OnHdrProcessingOutputBuffer(
+      OH_VideoProcessing*, uint32_t index, void* context) {
     auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
     if (decoder != nullptr) {
-      decoder->EnqueueHdrSurfaceFrame();
+      decoder->EnqueueHdrSurfaceFrame(index);
     }
   }
 
@@ -748,10 +740,24 @@ class NativeVideoFileDecoder {
     decoder->hdrProcessingStateCondition_.notify_all();
   }
 
-  void EnqueueHdrSurfaceFrame() {
+  void EnqueueHdrSurfaceFrame(uint32_t index) {
+    // Explicit output callbacks disable VPE's automatic rendering. The worker
+    // must serialize rendering and NativeImage buffer release: doing them on
+    // different threads can invert the VPE and NativeImage internal locks.
+    {
+      std::lock_guard<std::mutex> lock(hdrSurfaceQueueMutex_);
+      if (!hdrSurfaceWorkerRunning_.load()) {
+        return;
+      }
+      hdrPendingOutputBuffers_.push_back(index);
+    }
+    hdrSurfaceCondition_.notify_one();
+  }
+
+  bool AcquireHdrSurfaceFrame(HdrSurfaceBufferPacket& packet) {
     std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
-    if (!hdrSurfaceWorkerRunning_.load() || hdrOutputSurface_ == nullptr) {
-      return;
+    if (hdrOutputSurface_ == nullptr) {
+      return false;
     }
     OHNativeWindowBuffer* windowBuffer = nullptr;
     int fenceFd = -1;
@@ -762,13 +768,13 @@ class NativeVideoFileDecoder {
         close(fenceFd);
       }
       ReportError("读取 HDR Vivid SDR Surface 帧失败");
-      return;
+      return false;
     }
     if (OH_NativeWindow_NativeObjectReference(windowBuffer) != 0) {
       OH_NativeImage_ReleaseNativeWindowBuffer(
           hdrOutputSurface_, windowBuffer, fenceFd);
       ReportError("持有 HDR Vivid SDR Surface 帧失败");
-      return;
+      return false;
     }
     int64_t timestampUs = 0;
     bool hasTimestamp = false;
@@ -786,24 +792,10 @@ class NativeVideoFileDecoder {
       OH_NativeImage_ReleaseNativeWindowBuffer(
           hdrOutputSurface_, windowBuffer, fenceFd);
       ReportError("HDR Vivid SDR Surface 帧缺少时间戳");
-      return;
+      return false;
     }
-    HdrSurfaceBufferPacket droppedPacket;
-    bool hasDroppedPacket = false;
-    {
-      std::lock_guard<std::mutex> lock(hdrSurfaceQueueMutex_);
-      if (hdrSurfaceQueue_.size() >= MAX_HDR_SURFACE_QUEUE_SIZE) {
-        droppedPacket = hdrSurfaceQueue_.front();
-        hdrSurfaceQueue_.pop_front();
-        hasDroppedPacket = true;
-      }
-      hdrSurfaceQueue_.push_back({windowBuffer, fenceFd, timestampUs});
-    }
-    if (hasDroppedPacket) {
-      ReleaseHdrSurfaceBufferLocked(droppedPacket);
-      CompleteHdrSurfaceFrame();
-    }
-    hdrSurfaceCondition_.notify_one();
+    packet = {windowBuffer, fenceFd, timestampUs};
+    return true;
   }
 
   void ReleaseHdrSurfaceBufferLocked(
@@ -856,22 +848,37 @@ class NativeVideoFileDecoder {
   void HdrSurfaceWorkerLoop() {
     while (true) {
       HdrSurfaceBufferPacket packet;
+      uint32_t outputIndex = 0;
+      bool dropFrame = false;
       {
         std::unique_lock<std::mutex> lock(hdrSurfaceQueueMutex_);
         hdrSurfaceCondition_.wait(lock, [this] {
           return !hdrSurfaceWorkerRunning_.load() ||
-              !hdrSurfaceQueue_.empty();
+              !hdrPendingOutputBuffers_.empty();
         });
-        if (hdrSurfaceQueue_.empty()) {
-          if (!hdrSurfaceWorkerRunning_.load()) {
-            return;
-          }
-          continue;
+        if (!hdrSurfaceWorkerRunning_.load()) {
+          // These buffers still belong to VPE and are reclaimed by its Stop.
+          hdrPendingOutputBuffers_.clear();
+          return;
         }
-        packet = hdrSurfaceQueue_.front();
-        hdrSurfaceQueue_.pop_front();
+        outputIndex = hdrPendingOutputBuffers_.front();
+        hdrPendingOutputBuffers_.pop_front();
+        dropFrame = !hdrPendingOutputBuffers_.empty();
       }
-      HandleHdrSurfaceFrame(packet);
+      if (OH_VideoProcessing_RenderOutputBuffer(
+              hdrVideoProcessor_, outputIndex) != VIDEO_PROCESSING_SUCCESS) {
+        ReportError("输出 HDR Vivid SDR Surface 帧失败");
+        continue;
+      }
+      if (!AcquireHdrSurfaceFrame(packet)) {
+        continue;
+      }
+      if (dropFrame) {
+        std::lock_guard<std::mutex> surfaceLock(hdrSurfaceMutex_);
+        ReleaseHdrSurfaceBufferLocked(packet);
+      } else {
+        HandleHdrSurfaceFrame(packet);
+      }
       CompleteHdrSurfaceFrame();
     }
   }
@@ -1441,7 +1448,7 @@ class NativeVideoFileDecoder {
   std::mutex hdrSurfaceMutex_;
   std::mutex hdrSurfaceQueueMutex_;
   std::condition_variable hdrSurfaceCondition_;
-  std::deque<HdrSurfaceBufferPacket> hdrSurfaceQueue_;
+  std::deque<uint32_t> hdrPendingOutputBuffers_;
   std::atomic<bool> hdrSurfaceWorkerRunning_{false};
   std::thread hdrSurfaceWorker_;
   std::mutex hdrTimestampMutex_;
