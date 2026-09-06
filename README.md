@@ -405,15 +405,13 @@ realtime.setErrorListener((error) => {
 <br>
 
 ## Example Project
-A runnable ArkUI reference application is available in
-[`examples/XLab`](https://github.com/XingMai/XmaxSDK-HarmonyOS/tree/main/examples/XLab).
-The application demonstrates realtime generation with camera, image, and local
-video inputs, together with custom prompts, reference image selection, and
-trajectory rendering.
+
+A complete example application featuring an ArkUI implementation
+is available in [`examples/XLab`](https://github.com/XingMai/XmaxSDK-HarmonyOS/tree/main/examples/XLab).
+It demonstrates real-time generation using live camera feeds, static images, and
+local video files.
 
 <p align="center"><img src="./docs/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./docs/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./docs/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./docs/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./docs/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
-
-For local builds and regression checks, see [Development validation](./docs/development.md).
 
 <br>
 
