@@ -10,6 +10,7 @@ import { ApiService } from '../service/network/ApiService';
 import { ApiServicing } from '../service/network/ApiServicing';
 import { XmaxConfiguration } from './XmaxConfiguration';
 import { RealtimeConfiguration } from './realtime/RealtimeConfiguration';
+import { RealtimeModel, RealtimeModels } from './realtime/RealtimeModel';
 import { XmaxRealtimeManaging } from './realtime/XmaxRealtimeManaging';
 import { XmaxRealtimeManager } from './realtime/XmaxRealtimeManager';
 import { XmaxStorageManaging } from './storage/XmaxStorageManaging';
@@ -81,9 +82,10 @@ export class XmaxClient {
   /**
    * 创建媒体业务规则服务。
    *
+   * @param model 媒体输入规则使用的模型，默认为 x2.0。
    * @returns 可用于计算模型输入尺寸的媒体服务。
    */
-  createMediaService(): MediaServicing {
-    return new MediaService();
+  createMediaService(model: RealtimeModel = RealtimeModel.X2_0): MediaServicing {
+    return new MediaService(RealtimeModels.realtime(model));
   }
 }

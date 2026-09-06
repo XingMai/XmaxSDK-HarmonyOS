@@ -34,7 +34,7 @@ function imageFixture(t) {
         };
       }
     } },
-    MediaService: { MediaService: class { resolveModelInputSize(size) { return size; } } },
+    MediaService: { MediaService: class { model = { defaultFrameRate: 24 }; resolveModelInputSize(size) { return size; } } },
     MediaTimeline: { MediaTimeline: { currentTimestampUs: () => 1000 } }
   }, {
     setInterval: callback => { intervals.set(++intervalId, callback); return intervalId; },

@@ -19,8 +19,6 @@ import {
   ImageSourceFrameListener
 } from './ImageSourceControlling';
 
-const DEFAULT_IMAGE_FRAME_RATE: number = 24;
-
 /** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
 export class ImageSourceController implements ImageSourceControlling {
 
@@ -221,7 +219,7 @@ export class ImageSourceController implements ImageSourceControlling {
       new RealtimeVideoFormat(
         sourceSize.width,
         sourceSize.height,
-        DEFAULT_IMAGE_FRAME_RATE
+        this.mediaService.model.defaultFrameRate
       );
     if (!Number.isFinite(requestedFormat.fps) || requestedFormat.fps <= 0) {
       throw new XmaxError(

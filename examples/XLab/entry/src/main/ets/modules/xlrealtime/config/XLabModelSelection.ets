@@ -1,4 +1,4 @@
-import { RealtimeModel } from '@xmax/sdk';
+import { RealtimeMediaSource, RealtimeModel, RealtimeModels } from '@xmax/sdk';
 
 export class XLabModelOption {
   readonly model: RealtimeModel;
@@ -43,5 +43,12 @@ export class XLabModelSelection {
       return RealtimeModel.X2_0_SLA;
     }
     return XLabModelSelection.DEFAULT_MODEL;
+  }
+
+  /** 按所选模型查询入口能力，默认读取当前持久化选择。 */
+  static supports(source: RealtimeMediaSource, model: string = XLabModelSelection.current()): boolean {
+    const selected: RealtimeModel = model === RealtimeModel.X2_0_SLA ?
+      RealtimeModel.X2_0_SLA : RealtimeModel.X2_0;
+    return RealtimeModels.realtime(selected).supportedMediaSources.has(source);
   }
 }

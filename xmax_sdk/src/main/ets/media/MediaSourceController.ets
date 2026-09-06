@@ -23,8 +23,6 @@ import { MediaSourceConfiguration } from './MediaSourceConfiguration';
 import { MediaSourceControlling } from './MediaSourceControlling';
 import { MediaTimeline } from './MediaTimeline';
 
-const DEFAULT_VIDEO_FRAME_RATE: number = 24;
-
 export type MediaSourceAudioFrameListener = (frame: AudioFrame) => void;
 
 /** 保存本地媒体文件的音视频元数据。 */
@@ -332,7 +330,7 @@ export class MediaSourceController implements MediaSourceControlling {
     const requestedFormat: RealtimeVideoFormat = videoFormat ?? new RealtimeVideoFormat(
       displaySize.width,
       displaySize.height,
-      DEFAULT_VIDEO_FRAME_RATE
+      this.mediaService.model.defaultFrameRate
     );
     requestedFormat.validate();
 

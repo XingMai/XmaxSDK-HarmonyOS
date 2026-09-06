@@ -1,3 +1,5 @@
+import { MediaService } from '../service/media/MediaService';
+import { MediaServicing } from '../service/media/MediaServicing';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
@@ -66,12 +68,14 @@ export class MediaController implements MediaControlling {
    * @param rtcManager 本地媒体来源共享的 RTC 基础能力。
    * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
    * @param errorListener 持续媒体输出错误监听器。
+   * @param mediaService 相机、图片和视频共享的模型输入规则。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
     streamController: StreamControlling,
-    errorListener: (error: XmaxError) => void
+    errorListener: (error: XmaxError) => void,
+    mediaService: MediaServicing = new MediaService()
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -80,12 +84,14 @@ export class MediaController implements MediaControlling {
     this.cameraController = new CameraController(
       context,
       rtcManager,
-      streamController
+      streamController,
+      mediaService
     );
     this.imageController = new ImageController(
       rtcManager,
       streamController,
-      errorListener
+      errorListener,
+      mediaService
     );
     this.interactionController = new InteractionController((
       taskId: string,
@@ -97,7 +103,8 @@ export class MediaController implements MediaControlling {
       context,
       rtcManager,
       streamController,
-      errorListener
+      errorListener,
+      mediaService
     );
   }
 

@@ -28,6 +28,8 @@ import {
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { StreamController } from '../../stream/StreamController';
 import { StreamControlling } from '../../stream/StreamControlling';
+import { MediaService } from '../../service/media/MediaService';
+import { RealtimeMediaSource } from './RealtimeMediaSource';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 import {
   RealtimeCoordinator,
@@ -117,7 +119,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           this.renderController.failRemoteFrameWait(error);
         }
         this.errorManager.handle(error);
-      }
+      },
+      new MediaService(options.model)
     );
 
     // 实时管理组件
@@ -223,10 +226,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /** 创建并启动本地相机流。 */
-  createLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
+  async createLocalCameraStream(
+    videoFormat: RealtimeVideoFormat = this.options.model.defaultCameraVideoFormat,
     position: CameraPosition = CameraPosition.FRONT
   ): Promise<RealtimeMediaStream> {
+    this.validateMediaSource(RealtimeMediaSource.CAMERA);
     return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
@@ -273,8 +277,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 从本地视频文件创建并启动媒体流，保留鸿蒙模型的输入尺寸规则。 */
-  createLocalVideoStream(filePath: string, videoFormat?: RealtimeVideoFormat): Promise<RealtimeMediaStream> {
+  /** 从本地视频文件创建并启动媒体流，使用当前模型的输入规则。 */
+  async createLocalVideoStream(filePath: string, videoFormat?: RealtimeVideoFormat): Promise<RealtimeMediaStream> {
+    this.validateMediaSource(RealtimeMediaSource.VIDEO);
     return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
@@ -295,10 +300,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /** 从图片输入创建持续输出帧的媒体流。 */
-  createLocalImageStream(
+  async createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
+    this.validateMediaSource(RealtimeMediaSource.IMAGE);
     return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
@@ -475,6 +481,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return Promise.resolve();
     }
     return this.coordinator.terminate(RealtimeTerminationScope.GENERATION);
+  }
+
+  /** 在分配媒体资源之前拒绝模型不支持的来源，保留当前媒体与状态。 */
+  private validateMediaSource(source: RealtimeMediaSource): void {
+    if (!this.options.model.supportedMediaSources.has(source)) {
+      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        `Model ${this.options.model.name} does not support ${source} input`,
+        undefined, undefined, XmaxErrorSeverity.RECOVERABLE));
+    }
   }
 
   private ensureLocalMediaCanChange(): void {

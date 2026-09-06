@@ -82,12 +82,12 @@ export interface XmaxRealtimeManaging {
   /**
    * 创建本地相机流并开始预览。
    *
-   * @param videoFormat 本地视频格式。
+   * @param videoFormat 本地视频格式；省略时使用当前模型默认相机规格。
    * @param position 初始相机位置；未传入时使用前置相机。
    * @returns 本地媒体流。
    */
   createLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
+    videoFormat?: RealtimeVideoFormat,
     position?: CameraPosition
   ): Promise<RealtimeMediaStream>;
 
@@ -110,8 +110,9 @@ export interface XmaxRealtimeManaging {
    * 从设备中的视频文件创建本地媒体流。
    *
    * @param filePath 本地视频文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
+   * @param videoFormat 期望的视频输出格式；未传入时按文件显示尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
    * @returns 可用于建立实时连接的本地媒体流。
+   * @throws 模型不支持该输入来源时返回可恢复的 INVALID_CONFIGURATION 错误。
    */
   createLocalVideoStream(
     filePath: string,
@@ -129,8 +130,9 @@ export interface XmaxRealtimeManaging {
    * 从图片输入创建持续输出视频帧的本地媒体流。
    *
    * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
+   * @param videoFormat 期望的视频输出格式；未传入时按图片尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
    * @returns 可用于建立实时连接的本地媒体流。
+   * @throws 模型不支持该输入来源时返回可恢复的 INVALID_CONFIGURATION 错误。
    */
   createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,

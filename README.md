@@ -283,26 +283,57 @@ changing API request bodies.
 Generation task IDs use `task-harmonyos-` followed by the full 16 UUID bytes encoded
 as 22 unpadded Base64URL characters. The room event's `uid` and video-frame SEI use
 the same complete task ID; SEI contains its UTF-8 bytes. The encoding matches iOS,
-with a HarmonyOS platform prefix. The `x2.0-sla` model and its input-size rules remain
-unchanged.
+with a HarmonyOS platform prefix.
+
+### Model capabilities
+
+`RealtimeModels.realtime(model)` returns a `ModelDefinition` describing the model's
+supported media sources, input pixel bounds, alignment, default frame rate and
+default camera format.
+
+| Model | Media sources | Input pixels | Alignment | Default FPS | Default camera |
+| --- | --- | --- | --- | --- | --- |
+| `x2.0` | Camera, video, image | 600,000–1,280,000 | 32 | 24 | 832 × 1472 |
+| `x2.0-sla` | Camera only | 600,000–2,100,000 | 32 | 30 | 1024 × 1920 |
+
+```ts
+import { ImageSize, RealtimeMediaSource } from '@xmax/sdk';
+
+const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
+const realtime = client.createRealtimeManager(new RealtimeConfiguration(model));
+const localStream = await realtime.createLocalCameraStream();
+const supportsImage = model.supportedMediaSources.has(RealtimeMediaSource.IMAGE);
+
+const mediaService = client.createMediaService(RealtimeModel.X2_0_SLA);
+const inputSize = mediaService.resolveModelInputSize(new ImageSize(1024, 1920));
+```
+
+`createMediaService()` defaults to `x2.0`; pass the model when calculating sizes
+for another model. The realtime manager shares its model's media rules across
+camera, image and video preparation. Alignment is checked against pixel bounds
+again so rounding cannot produce an out-of-range input size.
+
+Unsupported sources reject with `INVALID_CONFIGURATION` and `RECOVERABLE`
+severity before media preparation begins, preserving any active input and session.
+Use `supportedMediaSources` to configure your UI. XLab dims unsupported entries
+and prompts the user to switch models when they are tapped.
+
+Omitting a camera format uses `defaultCameraVideoFormat`. For images and videos,
+omitting the format derives dimensions from the source's display size and uses
+`defaultFrameRate`; an explicit format preserves the requested frame rate while
+resolving dimensions against model bounds. HarmonyOS XLab uses model camera
+defaults directly; frame interpolation is not currently supported.
 
 ### Create an input stream
 
 Create a live camera stream after declaring the required permissions:
 
 ```ts
-import {
-  CameraPosition,
-  RealtimeVideoFormat
-} from '@xmax/sdk';
-
-const localStream = await realtime.createLocalCameraStream(
-  new RealtimeVideoFormat(832, 1472, 24),
-  CameraPosition.FRONT
-);
+const localStream = await realtime.createLocalCameraStream();
+// For explicit capture settings, pass a RealtimeVideoFormat and CameraPosition.
 ```
 
-Still images and local video files can also be used as input sources:
+For `x2.0`, still images and local video files can also be used as input sources:
 
 ```ts
 const imageStream = await realtime.createLocalImageStream(imageFilePath);
@@ -456,11 +487,10 @@ const resizedRemoteStream = await realtime.startGeneration(
 this.remoteVideoTrack = resizedRemoteStream.videoTrack;
 ```
 
-The old local stream is no longer valid after stopping it. HarmonyOS retains its
-`x2.0-sla` support and existing model input sizing: 32-pixel alignment with the
-600,000–2,100,000 pixel scaling thresholds. These rules are independent of the
-iOS lifecycle alignment above; use the returned track's `videoFormat` to inspect
-the resolved dimensions.
+The old local stream is no longer valid after stopping it. Input dimensions follow
+the selected model's pixel bounds and 32-pixel alignment. Use the returned track's
+`videoFormat` to inspect the resolved dimensions; for example, `1024 × 1920` is
+retained for `x2.0-sla` and reduced to `800 × 1536` for `x2.0`.
 
 ### Stop and release resources
 

@@ -20,7 +20,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function managerFixture() {
+function managerFixture(modelName = 'x2.0-sla') {
   const calls = { sessions: [], closed: [], starts: [], updates: [], stops: [], audio: [], switches: 0 };
   const timers = [];
   let sessionGate = null, autoConfirm = true, media, stream, api;
@@ -99,14 +99,73 @@ function managerFixture() {
   const { RealtimeContext: Context } = load('service/realtime/RealtimeContext.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
-  const manager = new XmaxRealtimeManager({}, { model: { name: 'x2.0-sla' } }, {});
-  return { manager, media, stream, api, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
+  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime(modelName) }, {});
+  return { load, manager, media, stream, api, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
     create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
+
+test('default camera formats follow the manager model and reach generation signaling unchanged', async () => {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 24], ['x2.0-sla', 1024, 1920, 30]]) {
+    const f = managerFixture(name);
+    const local = await f.manager.createLocalCameraStream(undefined, 'back');
+    assert.deepEqual(local.videoTrack.videoFormat, new f.Format(width, height, fps));
+    assert.equal(local.videoTrack.position, 'back');
+    await f.manager.startGeneration(local, new f.Context('test'));
+    assert.deepEqual(f.calls.sessions, [name]);
+    assert.deepEqual(f.calls.starts[0].format, new f.Format(width, height, fps));
+    await f.manager.close();
+  }
+});
+
+test('SLA rejects all image overloads and video input before touching an active camera or generation', async () => {
+  const f = managerFixture(), errors = [], mediaCalls = [];
+  f.media.createLocalImageStream = async () => { mediaCalls.push('image'); };
+  f.media.createLocalVideoStream = async () => { mediaCalls.push('video'); };
+  f.manager.setErrorListener(error => errors.push(error));
+  const local = await f.manager.createLocalCameraStream();
+  for (const generating of [false, true]) {
+    if (generating) await f.manager.startGeneration(local, new f.Context('test'));
+    const state = f.manager.currentState, calls = JSON.stringify(f.calls);
+    for (const source of ['missing.png', new ArrayBuffer(0), new Uint8Array(0), {}]) {
+      await assert.rejects(f.manager.createLocalImageStream(source), {
+        code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE',
+        message: 'Model x2.0-sla does not support image input'
+      });
+    }
+    await assert.rejects(f.manager.createLocalVideoStream('missing.mp4'), {
+      code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE',
+      message: 'Model x2.0-sla does not support video input'
+    });
+    assert.equal(f.manager.currentState, state);
+    assert.equal(f.media.currentTrack, local.videoTrack);
+    assert.equal(JSON.stringify(f.calls), calls);
+  }
+  assert.deepEqual(mediaCalls, []);
+  assert.deepEqual(errors, []);
+  await f.manager.close();
+});
+
+test('x2.0 admits image and video input and forwards optional formats to media preparation', async () => {
+  const f = managerFixture('x2.0'), calls = [];
+  for (const method of ['createLocalImageStream', 'createLocalVideoStream']) {
+    f.media[method] = async (source, format) => {
+      calls.push({ method, source, format });
+      return new f.MediaStream('local');
+    };
+    for (const format of [undefined, new f.Format(832, 1472, 20)]) {
+      const source = method === 'createLocalImageStream' ? new Uint8Array([1, 2]) : 'source.mp4';
+      await f.manager[method](source, format);
+      assert.deepEqual(calls.at(-1), { method, source, format });
+    }
+  }
+  assert.equal(calls.length, 4);
+  assert.deepEqual(f.calls.sessions, []);
+});
 
 test('public volume APIs validate finite normalized values before touching playback', async () => {
   const f = managerFixture(), errors = [];
@@ -563,7 +622,8 @@ test('camera controller preserves native capture format and track when switching
     startVideoCapture(...format) { calls.push(['capture', ...format]); },
     renderLibraryName() { return 'rtc'; },
     stopVideoCapture() {}, unbindLocalVideo() {}
-  }, { setVideoEncoderConfig() {} });
+  }, { setVideoEncoderConfig() {} }, new (load('service/media/MediaService.ets').MediaService)(
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
   assert.deepEqual(calls[1], ['capture', 1024, 1920, 30]);
   const switched = await camera.switchCamera();
@@ -609,8 +669,8 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unpublish 
   assert.equal(handlers.has('onFirstRemoteVideoFrameRendered'), false);
 });
 
-function exampleFixture() {
-  const f = managerFixture();
+function exampleFixture(modelName = 'x2.0-sla') {
+  const f = managerFixture(modelName);
   let nextManager = f.manager;
   const load = loadEts({ ...platform,
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
@@ -632,6 +692,17 @@ function exampleFixture() {
     useManager(manager) { nextManager = manager; }
   };
 }
+
+test('XLab uses model camera defaults for both models without an interpolation size override', async () => {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 24], ['x2.0-sla', 1024, 1920, 30]]) {
+    const f = exampleFixture(name);
+    await f.viewModel.connect({});
+    await settle();
+    assert.deepEqual(f.viewModel.state.localVideoTrack.videoFormat, new f.Format(width, height, fps));
+    assert.deepEqual(f.calls.sessions, []);
+    await f.viewModel.suspend();
+  }
+});
 
 test('XLab applies remembered volumes before local playback and restores both after mute', async () => {
   const f = exampleFixture(), vm = f.viewModel;

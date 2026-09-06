@@ -49,18 +49,20 @@ export class CameraController {
    * @param context 申请相机权限所需的页面上下文。
    * @param rtcManager 相机采集和本地渲染使用的 RTC 基础能力。
    * @param streamController 提供视频编码配置能力的统一流组件。
+   * @param mediaService 当前模型的媒体输入规则。
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
-    streamController: StreamControlling
+    streamController: StreamControlling,
+    mediaService: MediaServicing = new MediaService()
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
     this.permissionManager = new PermissionManager(context);
 
     // 服务层组件
-    this.mediaService = new MediaService();
+    this.mediaService = mediaService;
 
     // 业务层组件
     this.streamController = streamController;

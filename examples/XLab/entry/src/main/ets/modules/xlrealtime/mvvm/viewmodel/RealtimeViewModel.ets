@@ -8,7 +8,6 @@ import {
   RealtimeMediaStream,
   RealtimeModels,
   RealtimeState,
-  RealtimeVideoFormat,
   XmaxClient,
   XmaxConfiguration,
   XmaxLoggerOption,
@@ -789,13 +788,9 @@ export class RealtimeViewModel {
     }
 
     return manager.createLocalCameraStream(
-      this.videoFormat(),
+      manager.options.model.defaultCameraVideoFormat,
       CameraPosition.FRONT
     );
-  }
-
-  private videoFormat(): RealtimeVideoFormat {
-    return new RealtimeVideoFormat(1024, 1920, 30);
   }
 
   private errorMessage(error: Object): string {

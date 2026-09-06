@@ -7,8 +7,10 @@ export {
 } from './src/main/ets/foundation/errors/XmaxError';
 export {
   RealtimeModel,
+  ModelDefinition,
   RealtimeModels
 } from './src/main/ets/core/realtime/RealtimeModel';
+export { RealtimeMediaSource } from './src/main/ets/core/realtime/RealtimeMediaSource';
 export {
   RealtimeConfiguration
 } from './src/main/ets/core/realtime/RealtimeConfiguration';

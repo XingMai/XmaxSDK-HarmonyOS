@@ -75,7 +75,8 @@ function fixture(t) {
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
-  const manager = new XmaxRealtimeManager({}, { model: { name: 'x2.0-sla' } }, {});
+  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-sla') }, {});
   manager.setErrorListener(error => errors.push(error));
   manager.setStateListener(state => events.push(`state:${state.connectionState}`));
   const remote = new RemoteStream('room', 'bot');

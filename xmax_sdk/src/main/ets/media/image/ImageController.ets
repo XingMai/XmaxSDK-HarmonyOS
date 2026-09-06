@@ -46,18 +46,20 @@ export class ImageController {
    * @param rtcManager 外部视频源和本地渲染使用的 RTC 基础能力。
    * @param streamController 提供编码配置和视频帧传输能力的统一流组件。
    * @param errorListener 持续图片帧输出错误监听器。
+   * @param mediaService 当前模型的媒体输入规则。
    */
   constructor(
     rtcManager: RtcManaging,
     streamController: StreamControlling,
-    errorListener: (error: XmaxError) => void
+    errorListener: (error: XmaxError) => void,
+    mediaService: MediaServicing = new MediaService()
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
     this.imageManager = new ImageManager();
 
     // 服务层组件
-    this.mediaService = new MediaService();
+    this.mediaService = mediaService;
 
     // 业务层组件
     this.streamController = streamController;
