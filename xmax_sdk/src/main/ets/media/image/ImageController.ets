@@ -70,14 +70,11 @@ export class ImageController {
         }
         this.streamController.pushLocalVideoFrame(frame);
       },
-      (message: string): void => {
+      (error: XmaxError): void => {
         if (!this.acceptsFrames) {
           return;
         }
-        errorListener(new XmaxError(
-          XmaxErrorCode.MEDIA_ERROR,
-          message
-        ));
+        errorListener(error);
       }
     );
   }

@@ -94,28 +94,6 @@ export struct RealtimePage {
       this.customTrajectoryRenderer : this.defaultTrajectoryRenderer;
   }
 
-  private visibleCategories(): ReferenceCategory[] {
-    if (!this.hasLocalImage()) {
-      return this.state.categories;
-    }
-
-    return this.state.categories.filter(
-      (category: ReferenceCategory): boolean =>
-        category.id === 'mox' || category.id === 'free'
-    );
-  }
-
-  private visibleCategoryStates(): RealtimeCategoryState[] {
-    if (!this.hasLocalImage()) {
-      return this.state.categoryStates;
-    }
-
-    return this.state.categoryStates.filter(
-      (categoryState: RealtimeCategoryState): boolean =>
-        categoryState.category.id === 'mox' || categoryState.category.id === 'free'
-    );
-  }
-
   private dismissKeyboard(): void {
     this.promptInputController.stopEditing();
   }
@@ -510,7 +488,7 @@ export struct RealtimePage {
             .margin({ left: 6, right: 6 })
 
           List({ space: 22 }) {
-            ForEach(this.visibleCategories(), (category: ReferenceCategory) => {
+            ForEach(this.state.categories, (category: ReferenceCategory) => {
               ListItem() {
                 Text(category.name)
                   .height(36)
@@ -542,7 +520,7 @@ export struct RealtimePage {
         })
 
         Stack({ alignContent: Alignment.TopStart }) {
-          ForEach(this.visibleCategoryStates(), (categoryState: RealtimeCategoryState) => {
+          ForEach(this.state.categoryStates, (categoryState: RealtimeCategoryState) => {
             if (categoryState.category.input === ReferenceCategoryInput.PROMPT) {
               RealtimePromptInputView({
                 prompt: this.state.promptText,

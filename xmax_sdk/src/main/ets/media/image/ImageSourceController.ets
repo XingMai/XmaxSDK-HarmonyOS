@@ -163,8 +163,7 @@ export class ImageSourceController implements ImageSourceControlling {
       try {
         this.emitFrame();
       } catch (error) {
-        const reason: string = error instanceof Error ? error.message : String(error);
-        this.errorListener(reason);
+        this.errorListener(XmaxError.from(error));
       }
     }, 1000 / videoFormat.fps);
   }

@@ -20,6 +20,80 @@ function fixture(extra = {}, globals = {}) {
   return { load, logs, Logger, Option, XmaxError, Code, Severity };
 }
 
+function imageFixture(t) {
+  const intervals = new Map(), received = [], fatal = [];
+  let failure, intervalId = 0;
+  const f = fixture({
+    ImageManager: { ImageManager: class {
+      async decodeFile() {
+        return { width: 2, height: 2, async release() {},
+          async makeVideoFrameData(width, height) {
+            return { width, height, pixelFormat: 'RGBA', bytesPerRow: width * 4,
+              data: new ArrayBuffer(width * height * 4) };
+          }
+        };
+      }
+    } },
+    MediaService: { MediaService: class { resolveModelInputSize(size) { return size; } } },
+    MediaTimeline: { MediaTimeline: { currentTimestampUs: () => 1000 } }
+  }, {
+    setInterval: callback => { intervals.set(++intervalId, callback); return intervalId; },
+    clearInterval: id => intervals.delete(id)
+  });
+  const { XmaxRealtimeErrorManager } = f.load('core/realtime/XmaxRealtimeErrorManager.ets');
+  const errorManager = new XmaxRealtimeErrorManager();
+  errorManager.setListener(error => fatal.push(error));
+  const { ImageController } = f.load('media/image/ImageController.ets');
+  const controller = new ImageController({
+    useExternalVideoSource() {}, renderLibraryName: () => 'rtc', unbindLocalVideo() {}
+  }, {
+    setVideoEncoderConfig() {}, pushLocalVideoFrame() { if (failure !== undefined) throw failure; }
+  }, error => { received.push(error); errorManager.handle(error); });
+  t.after(async () => { await controller.stopLocalImageStream(); assert.equal(intervals.size, 0); });
+  return { ...f, controller, received, fatal, intervals,
+    start: () => controller.createLocalImageStream('test-image'),
+    failWith(error) { failure = error; },
+    tick() { assert.equal(intervals.size, 1); [...intervals.values()][0](); }
+  };
+}
+
+test('image push errors preserve their identity, code, severity and details through the public error router', async t => {
+  const f = imageFixture(t);
+  await f.start();
+  const recoverable = new f.XmaxError(f.Code.RTC_ERROR, 'retry frame', 1003, 503, f.Severity.RECOVERABLE);
+  const fatal = new f.XmaxError(f.Code.API_ERROR, 'fatal frame', 1004, 500, f.Severity.FATAL);
+  const cancelled = new f.XmaxError(f.Code.CANCELLED, 'stopped');
+  for (const error of [recoverable, fatal, cancelled]) {
+    f.failWith(error);
+    f.tick(); f.tick();
+    assert.equal(f.received.at(-1), error);
+    assert.equal(f.received.at(-2), error);
+  }
+  assert.deepEqual(f.fatal, [fatal]); // Recoverable/cancelled stay internal; repeated fatal instance is deduplicated.
+  assert.equal(f.logs.length, 0); // Error forwarding does not depend on logging.
+});
+
+test('ordinary image push exceptions use the shared XmaxError conversion instead of MEDIA_ERROR', async t => {
+  const f = imageFixture(t);
+  await f.start();
+  f.failWith(new Error('native frame failure')); f.tick();
+  const error = f.received[0];
+  assert.ok(error instanceof f.XmaxError);
+  assert.equal(error.code, f.Code.INTERNAL_ERROR);
+  assert.equal(error.severity, f.Severity.FATAL);
+  assert.equal(error.message, 'native frame failure');
+  assert.equal(f.fatal[0], error);
+});
+
+test('first image push failure rejects creation with the original error and does not start the frame timer', async t => {
+  const f = imageFixture(t);
+  const error = new f.XmaxError(f.Code.RTC_ERROR, 'first frame rejected', undefined, undefined, f.Severity.RECOVERABLE);
+  f.failWith(error);
+  await assert.rejects(f.start(), actual => actual === error);
+  assert.equal(f.intervals.size, 0);
+  assert.deepEqual(f.received, []); // Synchronous creation failure is returned by the operation promise.
+});
+
 test('error defaults match iOS, with backwards-compatible API and HTTP error details', () => {
   const f = fixture();
   const recoverable = ['INVALID_API_KEY', 'INVALID_CONFIGURATION', 'CAMERA_PERMISSION_DENIED',

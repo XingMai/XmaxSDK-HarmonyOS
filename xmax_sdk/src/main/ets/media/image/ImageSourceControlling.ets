@@ -1,9 +1,10 @@
 import { image } from '@kit.ImageKit';
+import { XmaxError } from '../../foundation/errors/XmaxError';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
 export type ImageSourceFrameListener = (frame: VideoFrame) => void;
-export type ImageSourceErrorListener = (message: string) => void;
+export type ImageSourceErrorListener = (error: XmaxError) => void;
 
 /** 定义本地图片持续输出视频帧的能力。 */
 export interface ImageSourceControlling {
