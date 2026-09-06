@@ -10,6 +10,9 @@ import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 /** 定义流层向 Core 和其他业务层暴露的统一能力。 */
 export interface StreamControlling {
 
+  /** @returns 正在启动或运行的生成任务标识；没有任务时为空字符串。 */
+  readonly currentGenerationTaskId: string;
+
   /**
    * 设置实时视频编码器配置。
    *

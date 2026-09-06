@@ -1,6 +1,7 @@
 import {
   XmaxError,
-  XmaxErrorCode
+  XmaxErrorCode,
+  XmaxErrorSeverity
 } from '../../foundation/errors/XmaxError';
 import { ApiServicing } from '../network/ApiServicing';
 import { RealtimeSession } from './RealtimeSession';
@@ -82,7 +83,11 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
    * @returns 会话关闭完成后的 Promise。
    */
   async closeSession(sessionId: string): Promise<void> {
-    await this.apiService.delete<Object>(`/session/${sessionId}`);
+    try {
+      await this.apiService.delete<Object>(`/session/${sessionId}`);
+    } catch (error) {
+      throw XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE);
+    }
   }
 
   /**
@@ -112,7 +117,7 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
         this.stopHeartbeat();
         await onFailure(
           sessionId,
-          XmaxError.from(error)
+          XmaxError.from(error).withSeverity(XmaxErrorSeverity.FATAL)
         );
 
         return;

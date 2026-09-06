@@ -1,4 +1,3 @@
-import { resolveStateTarget } from '../../foundation/state/StateTargetResolver';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { TrajectoryBinding } from './TrajectoryBinding';
 
@@ -9,14 +8,14 @@ export class TrajectoryRegistry {
     track: RealtimeVideoTrack,
     binding: TrajectoryBinding
   ): void {
-    TrajectoryRegistry.bindings.set(resolveStateTarget(track), binding);
+    TrajectoryRegistry.bindings.set(RealtimeVideoTrack.resolve(track), binding);
   }
 
   static unregister(track: RealtimeVideoTrack): void {
-    TrajectoryRegistry.bindings.delete(resolveStateTarget(track));
+    TrajectoryRegistry.bindings.delete(RealtimeVideoTrack.resolve(track));
   }
 
   static binding(track: RealtimeVideoTrack): TrajectoryBinding | null {
-    return TrajectoryRegistry.bindings.get(resolveStateTarget(track)) ?? null;
+    return TrajectoryRegistry.bindings.get(RealtimeVideoTrack.resolve(track)) ?? null;
   }
 }

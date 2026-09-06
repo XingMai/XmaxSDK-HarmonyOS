@@ -9,9 +9,9 @@ import {
   RealtimeModels,
   RealtimeState,
   RealtimeVideoFormat,
-  RealtimeVideoTrack,
   XmaxClient,
   XmaxConfiguration,
+  XmaxLoggerOption,
   XmaxError,
   XmaxRealtimeManaging
 } from '@xmax/sdk';
@@ -49,6 +49,8 @@ export class RealtimeViewModel {
   private promptReference: Reference | null = null;
   private promptReferenceUploadVersion: number = 0;
   private realtimeManager: XmaxRealtimeManaging | null = null;
+  private localStream: RealtimeMediaStream | null = null;
+  private remoteStream: RealtimeMediaStream | null = null;
   private connecting: boolean = false;
   private switchingCamera: boolean = false;
   private changingLocalMedia: boolean = false;
@@ -86,7 +88,7 @@ export class RealtimeViewModel {
     let connectingManager: XmaxRealtimeManaging | null = null;
     try {
       const client = new XmaxClient(
-        new XmaxConfiguration(XLabConfiguration.currentApiKey()),
+        new XmaxConfiguration(XLabConfiguration.currentApiKey(), XmaxLoggerOption.ALL),
         context
       );
       const manager: XmaxRealtimeManaging = client.createRealtimeManager(
@@ -103,10 +105,20 @@ export class RealtimeViewModel {
       });
       manager.setErrorListener((error: XmaxError): void => {
         if (this.realtimeManager === manager) {
+          // 监听器只接收致命错误；具体调用失败仍在各自 catch 中处理。
           this.state.errorMessage = error.message;
+          this.state.isGenerationStarting = false;
+          this.state.isMoxGenerationActive = false;
+          this.state.remoteVideoTrack = null;
         }
       });
       manager.setStateListener((state: RealtimeState): void => {
+        if (this.realtimeManager !== manager) {
+          return;
+        }
+        if (state.connectionState !== RealtimeConnectionState.GENERATING) {
+          this.state.remoteVideoTrack = null;
+        }
         this.state.connectionState = state.connectionState;
         if (state.connectionState === RealtimeConnectionState.GENERATING ||
           state.connectionState === RealtimeConnectionState.DISCONNECTING ||
@@ -126,27 +138,16 @@ export class RealtimeViewModel {
         localVideoPath,
         localImagePath
       );
+      if (this.realtimeManager !== manager) {
+        return;
+      }
+      this.localStream = localStream;
       this.state.localVideoTrack = localStream.videoTrack ?? null;
       if (localVideoPath.length > 0 || localImagePath.length > 0) {
         this.state.isLocalPreviewLoading = false;
       }
-
-      if (this.realtimeManager !== manager) {
-        await this.stopLocalInput(
-          manager,
-          localVideoPath,
-          localImagePath
-        );
-        this.state.localVideoTrack = null;
-        return;
-      }
-
-      const remoteStream = await manager.connect(localStream);
-      this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;
-
-      if (this.realtimeManager === manager) {
-        this.scheduleGenerationUpdate();
-      }
+      // 本地预览不占用服务端会话；首次提交生成条件时再连接。
+      this.scheduleGenerationUpdate();
     } catch (error) {
       if (connectingManager === null ||
         this.realtimeManager === connectingManager) {
@@ -157,7 +158,9 @@ export class RealtimeViewModel {
         this.logPreviewError(message);
       }
     } finally {
-      this.connecting = false;
+      if (this.realtimeManager === connectingManager) {
+        this.connecting = false;
+      }
     }
   }
 
@@ -177,50 +180,39 @@ export class RealtimeViewModel {
 
   async switchCamera(): Promise<void> {
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-    if (manager === null || this.connecting || this.switchingCamera) {
+    if (manager === null || this.connecting || this.switchingCamera ||
+      this.changingLocalMedia || this.state.isGenerationStarting ||
+      this.state.localVideoTrack?.position === undefined) {
       return;
     }
 
-    const currentTrack: RealtimeVideoTrack | null = this.state.localVideoTrack;
-    const videoFormat: RealtimeVideoFormat | undefined = currentTrack?.videoFormat;
-    const position: CameraPosition | undefined = currentTrack?.position;
-    if (videoFormat === undefined || position === undefined) {
-      return;
-    }
-
-    const nextPosition: CameraPosition = position === CameraPosition.FRONT ?
-      CameraPosition.BACK : CameraPosition.FRONT;
-    const shouldRestartGeneration: boolean = this.state.isGenerationStarting ||
-      manager.currentState.connectionState === RealtimeConnectionState.GENERATING;
     this.switchingCamera = true;
     const switchRevision: number = ++this.generationRevision;
     this.state.errorMessage = '';
-
-    let switched: boolean = false;
     try {
-      if (shouldRestartGeneration) {
-        this.state.isGenerationStarting = true;
-      }
-
-      const stream: RealtimeMediaStream = await manager.replaceLocalCameraStream(
-        videoFormat,
-        nextPosition
-      );
+      this.state.isGenerationStarting =
+        manager.currentState.connectionState === RealtimeConnectionState.GENERATING;
+      const stream: RealtimeMediaStream = await manager.switchCamera();
       if (this.realtimeManager === manager) {
+        this.localStream = stream;
         this.state.localVideoTrack = stream.videoTrack ?? null;
-        switched = true;
+        if (manager.currentState.connectionState === RealtimeConnectionState.GENERATING) {
+          this.state.remoteVideoTrack = this.remoteStream?.videoTrack ?? null;
+        }
       }
     } catch (error) {
-      if (this.realtimeManager === manager) {
-        this.state.isGenerationStarting = false;
+      if (this.realtimeManager === manager && this.generationRevision === switchRevision) {
         this.presentError(error);
       }
     } finally {
-      this.switchingCamera = false;
+      if (this.realtimeManager === manager) {
+        this.switchingCamera = false;
+        this.state.isGenerationStarting = false;
+      }
     }
 
-    const generationChanged: boolean = this.generationRevision !== switchRevision;
-    if (switched && (shouldRestartGeneration || generationChanged)) {
+    if (this.realtimeManager === manager &&
+      this.generationRevision !== switchRevision) {
       this.scheduleGenerationUpdate();
     }
   }
@@ -268,6 +260,8 @@ export class RealtimeViewModel {
       closePromise = manager.close();
     }
     this.realtimeManager = null;
+    this.localStream = null;
+    this.remoteStream = null;
     if (!preservesLocalInput) {
       this.localVideoPath = '';
       this.localImagePath = '';
@@ -293,7 +287,9 @@ export class RealtimeViewModel {
     if (closePromise !== null) {
       await closePromise;
     }
-    this.state.connectionState = RealtimeConnectionState.DISCONNECTED;
+    if (this.realtimeManager === null) {
+      this.state.connectionState = RealtimeConnectionState.DISCONNECTED;
+    }
   }
 
   selectCategory(categoryId: string): void {
@@ -328,12 +324,10 @@ export class RealtimeViewModel {
     }
 
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-    const connectionAvailable: boolean = manager !== null &&
-      (manager.currentState.connectionState === RealtimeConnectionState.CONNECTED ||
-        manager.currentState.connectionState === RealtimeConnectionState.GENERATING);
+    const connectionAvailable: boolean = manager !== null && this.localStream !== null;
     if (!connectionAvailable) {
       const message: string = this.state.errorMessage.trim().length > 0 ?
-        this.state.errorMessage : '实时连接尚未建立';
+        this.state.errorMessage : '本地画面尚未就绪';
       this.onMessage?.(message);
       return;
     }
@@ -498,17 +492,19 @@ export class RealtimeViewModel {
 
   private scheduleGenerationUpdate(): void {
     this.generationRevision++;
-    if (this.switchingCamera || this.changingLocalMedia) {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    if (this.switchingCamera || this.generationUpdating) {
+      // 即使仍在连接中，也使旧的一键生成失效；切镜头时阻止恢复旧条件。
+      if (manager !== null) {
+        void manager.stopGeneration().catch((error: Object): void => {
+          if (this.realtimeManager === manager) {
+            this.presentError(error);
+          }
+        });
+      }
       return;
     }
-
-    if (this.generationUpdating) {
-      const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-      if (manager !== null &&
-        (manager.currentState.connectionState === RealtimeConnectionState.CONNECTED ||
-          manager.currentState.connectionState === RealtimeConnectionState.GENERATING)) {
-        manager.stopGeneration();
-      }
+    if (this.changingLocalMedia) {
       return;
     }
     void this.applyGenerationUpdates();
@@ -520,9 +516,10 @@ export class RealtimeViewModel {
       while (true) {
         const revision: number = this.generationRevision;
         const manager: XmaxRealtimeManaging | null = this.realtimeManager;
-        if (manager === null || this.switchingCamera || this.changingLocalMedia ||
-          (manager.currentState.connectionState !== RealtimeConnectionState.CONNECTED &&
-            manager.currentState.connectionState !== RealtimeConnectionState.GENERATING)) {
+        const localStream: RealtimeMediaStream | null = this.localStream;
+        if (manager === null || localStream === null || this.switchingCamera || this.changingLocalMedia ||
+          manager.currentState.connectionState === RealtimeConnectionState.CONNECTING ||
+          manager.currentState.connectionState === RealtimeConnectionState.DISCONNECTING) {
           return;
         }
         const selectedReference: Reference | undefined = this.selectedReferenceItem?.reference;
@@ -534,25 +531,33 @@ export class RealtimeViewModel {
           const referencePath: string | undefined = usesPrompt ?
             this.promptReference?.remoteUrl : usesMox ?
               await this.resolveMoxReferencePath() : selectedReference?.remoteUrl;
-          if (revision !== this.generationRevision) {
+          if (revision !== this.generationRevision || this.realtimeManager !== manager) {
             continue;
           }
           const shouldGenerate: boolean = usesPrompt || usesMox ?
             prompt.length > 0 : referencePath !== undefined;
           if (shouldGenerate) {
             this.state.isMoxGenerationActive = usesMox;
-            if (manager.currentState.connectionState === RealtimeConnectionState.CONNECTED) {
+            if (manager.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
               this.state.isGenerationStarting = true;
             }
-            await manager.startGeneration(new RealtimeContext(prompt, referencePath));
+            const remoteStream: RealtimeMediaStream = await manager.startGeneration(
+              localStream, new RealtimeContext(prompt, referencePath)
+            );
+            if (this.realtimeManager === manager && revision === this.generationRevision) {
+              this.remoteStream = remoteStream;
+              this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;
+            }
           } else {
             this.state.isGenerationStarting = false;
             this.state.isMoxGenerationActive = false;
             await manager.stopGeneration();
           }
-          this.state.errorMessage = '';
+          if (this.realtimeManager === manager && revision === this.generationRevision) {
+            this.state.errorMessage = '';
+          }
         } catch (error) {
-          if (revision === this.generationRevision) {
+          if (revision === this.generationRevision && this.realtimeManager === manager) {
             this.state.isGenerationStarting = false;
             this.state.isMoxGenerationActive = false;
             this.presentError(error);
@@ -582,9 +587,6 @@ export class RealtimeViewModel {
 
     const connectionState: RealtimeConnectionState =
       manager.currentState.connectionState;
-    const shouldReconnect: boolean =
-      connectionState === RealtimeConnectionState.CONNECTED ||
-        connectionState === RealtimeConnectionState.GENERATING;
     const shouldRestartGeneration: boolean = this.state.isGenerationStarting ||
       connectionState === RealtimeConnectionState.GENERATING;
     const previousVideoPath: string = this.localVideoPath;
@@ -604,30 +606,28 @@ export class RealtimeViewModel {
       this.state.localVideoTrack = null;
       this.state.remoteVideoTrack = null;
 
-      if (shouldReconnect) {
-        await manager.disconnect();
+      this.localStream = null;
+      this.remoteStream = null;
+      await manager.disconnect();
+      if (this.realtimeManager !== manager) {
+        return;
       }
       await this.stopLocalInput(
         manager,
         previousVideoPath,
         previousImagePath
       );
+      if (this.realtimeManager !== manager) {
+        return;
+      }
       stream = await creation(manager, resolvedPath);
       if (this.realtimeManager !== manager) {
-        await this.stopLocalInput(
-          manager,
-          isImage ? '' : resolvedPath,
-          isImage ? resolvedPath : ''
-        );
         return;
       }
 
+      this.localStream = stream;
       this.state.localVideoTrack = stream.videoTrack ?? null;
       this.state.isLocalPreviewLoading = false;
-      if (shouldReconnect) {
-        const remoteStream: RealtimeMediaStream = await manager.connect(stream);
-        this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;
-      }
       if (isImage) {
         this.localImagePath = resolvedPath;
         this.localVideoPath = '';
@@ -648,12 +648,15 @@ export class RealtimeViewModel {
         this.presentError(error);
       }
     } finally {
-      this.changingLocalMedia = false;
+      if (this.realtimeManager === manager) {
+        this.changingLocalMedia = false;
+      }
     }
 
     const generationChanged: boolean =
       this.generationRevision !== changeRevision;
-    if (changed && (shouldRestartGeneration || generationChanged)) {
+    if (this.realtimeManager === manager && changed &&
+      (shouldRestartGeneration || generationChanged)) {
       this.scheduleGenerationUpdate();
     }
   }

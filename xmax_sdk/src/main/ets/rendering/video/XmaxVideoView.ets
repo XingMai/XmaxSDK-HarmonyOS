@@ -7,7 +7,7 @@ import { TrajectoryEffectRendering } from '../trajectory/TrajectoryEffectRenderi
 import { TrajectoryOverlayView } from '../trajectory/TrajectoryOverlayView';
 import { TrajectoryRegistry } from '../trajectory/TrajectoryRegistry';
 import { CameraPreviewRatio } from './CameraPreviewRatio';
-import { VideoRenderRegistry } from './VideoRenderRegistry';
+import { VideoReadyListener, VideoRenderRegistry } from './VideoRenderRegistry';
 
 let nextVideoViewId: number = 1;
 const PREVIEW_TRANSITION_DURATION: number = 300;
@@ -15,7 +15,11 @@ const PREVIEW_TRANSITION_DURATION: number = 300;
 /** 显示本地或远端实时视频轨道。 */
 @Component
 export struct XmaxVideoView {
-  track?: RealtimeVideoTrack;
+  @Prop @Watch('onTrackChanged')
+  track?: RealtimeVideoTrack = undefined;
+
+  /** @internal 远端画面显示状态，供组合视频组件使用。 */
+  onVideoReadyChanged?: VideoReadyListener;
 
   /** 视频内容显示模式。 */
   @Prop @Watch('onContentModeChanged')
@@ -30,7 +34,10 @@ export struct XmaxVideoView {
     new DefaultTrajectoryEffectRenderer();
 
   // 渲染资源
-  private readonly viewId: string = `xmax_video_view_${nextVideoViewId++}`;
+  @State private viewId: string = `xmax_video_view_${nextVideoViewId++}`;
+  private currentTrack?: RealtimeVideoTrack;
+  private attachedTrack?: RealtimeVideoTrack;
+  private attachedViewId: string = '';
 
   // 容器尺寸
   @State private containerWidth: number = 0;
@@ -41,57 +48,94 @@ export struct XmaxVideoView {
   @State private previewFrame: image.PixelMap | undefined = undefined;
 
   aboutToAppear(): void {
-    const track: RealtimeVideoTrack | undefined = this.track;
-    if (track === undefined) {
-      return;
-    }
-
-    const ratio: CameraPreviewRatio | undefined =
-      VideoRenderRegistry.cameraPreviewRatio(track);
-    if (ratio !== undefined) {
-      this.cameraPreviewRatio = ratio;
-    }
+    this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
+    this.updatePreviewRatio();
   }
 
   aboutToDisappear(): void {
-    const track: RealtimeVideoTrack | undefined = this.track;
-    if (track !== undefined) {
-      VideoRenderRegistry.detach(track, this.viewId);
+    this.detachVideo();
+  }
+
+  private onTrackChanged(): void {
+    const track: RealtimeVideoTrack | undefined = this.track === undefined ?
+      undefined : RealtimeVideoTrack.resolve(this.track);
+    if (track === this.currentTrack) {
+      return;
     }
+    this.detachVideo();
+    this.currentTrack = track;
+    this.previewFrame = undefined;
+    this.updatePreviewRatio();
+    // 每个轨道使用新的 Surface，旧 onLoad/onDestroy 不能影响新绑定。
+    this.viewId = `xmax_video_view_${nextVideoViewId++}`;
+  }
+
+  private updatePreviewRatio(): void {
+    this.cameraPreviewRatio = this.track === undefined ? CameraPreviewRatio.FILL :
+      VideoRenderRegistry.cameraPreviewRatio(this.track) ?? CameraPreviewRatio.FILL;
+  }
+
+  private attachVideo(viewId: string): void {
+    if (viewId !== this.viewId || this.track === undefined) {
+      return;
+    }
+    this.detachVideo();
+    const track: RealtimeVideoTrack = RealtimeVideoTrack.resolve(this.track);
+    this.attachedTrack = track;
+    this.attachedViewId = viewId;
+    VideoRenderRegistry.attach(track, viewId, this.contentMode,
+      (ratio: CameraPreviewRatio): void => {
+        if (this.attachedViewId === viewId) {
+          this.cameraPreviewRatio = ratio;
+        }
+      },
+      (frame: image.PixelMap | undefined): void => {
+        if (this.attachedViewId === viewId) {
+          this.previewFrame = frame;
+        }
+      },
+      (ready: boolean): void => {
+        if (this.attachedViewId === viewId) {
+          this.onVideoReadyChanged?.(ready);
+        }
+      });
+  }
+
+  private detachVideo(): void {
+    const track: RealtimeVideoTrack | undefined = this.attachedTrack;
+    const viewId: string = this.attachedViewId;
+    this.attachedTrack = undefined;
+    this.attachedViewId = '';
+    if (track !== undefined) {
+      VideoRenderRegistry.detach(track, viewId);
+    }
+    this.onVideoReadyChanged?.(false);
   }
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      XComponent({
-        id: this.viewId,
-        type: XComponentType.SURFACE,
-        libraryname: this.renderLibraryName()
-      })
-        .width(this.previewWidth())
-        .height(this.previewHeight())
-        .clip(true)
-        .animation({
-          duration: PREVIEW_TRANSITION_DURATION,
-          curve: Curve.EaseInOut
+      ForEach(this.track === undefined ? [] : [this.viewId], (viewId: string) => {
+        XComponent({
+          id: viewId,
+          type: XComponentType.SURFACE,
+          libraryname: this.renderLibraryName()
         })
-        .onLoad((): void => {
-          const track: RealtimeVideoTrack | undefined = this.track;
-          if (track === undefined) {
-            return;
-          }
-
-          VideoRenderRegistry.attach(
-            track,
-            this.viewId,
-            this.contentMode,
-            (ratio: CameraPreviewRatio): void => {
-              this.cameraPreviewRatio = ratio;
-            },
-            (frame: image.PixelMap | undefined): void => {
-              this.previewFrame = frame;
+          .width(this.previewWidth())
+          .height(this.previewHeight())
+          .clip(true)
+          .animation({
+            duration: PREVIEW_TRANSITION_DURATION,
+            curve: Curve.EaseInOut
+          })
+          .onLoad((): void => {
+            this.attachVideo(viewId);
+          })
+          .onDestroy((): void => {
+            if (this.attachedViewId === viewId) {
+              this.detachVideo();
             }
-          );
-        })
+          })
+      }, (viewId: string): string => viewId)
 
       if (this.previewFrame !== undefined) {
         Image(this.previewFrame)

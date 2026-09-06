@@ -1,15 +1,17 @@
 import {
   XmaxError,
-  XmaxErrorCode
+  XmaxErrorSeverity
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
 
-/** 统一记录实时错误并通过旁路监听器通知接入方。 */
+/** 统一记录实时错误，只将致命错误通知接入方。 */
 export class XmaxRealtimeErrorManager {
 
   // 错误监听器
   private listener: RealtimeErrorListener | null = null;
+  // 同一个错误沿调用栈被多层捕获时，只记录和通知一次。
+  private readonly reportedErrors: WeakSet<XmaxError> = new WeakSet();
 
   /**
    * 设置实时错误监听器。
@@ -22,21 +24,21 @@ export class XmaxRealtimeErrorManager {
   }
 
   /**
-   * 记录错误并通知监听器；正常取消仅原样返回。
+   * 记录各级错误；仅致命错误通知监听器。
    *
    * @param error 需要处理的 SDK 错误。
    * @returns 传入的错误，供原有 Promise 流程继续抛出。
    */
   handle(error: XmaxError): XmaxError {
-    if (error.code === XmaxErrorCode.CANCELLED) {
+    if (this.reportedErrors.has(error)) {
       return error;
     }
 
-    XmaxLogger.error(
-      this.format(error),
-      'Error'
-    );
-    this.notifyListener(error);
+    this.reportedErrors.add(error);
+    XmaxLogger.error((): string => this.format(error), 'Realtime');
+    if (error.severity === XmaxErrorSeverity.FATAL) {
+      this.notifyListener(error);
+    }
 
     return error;
   }
@@ -73,7 +75,9 @@ export class XmaxRealtimeErrorManager {
    */
   private format(error: XmaxError): string {
     const details: string[] = [
-      `原因：${error.message}`
+      `错误码：${error.code}`,
+      `级别：${error.severity}`,
+      `信息：${error.message}`
     ];
 
     if (error.apiCode !== undefined) {
@@ -91,6 +95,6 @@ export class XmaxRealtimeErrorManager {
       return `${branch} ${detail}`;
     });
 
-    return [`SDK 抛出错误：${error.code}`, ...formattedDetails].join('\n');
+    return ['实时服务错误 (Realtime Service Error)', ...formattedDetails].join('\n');
   }
 }

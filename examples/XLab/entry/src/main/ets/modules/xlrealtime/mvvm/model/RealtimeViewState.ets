@@ -79,10 +79,6 @@ export class RealtimeViewState {
       this.connectionState === RealtimeConnectionState.GENERATING;
   }
 
-  get isRemoteVideoVisible(): boolean {
-    return this.connectionState === RealtimeConnectionState.GENERATING;
-  }
-
   referenceList(categoryId: string): RealtimeReferenceListState {
     const categoryState: RealtimeCategoryState | undefined = this.categoryStates.find(
       (candidate: RealtimeCategoryState): boolean => candidate.category.id === categoryId

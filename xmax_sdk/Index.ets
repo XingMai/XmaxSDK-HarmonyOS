@@ -1,7 +1,9 @@
+export { XmaxLoggerOption } from './src/main/ets/foundation/logging/XmaxLoggerOption';
 export { XmaxConfiguration } from './src/main/ets/core/XmaxConfiguration';
 export {
   XmaxError,
-  XmaxErrorCode
+  XmaxErrorCode,
+  XmaxErrorSeverity
 } from './src/main/ets/foundation/errors/XmaxError';
 export {
   RealtimeModel,
@@ -58,6 +60,7 @@ export { VideoContentMode } from './src/main/ets/foundation/media/video/VideoCon
 export {
   RealtimePoint
 } from './src/main/ets/service/realtime/RealtimePoint';
+export { XmaxRealtimeVideoView } from './src/main/ets/rendering/video/XmaxRealtimeVideoView';
 export { XmaxVideoView } from './src/main/ets/rendering/video/XmaxVideoView';
 export { XmaxRealtimeManaging } from './src/main/ets/core/realtime/XmaxRealtimeManaging';
 export { XmaxStorageManaging } from './src/main/ets/core/storage/XmaxStorageManaging';
@@ -71,4 +74,4 @@ export { ImageSize } from './src/main/ets/service/media/ImageSize';
 export { MediaServicing } from './src/main/ets/service/media/MediaServicing';
 export { XmaxClient } from './src/main/ets/core/XmaxClient';
 
-export const XMAX_SDK_VERSION: string = '1.0.3';
+export { XMAX_SDK_VERSION } from './src/main/ets/foundation/runtime/SDKVersion';

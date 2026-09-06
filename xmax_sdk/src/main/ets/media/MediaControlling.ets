@@ -52,18 +52,6 @@ export interface MediaControlling extends InteractionControlling {
     position: CameraPosition
   ): Promise<RealtimeMediaStream>;
 
-  /**
-   * 使用新的采集参数更新当前相机媒体流。
-   *
-   * @param videoFormat 更新后相机采集与 RTC 编码使用的视频格式。
-   * @param position 更新后启用的摄像头位置。
-   * @returns 包含更新后本地相机视频轨道的媒体流。
-   */
-  replaceLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
-  ): Promise<RealtimeMediaStream>;
-
   /** @returns 当前相机来源停止并释放完成后的 Promise。 */
   stopLocalCameraStream(): Promise<void>;
 

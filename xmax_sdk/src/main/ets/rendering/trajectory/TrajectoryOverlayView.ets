@@ -18,7 +18,8 @@ const INTERACTION_SAMPLE_INTERVAL_MS: number = 30;
 
 @Component
 export struct TrajectoryOverlayView {
-  track?: RealtimeVideoTrack;
+  @Prop @Watch('onTrackChanged')
+  track?: RealtimeVideoTrack = undefined;
 
   /** 是否接收并绘制轨迹交互。 */
   @Prop @Watch('onInteractionEnabledChanged')
@@ -42,6 +43,10 @@ export struct TrajectoryOverlayView {
 
   aboutToDisappear(): void {
     this.stopTicking();
+    this.cancelInteraction();
+  }
+
+  private onTrackChanged(): void {
     this.cancelInteraction();
   }
 

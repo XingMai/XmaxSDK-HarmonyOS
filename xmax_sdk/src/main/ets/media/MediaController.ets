@@ -191,23 +191,6 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /**
-   * 更新当前相机来源的采集参数。
-   *
-   * @param videoFormat 相机流使用的视频输出格式。
-   * @param position 初始摄像头位置。
-   * @returns 更新完成后的本地相机媒体流。
-   */
-  replaceLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
-  ): Promise<RealtimeMediaStream> {
-    return this.updateCameraSource(
-      (): Promise<RealtimeMediaStream> =>
-        this.cameraController.replaceLocalCameraStream(videoFormat, position)
-    );
-  }
-
   /** @returns 当前相机来源停止完成后的 Promise。 */
   stopLocalCameraStream(): Promise<void> {
     return this.stopSource(this.cameraController);
@@ -215,7 +198,9 @@ export class MediaController implements MediaControlling {
 
   /** @returns 摄像头切换后的本地媒体流。 */
   switchCamera(): Promise<RealtimeMediaStream> {
-    return this.cameraController.switchCamera();
+    return this.updateCameraSource(
+      (): Promise<RealtimeMediaStream> => this.cameraController.switchCamera()
+    );
   }
 
   /**
@@ -272,7 +257,7 @@ export class MediaController implements MediaControlling {
    */
   owns(stream: RealtimeMediaStream): boolean {
     const track: RealtimeVideoTrack | undefined = stream.videoTrack;
-    return track !== undefined && this.currentTrack === track;
+    return track !== undefined && this.currentTrack === RealtimeVideoTrack.resolve(track);
   }
 
   /** @inheritdoc */
@@ -319,7 +304,7 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 在当前相机来源空闲时启动采集参数更新任务。
+   * 在当前相机来源空闲时切换镜头。
    *
    * @param update 实际更新相机来源的操作。
    * @returns 更新完成后的本地媒体流。
@@ -334,7 +319,7 @@ export class MediaController implements MediaControlling {
         'Create a local camera stream before updating it'
       );
     }
-    if (source.operationPromise !== null || source.stopPromise !== null) {
+    if (source.closing || source.operationPromise !== null || source.stopPromise !== null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Another local media operation is already in progress'

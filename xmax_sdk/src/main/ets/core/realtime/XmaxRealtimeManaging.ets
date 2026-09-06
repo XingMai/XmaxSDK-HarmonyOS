@@ -31,7 +31,7 @@ export interface XmaxRealtimeManaging {
   setStateListener(listener: RealtimeStateListener | null): void;
 
   /**
-   * 设置实时运行错误监听器。
+   * 设置实时致命错误监听器；可恢复错误只记录日志并由具体调用返回。
    *
    * @param listener 错误监听器；传入空值时清除监听器。
    * @returns 无返回值。
@@ -77,18 +77,6 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 更新当前相机流的采集格式与摄像头位置。
-   *
-   * @param videoFormat 本地视频格式。
-   * @param position 初始相机位置；未传入时使用前置相机。
-   * @returns 更新后的本地相机媒体流。
-   */
-  replaceLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
-    position?: CameraPosition
-  ): Promise<RealtimeMediaStream>;
-
-  /**
    * 停止本地相机流并释放本地预览资源。
    *
    * @returns 停止完成后的 Promise。
@@ -96,7 +84,8 @@ export interface XmaxRealtimeManaging {
   stopLocalCameraStream(): Promise<void>;
 
   /**
-   * 切换前后置相机。
+   * 切换前后置相机。生成期间会停止当前任务并使用缓存条件恢复，保留 RTC 连接。
+   * 连接或生成启动期间不可切换。
    *
    * @returns 更新相机位置后的本地媒体流。
    */
@@ -171,6 +160,18 @@ export interface XmaxRealtimeManaging {
    * @returns 操作完成后的 Promise。
    */
   startGeneration(context?: RealtimeContext): Promise<void>;
+
+  /**
+   * 使用当前本地流按需连接并开始生成；已经连接时复用连接，生成中更新条件。
+   *
+   * @param localStream 当前 Manager 创建并持有的本地媒体流。
+   * @param context 首次生成必须提供；同一连接内可省略以复用缓存条件。
+   * @returns 生成开始后的远端媒体流，可交给组合视频组件显示。
+   */
+  startGeneration(
+    localStream: RealtimeMediaStream,
+    context?: RealtimeContext
+  ): Promise<RealtimeMediaStream>;
 
   /**
    * 停止当前生成任务。

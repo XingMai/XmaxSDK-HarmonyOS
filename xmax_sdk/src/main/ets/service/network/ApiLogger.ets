@@ -1,3 +1,4 @@
+import { XmaxLoggerOption } from '../../foundation/logging/XmaxLoggerOption';
 import { ErrorMessageFormatter } from '../../foundation/errors/ErrorMessageFormatter';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 
@@ -10,6 +11,9 @@ export class ApiLogger {
     durationMs: number,
     successful: boolean
   ): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.BUSINESS)) {
+      return;
+    }
     if (successful) {
       XmaxLogger.debug(
         `${method} ${path} 成功\n` +
@@ -37,6 +41,9 @@ export class ApiLogger {
     error: Object,
     durationMs: number
   ): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.BUSINESS)) {
+      return;
+    }
     XmaxLogger.error(
       `${method} ${path} 失败\n` +
       `├─ 耗时：${durationMs} ms\n` +

@@ -9,6 +9,8 @@ import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
+export type RtcRemoteVideoRenderedListener = (stream: RemoteStream) => void;
+
 /** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
 export interface RtcManaging {
 
@@ -238,6 +240,12 @@ export interface RtcManaging {
    * @returns RTC 渲染库名称。
    */
   renderLibraryName(): string;
+
+  /** 监听 RTC 已将远端首帧渲染到视图的事件。 */
+  setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void;
+
+  /** 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。 */
+  hasRenderedRemoteVideo(stream: RemoteStream): boolean;
 
   /**
    * 向当前 RTC 房间发送消息。

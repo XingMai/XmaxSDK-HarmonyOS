@@ -1,5 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ErrorMessageFormatter } from '../../foundation/errors/ErrorMessageFormatter';
+import { RuntimeInfo } from '../../foundation/runtime/RuntimeInfo';
 import {
   XmaxError,
   XmaxErrorCode
@@ -194,10 +195,15 @@ export class ApiService implements ApiServicing {
    * @returns API 请求头。
    */
   private headers(): Record<string, string> {
+    const runtime: RuntimeInfo = RuntimeInfo.current;
     return {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'X-Api-Key': this.apiKey
+      'X-Api-Key': this.apiKey,
+      'X-Platform': runtime.platform,
+      'X-OS-Version': runtime.osVersion,
+      'X-SDK-Version': runtime.sdkVersion,
+      'X-Device-Model': runtime.deviceModel
     };
   }
 

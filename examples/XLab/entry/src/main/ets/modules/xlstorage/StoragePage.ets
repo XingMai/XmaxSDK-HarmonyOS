@@ -12,6 +12,7 @@ import { media } from '@kit.MediaKit';
 import {
   XmaxClient,
   XmaxConfiguration,
+  XmaxLoggerOption,
   XmaxStorageManaging,
   XmaxStorageProgress,
   XmaxUploadedFile,
@@ -271,7 +272,7 @@ struct StoragePage {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const client = new XmaxClient(
-        new XmaxConfiguration(XLabConfiguration.currentApiKey()),
+        new XmaxConfiguration(XLabConfiguration.currentApiKey(), XmaxLoggerOption.ALL),
         context
       );
       const progress = (value: XmaxStorageProgress): void => {

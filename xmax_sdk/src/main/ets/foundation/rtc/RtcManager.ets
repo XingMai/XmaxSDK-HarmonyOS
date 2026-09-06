@@ -45,7 +45,7 @@ import {
   RtcEngineLease,
   RtcEngineManager
 } from './RtcEngineManager';
-import { RtcManaging } from './RtcManaging';
+import { RtcManaging, RtcRemoteVideoRenderedListener } from './RtcManaging';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
 import { RtcQualityListener } from './RtcQualityListener';
@@ -70,6 +70,8 @@ export class RtcManager implements RtcManaging {
 
   // 事件监听
   private listener: RtcEventListener | null = null;
+  private remoteVideoRenderedListener: RtcRemoteVideoRenderedListener | null = null;
+  private readonly renderedRemoteStreams: Set<string> = new Set();
   private qualityListener: RtcQualityListener | null = null;
   private cameraPreviewReadyListener: RtcCameraPreviewReadyListener | null = null;
 
@@ -122,6 +124,16 @@ export class RtcManager implements RtcManaging {
       this.remoteStreamKeys.set(stream.key(), key);
       this.listener?.onSeiMessageReceived(stream, decodedMessage);
     });
+    engine.on('onFirstRemoteVideoFrameRendered',
+      (key: RemoteStreamKey, _info: VideoFrameInfo): void => {
+        if (this.engine !== engine || key.room_id !== this.activeRoomId ||
+          key.stream_index !== StreamIndex.kStreamIndexMain) {
+          return;
+        }
+        const stream = new RemoteStream(key.room_id, key.user_id);
+        this.renderedRemoteStreams.add(stream.key());
+        this.remoteVideoRenderedListener?.(stream);
+      });
     engine.on('onSysStats', (stats: SysStats): void => {
       if (this.engine !== engine) {
         return;
@@ -171,6 +183,7 @@ export class RtcManager implements RtcManaging {
     const lease: RtcEngineLease | null = this.engineLease;
     this.engineLease = null;
     this.remoteStreamKeys.clear();
+    this.renderedRemoteStreams.clear();
     this.cameraPreviewReadyListener = null;
     this.resetCameraPreviewReadiness(false);
     this.hasBoundLocalVideoCanvas = false;
@@ -182,6 +195,7 @@ export class RtcManager implements RtcManaging {
         const engine: RTCEngine = lease.engine;
         try {
           engine.off('onSEIMessageReceived');
+          engine.off('onFirstRemoteVideoFrameRendered');
           engine.off('onSysStats');
           engine.off('onFirstLocalVideoFrameCaptured');
           engine.off('onPerformanceAlarms');
@@ -510,6 +524,7 @@ export class RtcManager implements RtcManaging {
     this.pendingJoinCancellation = null;
     this.activeRoomId = '';
     this.remoteStreamKeys.clear();
+    this.renderedRemoteStreams.clear();
 
     cancelPendingJoin?.();
 
@@ -722,6 +737,16 @@ export class RtcManager implements RtcManaging {
     }
   }
 
+  /** @inheritdoc */
+  setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void {
+    this.remoteVideoRenderedListener = listener;
+  }
+
+  /** @inheritdoc */
+  hasRenderedRemoteVideo(stream: RemoteStream): boolean {
+    return this.renderedRemoteStreams.has(stream.key());
+  }
+
   /**
    * 获取 RTC Surface 使用的渲染库名称。
    *
@@ -850,6 +875,9 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
+        if (!published) {
+          this.renderedRemoteStreams.delete(new RemoteStream(this.activeRoomId, userId).key());
+        }
         this.listener?.onRemoteVideoPublished(userId, published);
       }
     );

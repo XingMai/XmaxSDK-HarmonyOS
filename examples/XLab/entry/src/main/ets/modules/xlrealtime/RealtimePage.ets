@@ -6,7 +6,7 @@ import {
   DefaultTrajectoryEffectRenderer,
   TrajectoryEffectRendering,
   VideoContentMode,
-  XmaxVideoView
+  XmaxRealtimeVideoView
 } from '@xmax/sdk';
 import { XLabApplicationLifecycle } from '../../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from './config/XLabConfiguration';
@@ -87,13 +87,6 @@ export struct RealtimePage {
   private localContentMode(): VideoContentMode {
     return this.hasLocalFile() ?
       VideoContentMode.FIT : VideoContentMode.FILL;
-  }
-
-  private remoteVideoContentMode(): VideoContentMode {
-    if (this.hasLocalFile()) {
-      return VideoContentMode.FIT;
-    }
-    return VideoContentMode.FILL;
   }
 
   private trajectoryRenderer(): TrajectoryEffectRendering {
@@ -379,9 +372,11 @@ export struct RealtimePage {
         Stack({ alignContent: Alignment.TopStart }) {
           if (this.state.localVideoTrack !== null) {
             Stack() {
-              XmaxVideoView({
-                track: this.state.localVideoTrack,
-                contentMode: this.localContentMode()
+              XmaxRealtimeVideoView({
+                localTrack: this.state.localVideoTrack,
+                remoteTrack: this.state.remoteVideoTrack ?? undefined,
+                contentMode: this.localContentMode(),
+                trajectoryRenderer: this.trajectoryRenderer()
               })
                 .width('100%')
                 .height('100%')
@@ -403,17 +398,6 @@ export struct RealtimePage {
               angle: this.cameraSwitchRotation,
               perspective: 600
             })
-          }
-
-          if (this.state.remoteVideoTrack !== null) {
-            XmaxVideoView({
-              track: this.state.remoteVideoTrack,
-              contentMode: this.remoteVideoContentMode(),
-              trajectoryRenderer: this.trajectoryRenderer()
-            })
-              .width('100%')
-              .height('100%')
-              .visibility(this.state.isRemoteVideoVisible ? Visibility.Visible : Visibility.Hidden)
           }
 
           if (this.state.isLocalPreviewLoading ||

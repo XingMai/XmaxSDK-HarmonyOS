@@ -1,3 +1,4 @@
+import { XmaxError, XmaxErrorListener } from '../foundation/errors/XmaxError';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { RtcManaging } from '../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../foundation/media/video/VideoContentMode';
@@ -18,6 +19,8 @@ export class RenderController implements RenderControlling {
 
   // 基础层组件
   private readonly rtcManager: RtcManaging;
+  private readonly errorListener: XmaxErrorListener;
+  private remoteBinding: VideoRenderBinding | null = null;
 
   // 渲染层组件
   private readonly remoteVideoController: RemoteVideoControlling;
@@ -26,10 +29,17 @@ export class RenderController implements RenderControlling {
    * 创建渲染层统一 Controller 并完成内部组件装配。
    *
    * @param rtcManager 提供远端视频绑定能力的 RTC Manager。
+   * @param errorListener 接收渲染视图异步绑定失败。
    */
-  constructor(rtcManager: RtcManaging) {
+  constructor(
+    rtcManager: RtcManaging,
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
+  ) {
     this.rtcManager = rtcManager;
-    this.remoteVideoController = new RemoteVideoController(rtcManager);
+    this.errorListener = errorListener;
+    this.remoteVideoController = new RemoteVideoController(rtcManager, (ready: boolean): void => {
+      this.remoteBinding?.setVideoReady(ready);
+    });
   }
 
   /** @inheritdoc */
@@ -42,18 +52,25 @@ export class RenderController implements RenderControlling {
     track: RealtimeVideoTrack,
     interactionController: InteractionControlling
   ): void {
-    VideoRenderRegistry.register(track, new VideoRenderBinding(
+    const binding = new VideoRenderBinding(
       this.rtcManager.renderLibraryName(),
       (
         viewId: string,
         contentMode: VideoContentMode
       ): void => {
-        this.remoteVideoController.attach(viewId, contentMode);
+        try {
+          this.remoteVideoController.attach(viewId, contentMode);
+        } catch (error) {
+          binding.setVideoReady(false);
+          this.errorListener(XmaxError.from(error));
+        }
       },
       (viewId: string): void => {
         this.remoteVideoController.detach(viewId);
       }
-    ));
+    );
+    this.remoteBinding = binding;
+    VideoRenderRegistry.register(track, binding);
     TrajectoryRegistry.register(
       track,
       new TrajectoryBinding(interactionController)
@@ -67,5 +84,6 @@ export class RenderController implements RenderControlling {
       TrajectoryRegistry.unregister(track);
     }
     this.remoteVideoController.reset();
+    this.remoteBinding = null;
   }
 }

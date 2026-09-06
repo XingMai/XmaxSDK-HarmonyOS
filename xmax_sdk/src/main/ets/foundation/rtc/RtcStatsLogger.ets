@@ -8,11 +8,15 @@ import {
   SysStats
 } from '@bytertc/volcenginertc';
 import { XmaxLogger } from '../logging/XmaxLogger';
+import { XmaxLoggerOption } from '../logging/XmaxLoggerOption';
 
 const RTC_LOG_CATEGORY: string = 'RTC';
 
 export class RtcStatsLogger {
   static logLocalStreamStats(stats: LocalStreamStats): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
+      return;
+    }
     const audio = stats.audio_stats;
     const video = stats.video_stats;
 
@@ -23,11 +27,15 @@ export class RtcStatsLogger {
 ├─ 帧率：采集 ${video.input_frame_rate} fps，编码 ${video.encoder_output_frame_rate} fps，发送 ${video.sent_frame_rate} fps
 ├─ 网络：丢包 ${(video.video_loss_rate * 100).toFixed(2)}%，RTT ${video.rtt} ms${RtcStatsLogger.formatJitter(video.jitter)}
 └─ 音频：${audio.send_kbitrate} kbps，采集 ${audio.record_sample_rate} Hz，发送 ${audio.sent_sample_rate} Hz，${audio.num_channels} 声道`,
-      RTC_LOG_CATEGORY
+      RTC_LOG_CATEGORY,
+      XmaxLoggerOption.PERFORMANCE
     );
   }
 
   static logRemoteStreamStats(stats: RemoteStreamStats): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
+      return;
+    }
     const video = stats.video_stats;
 
     XmaxLogger.debug(
@@ -38,7 +46,8 @@ export class RtcStatsLogger {
 ├─ 网络：丢包 ${(video.video_loss_rate * 100).toFixed(2)}%，RTT ${video.rtt} ms${RtcStatsLogger.formatJitter(video.jitter)}
 ├─ 卡顿：${video.stall_count} 次，${video.stall_duration} ms
 └─ 时延：端到端 ${video.e2e_delay} ms`,
-      RTC_LOG_CATEGORY
+      RTC_LOG_CATEGORY,
+      XmaxLoggerOption.PERFORMANCE
     );
   }
 
@@ -46,6 +55,9 @@ export class RtcStatsLogger {
     localQuality: NetworkQualityStats,
     remoteQualities: NetworkQualityStats[]
   ): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
+      return;
+    }
     const hasRemoteQuality: boolean = remoteQualities.length > 0;
     const localBranch: string = hasRemoteQuality ? '├─' : '└─';
     const localIndent: string = hasRemoteQuality ? '│  ' : '   ';
@@ -75,10 +87,13 @@ export class RtcStatsLogger {
       lines.push(`${indent}└─ ${metricsText}`);
     });
 
-    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY);
+    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
   static logSystemStats(stats: SysStats): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
+      return;
+    }
     const cpuMetrics: string[] = RtcStatsLogger.formatCpuMetrics(stats);
     const memoryMetrics: string[] = RtcStatsLogger.formatMemoryMetrics(stats);
     const metrics: string[] = [];
@@ -101,13 +116,16 @@ export class RtcStatsLogger {
       lines.push(`${branch} ${metric}`);
     });
 
-    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY);
+    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
   static logPerformanceAlarm(
     reason: PerformanceAlarmReason,
     data: SourceWantedData
   ): void {
+    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
+      return;
+    }
     const state: string = RtcStatsLogger.performanceAlarmName(reason);
     const suggestedFormat: string = RtcStatsLogger.formatSuggestedVideoFormat(data);
     const lines: string[] = ['性能告警'];
@@ -119,7 +137,7 @@ export class RtcStatsLogger {
       lines.push(`└─ 状态：${state}`);
     }
 
-    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY);
+    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
   private static formatJitter(value: number): string {

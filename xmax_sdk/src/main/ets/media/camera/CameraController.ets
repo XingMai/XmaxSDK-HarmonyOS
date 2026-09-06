@@ -22,13 +22,10 @@ import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream'
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import {
   RealtimeVideoTrack,
-  updateRealtimeVideoTrackFormat,
   updateRealtimeVideoTrackPosition
 } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
-
-const CAMERA_REPLACEMENT_DELAY_MS: number = 150;
 
 /** 协调相机权限、采集、编码和本地预览资源。 */
 export class CameraController {
@@ -108,49 +105,6 @@ export class CameraController {
       videoFormat,
       position
     );
-  }
-
-  /**
-   * 保留本地视频轨道并重新启动指定摄像头的采集。
-   *
-   * @param videoFormat 相机流使用的新视频输出格式。
-   * @param position 需要启用的摄像头位置。
-   * @returns 复用当前视频轨道的本地媒体流。
-   */
-  async replaceLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
-  ): Promise<RealtimeMediaStream> {
-    const track: RealtimeVideoTrack | null = this.activeTrack;
-    if (track === null) {
-      throw new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Create a local camera stream before replacing it'
-      );
-    }
-
-    const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(
-      videoFormat
-    );
-
-    this.rtcManager.stopVideoCapture();
-    this.streamController.setVideoEncoderConfig(resolvedFormat);
-    this.rtcManager.switchCamera(position);
-    this.rtcManager.startVideoCapture(
-      resolvedFormat.width,
-      resolvedFormat.height,
-      resolvedFormat.fps
-    );
-
-    // 等待新摄像头画面进入 RTC 采集与编码链路。
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, CAMERA_REPLACEMENT_DELAY_MS);
-    });
-
-    updateRealtimeVideoTrackFormat(track, resolvedFormat);
-    updateRealtimeVideoTrackPosition(track, position);
-
-    return new RealtimeMediaStream(StreamId.LOCAL, track);
   }
 
   /**

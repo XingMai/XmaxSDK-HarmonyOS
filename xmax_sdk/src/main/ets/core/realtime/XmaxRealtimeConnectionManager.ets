@@ -12,10 +12,7 @@ import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessio
 import { RealtimeSessionService } from '../../service/realtime/RealtimeSessionService';
 import { RealtimeSessionServicing } from '../../service/realtime/RealtimeSessionServicing';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import {
-  RealtimeVideoTrack,
-  updateRealtimeVideoTrackFormat
-} from '../../service/realtime/RealtimeVideoTrack';
+import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 
@@ -72,17 +69,10 @@ export class XmaxRealtimeConnectionManager {
     return this.activeSession?.id ?? '';
   }
 
-  /**
-   * 更新远端轨道使用的视频格式。
-   *
-   * @param videoFormat 新的视频格式。
-   * @returns 无返回值。
-   */
-  updateRemoteVideoFormat(videoFormat: RealtimeVideoFormat): void {
-    const track: RealtimeVideoTrack | null = this.activeRemoteTrack;
-    if (track !== null) {
-      updateRealtimeVideoTrackFormat(track, videoFormat);
-    }
+  /** @returns 当前连接对应的远端流；未连接时返回空值。 */
+  get currentRemoteStream(): RealtimeMediaStream | null {
+    return this.activeRemoteTrack === null ? null :
+      new RealtimeMediaStream(StreamId.REMOTE, this.activeRemoteTrack);
   }
 
   /**

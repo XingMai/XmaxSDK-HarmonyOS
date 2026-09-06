@@ -1,7 +1,9 @@
 import { util } from '@kit.ArkTS';
 import {
   XmaxError,
-  XmaxErrorCode
+  XmaxErrorCode,
+  XmaxErrorListener,
+  XmaxErrorSeverity
 } from '../foundation/errors/XmaxError';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
 import { VideoFrame } from '../foundation/media/video/VideoFrame';
@@ -57,6 +59,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
   // 事件监听
   private readonly remoteStreamListener: RemoteStreamListener;
+  private readonly errorListener: XmaxErrorListener;
 
   // 房间资源
   private roomId: string = '';
@@ -76,17 +79,25 @@ export class StreamController implements StreamControlling, RtcEventListener {
    *
    * @param rtcManager 提供 RTC 引擎基础能力的 Manager。
    * @param remoteStreamListener 接收远端视频流变化的监听器。
+   * @param errorListener 接收没有对应等待 Promise 的 RTC 异步错误。
    */
   constructor(
     rtcManager: RtcManaging,
-    remoteStreamListener: RemoteStreamListener
+    remoteStreamListener: RemoteStreamListener,
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
   ) {
     this.rtcManager = rtcManager;
     this.roomController = new RoomController(rtcManager);
     this.encodingController = new EncodingController(rtcManager);
     this.qualityController = new QualityController(rtcManager);
     this.remoteStreamListener = remoteStreamListener;
+    this.errorListener = errorListener;
     this.rtcManager.setEventListener(this);
+  }
+
+  /** @inheritdoc */
+  get currentGenerationTaskId(): string {
+    return this.currentTask?.id ?? '';
   }
 
   /** @inheritdoc */
@@ -168,8 +179,9 @@ export class StreamController implements StreamControlling, RtcEventListener {
       this.roomController.startGeneration(taskId, videoFormat, context);
       return confirmation;
     } catch (error) {
-      this.stopGeneration(taskId);
-      throw XmaxError.from(error);
+      // 只拒绝已创建的等待 Promise，避免另抛异常留下未处理的取消拒绝。
+      this.rejectGenerationStart(taskId, XmaxError.from(error));
+      return confirmation;
     }
   }
 
@@ -212,13 +224,19 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
 
-    if (published) {
-      this.rtcManager.setRemoteAudioVolume(
-        userId,
-        DEFAULT_REMOTE_AUDIO_VOLUME
-      );
+    try {
+      if (published) {
+        this.rtcManager.setRemoteAudioVolume(
+          userId,
+          DEFAULT_REMOTE_AUDIO_VOLUME
+        );
+      }
+      this.rtcManager.subscribeRemoteAudio(userId, published);
+    } catch (error) {
+      this.handleRtcEventError(XmaxError.from(error).withSeverity(
+        published ? XmaxErrorSeverity.FATAL : XmaxErrorSeverity.RECOVERABLE
+      ));
     }
-    this.rtcManager.subscribeRemoteAudio(userId, published);
   }
 
   /**
@@ -235,12 +253,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
     if (this.botName.length > 0 && userId !== this.botName) {
       return;
     }
-    if (!published) {
-      this.clearRemoteStream();
-      return;
+    try {
+      if (!published) {
+        this.clearRemoteStream();
+        return;
+      }
+      this.rtcManager.subscribeRemoteVideo(userId, true);
+    } catch (error) {
+      this.handleRtcEventError(XmaxError.from(error).withSeverity(
+        published ? XmaxErrorSeverity.FATAL : XmaxErrorSeverity.RECOVERABLE
+      ));
     }
-
-    this.rtcManager.subscribeRemoteVideo(userId, true);
   }
 
   /**
@@ -273,6 +296,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     this.resolveGenerationStart(taskId);
+  }
+
+  /** 启动中的致命错误交给原 Promise 上报，其余异步错误走监听器。 */
+  private handleRtcEventError(error: XmaxError): void {
+    const taskId: string = this.currentTask?.id ?? '';
+    if (error.severity === XmaxErrorSeverity.FATAL && taskId.length > 0 &&
+      this.generationStartReject !== null) {
+      this.rejectGenerationStart(taskId, error);
+      return;
+    }
+    this.errorListener(error);
   }
 
   /** 配置当前房间及目标远端用户。 */

@@ -1,3 +1,4 @@
+import { XmaxLoggerOption } from '../foundation/logging/XmaxLoggerOption';
 import {
   XmaxError,
   XmaxErrorCode
@@ -9,13 +10,18 @@ export class XmaxConfiguration {
   /** 调用 Xmax 服务使用的 API Key。 */
   readonly apiKey: string;
 
+  /** SDK 全局日志选项；默认为关闭。 */
+  readonly loggerOptions: XmaxLoggerOption;
+
   /**
    * 创建 SDK 全局配置。
    *
    * @param apiKey 调用 Xmax 服务使用的 API Key。
+   * @param loggerOptions SDK 输出的日志类型，可按位或组合。
    */
-  constructor(apiKey: string) {
+  constructor(apiKey: string, loggerOptions: XmaxLoggerOption = XmaxLoggerOption.NONE) {
     this.apiKey = apiKey.trim();
+    this.loggerOptions = loggerOptions;
   }
 
   /**

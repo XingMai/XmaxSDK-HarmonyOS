@@ -1,16 +1,18 @@
 import { image } from '@kit.ImageKit';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
-import { resolveStateTarget } from '../../foundation/state/StateTargetResolver';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { CameraPreviewRatio } from './CameraPreviewRatio';
 
 type CameraPreviewRatioListener = (ratio: CameraPreviewRatio) => void;
+export type VideoReadyListener = (ready: boolean) => void;
+
 type PreviewFrameListener = (frame: image.PixelMap | undefined) => void;
 
 interface AttachedVideoView {
   contentMode: VideoContentMode;
   previewRatioListener: CameraPreviewRatioListener;
   previewFrameListener: PreviewFrameListener;
+  videoReadyListener?: VideoReadyListener;
 }
 
 export class VideoRenderBinding {
@@ -23,6 +25,7 @@ export class VideoRenderBinding {
   private readonly attachedViews: Map<string, AttachedVideoView> = new Map();
   private previewRatio?: CameraPreviewRatio;
   private previewFrame?: image.PixelMap;
+  private videoReady: boolean = false;
 
   constructor(
     libraryName: string,
@@ -43,12 +46,14 @@ export class VideoRenderBinding {
     viewId: string,
     contentMode: VideoContentMode,
     previewRatioListener: CameraPreviewRatioListener,
-    previewFrameListener: PreviewFrameListener
+    previewFrameListener: PreviewFrameListener,
+    videoReadyListener?: VideoReadyListener
   ): void {
     this.attachedViews.set(viewId, {
       contentMode: contentMode,
       previewRatioListener: previewRatioListener,
-      previewFrameListener: previewFrameListener
+      previewFrameListener: previewFrameListener,
+      videoReadyListener: videoReadyListener
     });
 
     const previewRatio: CameraPreviewRatio | undefined = this.previewRatio;
@@ -56,12 +61,18 @@ export class VideoRenderBinding {
       previewRatioListener(previewRatio);
     }
     previewFrameListener(this.previewFrame);
+    videoReadyListener?.(this.videoReady);
 
     this.attachHandler(viewId, contentMode);
   }
 
   detach(viewId: string): void {
+    const view: AttachedVideoView | undefined = this.attachedViews.get(viewId);
+    if (view === undefined) {
+      return;
+    }
     this.attachedViews.delete(viewId);
+    view.videoReadyListener?.(false);
     this.detachHandler(viewId);
   }
 
@@ -76,6 +87,24 @@ export class VideoRenderBinding {
 
     attachedView.contentMode = contentMode;
     this.attachHandler(viewId, contentMode);
+  }
+
+  setVideoReady(ready: boolean): void {
+    if (this.videoReady === ready) {
+      return;
+    }
+    this.videoReady = ready;
+    this.attachedViews.forEach((view: AttachedVideoView): void => {
+      view.videoReadyListener?.(ready);
+    });
+  }
+
+  dispose(): void {
+    this.setPreviewFrame(undefined);
+    this.setVideoReady(false);
+    this.attachedViews.forEach((_view: AttachedVideoView, viewId: string): void => {
+      this.detach(viewId);
+    });
   }
 
   cameraPreviewRatio(): CameraPreviewRatio | undefined {
@@ -97,26 +126,28 @@ export class VideoRenderRegistry {
     track: RealtimeVideoTrack,
     binding: VideoRenderBinding
   ): void {
-    VideoRenderRegistry.bindings.set(resolveStateTarget(track), binding);
+    VideoRenderRegistry.bindings.set(RealtimeVideoTrack.resolve(track), binding);
   }
 
   static unregister(track: RealtimeVideoTrack): void {
-    VideoRenderRegistry.bindings.delete(resolveStateTarget(track));
+    const originalTrack: RealtimeVideoTrack = RealtimeVideoTrack.resolve(track);
+    VideoRenderRegistry.bindings.get(originalTrack)?.dispose();
+    VideoRenderRegistry.bindings.delete(originalTrack);
   }
 
   static libraryName(track: RealtimeVideoTrack): string {
-    return VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.libraryName ?? '';
+    return VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.libraryName ?? '';
   }
 
   static cameraPreviewRatio(track: RealtimeVideoTrack): CameraPreviewRatio | undefined {
-    return VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.cameraPreviewRatio();
+    return VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.cameraPreviewRatio();
   }
 
   static setPreviewFrame(
     track: RealtimeVideoTrack,
     frame?: image.PixelMap
   ): void {
-    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.setPreviewFrame(frame);
+    VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.setPreviewFrame(frame);
   }
 
   static attach(
@@ -124,13 +155,15 @@ export class VideoRenderRegistry {
     viewId: string,
     contentMode: VideoContentMode,
     previewRatioListener: CameraPreviewRatioListener,
-    previewFrameListener: PreviewFrameListener
+    previewFrameListener: PreviewFrameListener,
+    videoReadyListener?: VideoReadyListener
   ): void {
-    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.attach(
+    VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.attach(
       viewId,
       contentMode,
       previewRatioListener,
-      previewFrameListener
+      previewFrameListener,
+      videoReadyListener
     );
   }
 
@@ -139,7 +172,7 @@ export class VideoRenderRegistry {
     viewId: string,
     contentMode: VideoContentMode
   ): void {
-    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.setContentMode(
+    VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.setContentMode(
       viewId,
       contentMode
     );
@@ -149,6 +182,6 @@ export class VideoRenderRegistry {
     track: RealtimeVideoTrack,
     viewId: string
   ): void {
-    VideoRenderRegistry.bindings.get(resolveStateTarget(track))?.detach(viewId);
+    VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.detach(viewId);
   }
 }

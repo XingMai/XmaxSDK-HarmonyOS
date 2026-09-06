@@ -47,11 +47,25 @@ export enum XmaxErrorCode {
   TIMEOUT = 'TIMEOUT'
 }
 
+/** 描述错误对当前操作或实时流程的影响。 */
+export enum XmaxErrorSeverity {
+  /** 当前操作失败，SDK 仍可继续使用。 */
+  RECOVERABLE = 'RECOVERABLE',
+  /** 当前实时流程无法继续，需要接入方恢复或退出。 */
+  FATAL = 'FATAL'
+}
+
+/** SDK 内部组件使用的错误监听器，包含所有错误级别。 */
+export type XmaxErrorListener = (error: XmaxError) => void;
+
 /** 表示 SDK 统一抛出或回调给接入方的错误。 */
 export class XmaxError extends Error {
 
   /** SDK 统一错误码。 */
   readonly code: XmaxErrorCode;
+
+  /** 错误对当前操作或实时流程的影响程度。 */
+  readonly severity: XmaxErrorSeverity;
 
   /** Xmax API 返回的业务错误码；非 API 业务错误时为空。 */
   readonly apiCode?: number;
@@ -66,18 +80,42 @@ export class XmaxError extends Error {
    * @param message 面向接入方的错误原因。
    * @param apiCode Xmax API 返回的可选业务错误码。
    * @param httpStatus 可选的 HTTP 响应状态码。
+   * @param severity 错误级别；默认根据错误码决定。放在末尾以兼容原有参数顺序。
    */
   constructor(
     code: XmaxErrorCode,
     message: string,
     apiCode?: number,
-    httpStatus?: number
+    httpStatus?: number,
+    severity?: XmaxErrorSeverity
   ) {
     super(message);
     this.name = 'XmaxError';
     this.code = code;
+    this.severity = severity ?? XmaxError.defaultSeverity(code);
     this.apiCode = apiCode;
     this.httpStatus = httpStatus;
+  }
+
+  /** @internal 保留错误信息，并按当前操作的影响调整级别。 */
+  withSeverity(severity: XmaxErrorSeverity): XmaxError {
+    if (severity === this.severity) {
+      return this;
+    }
+    return new XmaxError(this.code, this.message, this.apiCode, this.httpStatus, severity);
+  }
+
+  private static defaultSeverity(code: XmaxErrorCode): XmaxErrorSeverity {
+    switch (code) {
+      case XmaxErrorCode.INVALID_API_KEY:
+      case XmaxErrorCode.INVALID_CONFIGURATION:
+      case XmaxErrorCode.CAMERA_PERMISSION_DENIED:
+      case XmaxErrorCode.MICROPHONE_PERMISSION_DENIED:
+      case XmaxErrorCode.CANCELLED:
+        return XmaxErrorSeverity.RECOVERABLE;
+      default:
+        return XmaxErrorSeverity.FATAL;
+    }
   }
 
   /**

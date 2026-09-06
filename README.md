@@ -174,7 +174,7 @@ const realtime = client.createRealtimeManager(
 Realtime operations return promises and should be invoked from a lifecycle-aware
 component owned by the host application.
 
-Connection-state and error listeners may be registered on the realtime manager:
+Connection-state and fatal-error listeners may be registered on the realtime manager:
 
 ```ts
 realtime.setStateListener((state) => {
@@ -185,9 +185,106 @@ realtime.setStateListener((state) => {
 });
 
 realtime.setErrorListener((error) => {
-  console.error(`Xmax realtime error: ${error.code} ${error.message}`);
+  // Only FATAL errors reach this listener, even when SDK logging is disabled.
+  console.error(`Xmax realtime error: ${error.code} ${error.severity} ${error.message}`);
 });
 ```
+
+### Configure SDK logging
+
+SDK logging is **off by default**, in both debug and release builds. Set
+`loggerOptions` when creating a client to opt in:
+
+```ts
+import { XmaxClient, XmaxConfiguration, XmaxLoggerOption } from '@xmax/sdk';
+
+const client = new XmaxClient(
+  new XmaxConfiguration(
+    'YOUR_API_KEY',
+    XmaxLoggerOption.BUSINESS | XmaxLoggerOption.PERFORMANCE
+  ),
+  context
+);
+```
+
+| Option | Output |
+| --- | --- |
+| `NONE` | No SDK logs (default) |
+| `BUSINESS` | API, Room, Realtime, Storage and other operation logs, including errors |
+| `PERFORMANCE` | RTC stream statistics, network quality, CPU/memory and performance alarms |
+| `ALL` | Both business and performance logs |
+
+As on iOS, this is an SDK-global setting: the most recently created client's
+configuration replaces the previous setting, including `NONE`. Use consistent
+options across clients. The XLab example explicitly enables `ALL` for diagnostics.
+The switch controls XmaxSDK's HiLog output; host-application logging and the
+third-party RTC SDK's own logs have separate controls. Network-quality and
+performance-alarm listeners continue to work when their logs are disabled.
+
+### Handle recoverable and fatal errors
+
+`XmaxError.severity` follows the iOS error model:
+
+- `RECOVERABLE`: the operation did not complete, but the SDK can still be used.
+  Invalid configuration, permission denial, cancellation, and failed generation
+  condition/trajectory updates belong here. Handle a failed asynchronous call in
+  its `catch`; it does not trigger `setErrorListener`.
+- `FATAL`: the current realtime workflow cannot continue normally. Connection,
+  generation-start, subscription and media failures are fatal by default, and
+  session heartbeat failure is always fatal. The realtime error listener receives
+  these failures so the host can recover or leave the workflow.
+
+An awaited operation still rejects when it fails, including fatal failures already
+sent to the listener. Avoid showing the same fatal error from both places:
+
+```ts
+import { XmaxError, XmaxErrorCode, XmaxErrorSeverity } from '@xmax/sdk';
+
+try {
+  const remoteStream = await realtime.startGeneration(localStream, generationContext);
+  this.remoteVideoTrack = remoteStream.videoTrack;
+} catch (error) {
+  const sdkError = XmaxError.from(error);
+  if (sdkError.code !== XmaxErrorCode.CANCELLED &&
+    sdkError.severity === XmaxErrorSeverity.RECOVERABLE) {
+    console.error(`Operation failed: ${sdkError.message}`);
+  }
+}
+```
+
+The listener is independent of logging. Passing `null` removes it. The same error
+instance propagating through multiple SDK layers is logged and forwarded once.
+Best-effort stop-signal and cleanup failures are logged without invoking the fatal
+listener; shutdown continues. Cancellation is recoverable and only appears in SDK
+logs when business logging is enabled.
+
+The existing `XmaxError(code, message, apiCode?, httpStatus?)` constructor remains
+compatible. An optional fifth `severity` argument overrides the default; API and
+HTTP error details are preserved when the SDK changes an error's severity for a
+specific operation.
+
+### Runtime information and task IDs
+
+The SDK automatically adds the same cached runtime information to every Xmax API
+request and to the top-level `runtime` object in all five room events: `start`,
+`change_condition`, `stop`, `tracks`, and `heartbeat`.
+
+| API header | Room `runtime` field | HarmonyOS value |
+| --- | --- | --- |
+| `X-Platform` | `platform` | `harmonyos` |
+| `X-OS-Version` | `os_version` | Distribution OS version, falling back to the full OS name |
+| `X-SDK-Version` | `sdk_version` | HAR version, also exported as `XMAX_SDK_VERSION` |
+| `X-Device-Model` | `device_model` | Device product model |
+
+Unavailable OS or device information is reported as `unknown`. No application
+configuration is required. Runtime metadata is added to API headers, without
+changing API request bodies.
+
+Generation task IDs use `task-harmonyos-` followed by the full 16 UUID bytes encoded
+as 22 unpadded Base64URL characters. The room event's `uid` and video-frame SEI use
+the same complete task ID; SEI contains its UTF-8 bytes. The encoding matches iOS,
+with a HarmonyOS platform prefix. The `x2.0-sla` model and its input-size rules remain
+unchanged.
 
 ### Create an input stream
 
@@ -214,91 +311,133 @@ const videoStream = await realtime.createLocalVideoStream(videoFilePath);
 
 Only one local input stream may be active at a time.
 
-### Connect and render the streams
+### Render local preview and generated video
 
-Connect the selected local input stream to the realtime session:
-
-```ts
-const remoteStream = await realtime.connect(localStream);
-```
-
-Store the local and remote video tracks in component state:
+Store the tracks in component state and render them with `XmaxRealtimeVideoView`:
 
 ```ts
 import {
-  RealtimeConnectionState,
-  RealtimeVideoTrack
-} from '@xmax/sdk';
-
-@State private localVideoTrack: RealtimeVideoTrack | null = null;
-@State private remoteVideoTrack: RealtimeVideoTrack | null = null;
-@State private connectionState: RealtimeConnectionState =
-  RealtimeConnectionState.IDLE;
-
-this.localVideoTrack = localStream.videoTrack ?? null;
-this.remoteVideoTrack = remoteStream.videoTrack ?? null;
-```
-
-Render the input and generated output with `XmaxVideoView`:
-
-```ts
-import {
+  RealtimeVideoTrack,
   VideoContentMode,
-  XmaxVideoView
+  XmaxRealtimeVideoView
 } from '@xmax/sdk';
+
+@State private localVideoTrack: RealtimeVideoTrack | undefined = undefined;
+@State private remoteVideoTrack: RealtimeVideoTrack | undefined = undefined;
+
+// After creating the input stream:
+this.localVideoTrack = localStream.videoTrack;
 
 build() {
-  Stack() {
-    if (this.localVideoTrack !== null) {
-      XmaxVideoView({
-        track: this.localVideoTrack,
-        contentMode: VideoContentMode.FILL
-      })
-    }
-
-    if (this.remoteVideoTrack !== null &&
-      this.connectionState === RealtimeConnectionState.GENERATING) {
-      XmaxVideoView({
-        track: this.remoteVideoTrack,
-        contentMode: VideoContentMode.FILL
-      })
-    }
-  }
-  .width('100%')
-  .height('100%')
+  XmaxRealtimeVideoView({
+    localTrack: this.localVideoTrack,
+    remoteTrack: this.remoteVideoTrack,
+    contentMode: VideoContentMode.FILL
+  })
+    .width('100%')
+    .height('100%')
 }
 ```
 
+The component keeps the local preview underneath the remote video. A new remote
+track fades in over 300 ms after RTC reports its first rendered frame. Clearing
+`remoteTrack` to `undefined` immediately restores the local preview. For a reused
+RTC stream, the component can reuse its existing rendered-frame readiness; this
+state is cleared when the remote publisher stops or the session ends.
+
 Use `VideoContentMode.FIT` to preserve the aspect ratio of image and local video
-inputs.
+inputs. `isInteractionEnabled` controls remote touch interaction; a custom
+`trajectoryRenderer` may be supplied when creating the component. The existing
+`XmaxVideoView` remains available for displaying one track. Both components react
+to track replacements, including streams recreated with different dimensions.
 
-### Start generation
+### Start generation in one call
 
-Construct a `RealtimeContext` with a prompt and, when applicable, a remote reference
-image URL:
+Pass the local stream and generation context. The SDK establishes a connection on
+demand and returns the remote media stream when generation starts:
 
 ```ts
 import { RealtimeContext } from '@xmax/sdk';
 
-await realtime.startGeneration(
-  new RealtimeContext(
-    '视频中角色替换成参考图中角色',
-    referenceImageUrl
-  )
+const remoteStream = await realtime.startGeneration(
+  localStream,
+  new RealtimeContext('视频中角色替换成参考图中角色', referenceImageUrl)
 );
+this.remoteVideoTrack = remoteStream.videoTrack;
 ```
 
-To update an active generation task, submit a new context containing the revised
-prompt or reference image:
+Creating a local stream only starts local preview. The call above creates the
+server session; subsequent calls reuse the connection and remote track. During
+an active generation, a new context updates the current task. After
+`stopGeneration()`, omit the context to reuse the last successful context in that
+connection:
 
 ```ts
-await realtime.startGeneration(
-  new RealtimeContext(
-    '将人物服装替换成参考图中的服装',
-    anotherReferenceImageUrl
-  )
-);
+await realtime.stopGeneration();
+this.remoteVideoTrack = undefined;
+
+const resumedStream = await realtime.startGeneration(localStream);
+this.remoteVideoTrack = resumedStream.videoTrack;
 ```
+
+A new connection requires a context. The local stream must still belong to this
+manager. Generation completion and the first rendered frame are separate events:
+assign the returned remote track to the component so RTC can render it.
+
+The explicit connection and context-only generation APIs remain supported:
+
+```ts
+const remoteStream = await realtime.connect(localStream);
+await realtime.startGeneration(new RealtimeContext('将人物服装替换成参考图中的服装', referenceImageUrl));
+this.remoteVideoTrack = remoteStream.videoTrack;
+```
+
+Only one connection/start transition may run at a time. `stopGeneration()` also
+cancels a pending generation start, including the automatic start after an
+in-flight connection. It retains that connection; use `disconnect()` to cancel
+and close the session as well. A cancelled operation rejects with
+`XmaxErrorCode.CANCELLED`.
+
+### Switch cameras or change capture specifications
+
+`switchCamera()` changes front/back position while preserving the local track and
+its dimensions/frame rate. During generation, the SDK stops the current task,
+switches cameras, waits 500 ms for capture to settle, then starts a new task with
+the latest successful context. The connection and remote track are retained.
+Do not switch while a connection or generation start is pending. Calling
+`stopGeneration()` or `disconnect()` during the switch prevents automatic restart.
+
+```ts
+const switchedStream = await realtime.switchCamera();
+this.localVideoTrack = switchedStream.videoTrack;
+```
+
+`replaceLocalCameraStream()` has been removed. To change resolution or frame rate,
+recreate the local stream after disconnecting, then start a new session:
+
+```ts
+await realtime.disconnect();
+this.remoteVideoTrack = undefined;
+await realtime.stopLocalCameraStream();
+this.localVideoTrack = undefined;
+
+const resizedStream = await realtime.createLocalCameraStream(
+  new RealtimeVideoFormat(1024, 1920, 30),
+  CameraPosition.FRONT
+);
+this.localVideoTrack = resizedStream.videoTrack;
+const resizedRemoteStream = await realtime.startGeneration(
+  resizedStream,
+  new RealtimeContext('视频中角色替换成参考图中角色', referenceImageUrl)
+);
+this.remoteVideoTrack = resizedRemoteStream.videoTrack;
+```
+
+The old local stream is no longer valid after stopping it. HarmonyOS retains its
+`x2.0-sla` support and existing model input sizing: 32-pixel alignment with the
+600,000–2,100,000 pixel scaling thresholds. These rules are independent of the
+iOS lifecycle alignment above; use the returned track's `videoFormat` to inspect
+the resolved dimensions.
 
 ### Stop and release resources
 
@@ -315,7 +454,8 @@ resources and should be called when the realtime workflow is no longer required.
 
 ## Touch Interaction
 
-During an active generation task, `XmaxVideoView` captures multi-touch trajectories
+During an active generation task, the remote view in `XmaxRealtimeVideoView` (or
+a standalone `XmaxVideoView`) captures multi-touch trajectories
 over the generated video and submits them to the active task. The host application
 does not need to implement gesture tracking or coordinate conversion.
 
@@ -373,3 +513,23 @@ questions and technical support, contact [sdk@xmax.ai](mailto:sdk@xmax.ai).
 ## License
 
 XmaxSDK is available under the terms of the [MIT License](LICENSE).
+
+## Development validation
+
+Run the source-level lifecycle, rendering-state, error/logging, and runtime/SEI
+regression tests on Node 18+:
+
+```bash
+node --test tests/*.test.cjs
+```
+
+The tests use the TypeScript compiler bundled with DevEco Studio on macOS. Set
+`TYPESCRIPT_PATH` to another compatible TypeScript installation when needed. They
+execute SDK lifecycle methods with platform doubles; they do not emulate ArkUI or
+native RTC rendering. Build both `xmax_sdk` (`assembleHar`) and the XLab `entry`
+module (`assembleHap`) with Hvigor after changing ArkUI components.
+
+On an API 18+ device, verify local preview, remote first-frame fade-in, clearing
+and reassigning remote tracks, repeated camera switches, and resolution/frame-rate
+recreation. Include camera, image and video-file inputs; cancel during connection
+and camera switching to confirm local preview remains usable.

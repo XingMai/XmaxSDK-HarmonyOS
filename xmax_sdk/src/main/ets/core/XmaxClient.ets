@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { common } from '@kit.AbilityKit';
 import {
   XmaxError,
@@ -37,6 +38,7 @@ export class XmaxClient {
     context?: common.UIAbilityContext
   ) {
     this.configuration = configuration;
+    XmaxLogger.configure(configuration.loggerOptions);
     this.context = context;
     this.apiService = new ApiService(configuration.apiKey);
   }

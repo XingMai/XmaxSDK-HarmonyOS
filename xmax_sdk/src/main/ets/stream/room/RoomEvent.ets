@@ -1,8 +1,14 @@
+import { RuntimeInfo, RuntimeInfoPayload } from '../../foundation/runtime/RuntimeInfo';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
 const GENERATION_MODEL: string = 'default';
+
+/** 所有房间事件统一携带顶层 runtime，不改变原有业务字段。 */
+class RuntimeRoomEvent {
+  readonly runtime: RuntimeInfoPayload = RuntimeInfo.current.toPayload();
+}
 
 class GenerationParameters {
   model: string = GENERATION_MODEL;
@@ -22,7 +28,7 @@ class GenerationParameters {
   }
 }
 
-class StartRoomEvent {
+class StartRoomEvent extends RuntimeRoomEvent {
   event: string = 'start';
   params: GenerationParameters;
   user_id: string;
@@ -34,13 +40,14 @@ class StartRoomEvent {
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ) {
+    super();
     this.params = new GenerationParameters(videoFormat, context);
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-class ChangeConditionRoomEvent {
+class ChangeConditionRoomEvent extends RuntimeRoomEvent {
   event: string = 'change_condition';
   params: GenerationParameters;
   user_id: string;
@@ -52,13 +59,14 @@ class ChangeConditionRoomEvent {
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext
   ) {
+    super();
     this.params = new GenerationParameters(videoFormat, context);
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-class StopRoomEvent {
+class StopRoomEvent extends RuntimeRoomEvent {
   event: string = 'stop';
   user_id: string;
   uid: string;
@@ -67,12 +75,13 @@ class StopRoomEvent {
     userId: string,
     taskId: string
   ) {
+    super();
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-class TracksRoomEvent {
+class TracksRoomEvent extends RuntimeRoomEvent {
   event: string = 'tracks';
   tracks: number[][];
   user_id: string;
@@ -83,17 +92,19 @@ class TracksRoomEvent {
     taskId: string,
     points: RealtimePoint[]
   ) {
+    super();
     this.tracks = points.map((point: RealtimePoint): number[] => [point.x, point.y]);
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-class HeartbeatRoomEvent {
+class HeartbeatRoomEvent extends RuntimeRoomEvent {
   event: string = 'heartbeat';
   user_id: string;
 
   constructor(userId: string) {
+    super();
     this.user_id = userId;
   }
 }

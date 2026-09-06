@@ -2,7 +2,8 @@ import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
-  XmaxErrorCode
+  XmaxErrorCode,
+  XmaxErrorSeverity
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -63,6 +64,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   private terminationPromise: Promise<void> | null = null;
   private terminationFinalState: RealtimeConnectionState | null = null;
   private operationVersion: number = 0;
+  private generationVersion: number = 0;
+  private switchingCamera: boolean = false;
   private state: RealtimeState = new RealtimeState(RealtimeConnectionState.IDLE);
   private stateListener: RealtimeStateListener | null = null;
 
@@ -88,13 +91,18 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.errorManager = new XmaxRealtimeErrorManager();
 
     // 渲染层组件
-    this.renderController = new RenderController(this.rtcManager);
+    this.renderController = new RenderController(this.rtcManager, (error: XmaxError): void => {
+      this.errorManager.handle(error);
+    });
 
     // 业务层组件
     this.streamController = new StreamController(
       this.rtcManager,
       (stream): void => {
         this.renderController.setRemoteStream(stream);
+      },
+      (error: XmaxError): void => {
+        this.errorManager.handle(error);
       }
     );
     this.mediaController = new MediaController(
@@ -136,7 +144,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 设置实时运行错误监听器。
+   * 设置实时致命错误监听器；可恢复错误由具体调用返回。
    *
    * @param listener 错误监听器；传入空值时清除监听器。
    * @returns 无返回值。
@@ -188,7 +196,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition = CameraPosition.FRONT
   ): Promise<RealtimeMediaStream> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -203,29 +212,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 更新当前相机流的采集格式与摄像头位置。
-   *
-   * @param videoFormat 相机流使用的视频输出格式。
-   * @param position 初始摄像头位置；默认使用前置摄像头。
-   * @returns 更新完成后的本地相机媒体流。
-   */
-  async replaceLocalCameraStream(
-    videoFormat: RealtimeVideoFormat,
-    position: CameraPosition = CameraPosition.FRONT
-  ): Promise<RealtimeMediaStream> {
-    return this.updateLocalCameraStream(
-      (): Promise<RealtimeMediaStream> =>
-        this.mediaController.replaceLocalCameraStream(videoFormat, position)
-    );
-  }
-
-  /**
    * 停止本地相机流并释放对应预览资源。
    *
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalCameraStream(): Promise<void> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -242,14 +235,39 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 摄像头切换后的本地媒体流。
    */
   async switchCamera(): Promise<RealtimeMediaStream> {
-    if (this.isConnecting()) {
+    const wasGenerating: boolean = this.state.connectionState === RealtimeConnectionState.GENERATING;
+    if (this.closingResources || this.switchingCamera || this.isConnecting() ||
+      this.state.connectionState === RealtimeConnectionState.DISCONNECTING ||
+      (!wasGenerating && this.streamController.currentGenerationTaskId.length > 0)) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
-        'Camera switching is unavailable while realtime is connecting'
+        'Camera switching is unavailable while realtime is transitioning'
       ));
     }
 
-    return this.observeError(this.mediaController.switchCamera());
+    this.switchingCamera = true;
+    const operationVersion: number = this.operationVersion;
+    try {
+      const generationVersion: number = this.generationVersion + (wasGenerating ? 1 : 0);
+      const stopping: Promise<void> = wasGenerating ? this.stopGeneration() : Promise.resolve();
+      await stopping;
+      this.ensureOperation(operationVersion);
+      const stream: RealtimeMediaStream = await this.mediaController.switchCamera();
+      this.ensureOperation(operationVersion);
+      if (wasGenerating) {
+        // 与 iOS 一致，为新镜头的采集画面留出稳定时间。
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 500);
+        });
+        this.ensureGenerationOperation(operationVersion, generationVersion);
+        await this.performStartGeneration();
+      }
+      return stream;
+    } catch (error) {
+      throw this.reportError(error);
+    } finally {
+      this.switchingCamera = false;
+    }
   }
 
   /**
@@ -263,7 +281,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     filePath: string,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -283,7 +302,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalVideoStream(): Promise<void> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -305,7 +325,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -325,7 +346,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 停止操作完成后的 Promise。
    */
   async stopLocalImageStream(): Promise<void> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -343,7 +365,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 连接建立后用于显示生成结果的远端媒体流。
    */
   async connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream> {
-    if (this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
+    if (this.closingResources || this.switchingCamera ||
+      this.connectionManager.currentSessionId.length > 0 || this.isConnecting() ||
       this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -460,7 +483,77 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @param context 可选的生成条件；首次开始生成时必须提供。
    * @returns 远端结果流确认开始后的 Promise。
    */
-  async startGeneration(context?: RealtimeContext): Promise<void> {
+  startGeneration(context?: RealtimeContext): Promise<void>;
+  startGeneration(
+    localStream: RealtimeMediaStream,
+    context?: RealtimeContext
+  ): Promise<RealtimeMediaStream>;
+  async startGeneration(
+    input?: RealtimeContext | RealtimeMediaStream,
+    context?: RealtimeContext
+  ): Promise<void | RealtimeMediaStream> {
+    if (this.closingResources || this.switchingCamera) {
+      throw this.reportError(new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Generation is unavailable while realtime is transitioning'
+      ));
+    }
+    if (input instanceof RealtimeMediaStream) {
+      return this.startGenerationWithStream(input, context);
+    }
+    await this.performStartGeneration(input);
+  }
+
+  /** 复用已有连接，或在用户开始生成时创建连接。 */
+  private async startGenerationWithStream(
+    localStream: RealtimeMediaStream,
+    context?: RealtimeContext
+  ): Promise<RealtimeMediaStream> {
+    if (!this.mediaController.owns(localStream)) {
+      throw this.reportError(new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'The local stream must be created and started by this realtime manager'
+      ));
+    }
+    const connected: boolean = this.state.connectionState === RealtimeConnectionState.CONNECTED ||
+      this.state.connectionState === RealtimeConnectionState.GENERATING;
+    if (connected) {
+      const remoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
+      if (remoteStream === null) {
+        throw this.reportError(new XmaxError(XmaxErrorCode.RTC_ERROR,
+          'Realtime connection has no remote stream'));
+      }
+      await this.performStartGeneration(context);
+      return remoteStream;
+    }
+    if (this.isConnecting() || this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'Realtime connection is transitioning'));
+    }
+    // connect() 开启新的会话并清除旧条件；先校验，避免无条件时创建空会话。
+    if (context === undefined) {
+      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'A realtime context is required for the first generation'));
+    }
+
+    this.mediaController.setLocalAudioPreviewEnabled(false);
+    const generationVersion: number = this.generationVersion;
+    const connection: Promise<RealtimeMediaStream> = this.connect(localStream);
+    const operationVersion: number = this.operationVersion;
+    try {
+      const remoteStream: RealtimeMediaStream = await connection;
+      this.ensureGenerationOperation(operationVersion, generationVersion);
+      await this.performStartGeneration(context);
+      return remoteStream;
+    } catch (error) {
+      if (this.isOperationCurrent(operationVersion) && generationVersion === this.generationVersion) {
+        this.restoreLocalAudioPreview();
+      }
+      throw XmaxError.from(error);
+    }
+  }
+
+  private async performStartGeneration(context?: RealtimeContext): Promise<void> {
     const sessionId: string = this.connectionManager.currentSessionId;
     const videoFormat: RealtimeVideoFormat | undefined =
       this.mediaController.currentVideoFormat;
@@ -470,7 +563,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       throw this.reportError(new XmaxError(
         XmaxErrorCode.RTC_ERROR,
         'Realtime connection is not open'
-      ));
+      ).withSeverity(XmaxErrorSeverity.RECOVERABLE));
     }
 
     const activeTaskId: string | undefined = this.state.connectionState ===
@@ -485,6 +578,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return;
     }
 
+    if (this.streamController.currentGenerationTaskId.length > 0) {
+      throw this.reportError(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'Realtime generation is already starting'));
+    }
+    const generationVersion: number = ++this.generationVersion;
     const operationVersion: number = this.operationVersion;
     this.mediaController.setLocalAudioPreviewEnabled(false);
     try {
@@ -492,9 +590,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         videoFormat,
         context,
         (): void => {
-          this.ensureOperation(operationVersion);
+          this.ensureGenerationOperation(operationVersion, generationVersion);
         }
       );
+      this.ensureGenerationOperation(operationVersion, generationVersion);
       if (this.connectionManager.currentSessionId !== sessionId) {
         throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
       }
@@ -504,8 +603,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         sessionId,
         taskId
       ));
+      this.ensureGenerationOperation(operationVersion, generationVersion);
     } catch (error) {
-      this.mediaController.setLocalAudioPreviewEnabled(true);
+      if (this.isOperationCurrent(operationVersion) && generationVersion === this.generationVersion) {
+        this.restoreLocalAudioPreview();
+      }
       throw this.reportError(error);
     }
   }
@@ -516,6 +618,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 停止信号发送完成后的 Promise。
    */
   async stopGeneration(): Promise<void> {
+    this.generationVersion++;
+    this.restoreLocalAudioPreview();
     const sessionId: string = this.connectionManager.currentSessionId;
     if (sessionId.length === 0 ||
       (this.state.connectionState !== RealtimeConnectionState.CONNECTED &&
@@ -527,7 +631,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.state.connectionState === RealtimeConnectionState.GENERATING;
     try {
       this.generationManager.stop(this.state.taskId ?? '');
-      this.mediaController.setLocalAudioPreviewEnabled(true);
       if (wasGenerating) {
         this.emitState(new RealtimeState(
           RealtimeConnectionState.CONNECTED,
@@ -537,48 +640,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     } catch (error) {
       throw this.reportError(error);
     }
-  }
-
-  /**
-   * 在允许的生命周期状态下更新相机来源并同步连接配置。
-   *
-   * @param update 更新相机媒体流的操作。
-   * @returns 更新完成后的本地相机媒体流。
-   */
-  private async updateLocalCameraStream(
-    update: () => Promise<RealtimeMediaStream>
-  ): Promise<RealtimeMediaStream> {
-    if (this.isConnecting() ||
-      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.INVALID_CONFIGURATION,
-        'Local camera update is unavailable while realtime is transitioning'
-      ));
-    }
-    if (this.connectionManager.currentSessionId.length > 0) {
-      await this.stopGeneration();
-    }
-
-    const stream: RealtimeMediaStream = await this.observeError(update());
-    const videoFormat: RealtimeVideoFormat | undefined = stream.videoTrack?.videoFormat;
-    if (videoFormat === undefined) {
-      throw this.reportError(new XmaxError(
-        XmaxErrorCode.RTC_ERROR,
-        'The updated local camera stream does not contain a video format'
-      ));
-    }
-
-    if (this.connectionManager.currentSessionId.length > 0) {
-      try {
-        this.streamController.setLocalAudioEnabled(this.mediaController.hasAudio);
-      } catch (error) {
-        this.reportError(error);
-      }
-
-      this.connectionManager.updateRemoteVideoFormat(videoFormat);
-    }
-
-    return stream;
   }
 
   /**
@@ -611,6 +672,20 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     if (closeError !== null) {
       throw XmaxError.from(closeError);
+    }
+  }
+
+  /** 只有当前媒体生命周期仍然开放时才恢复本地音频。 */
+  private restoreLocalAudioPreview(): void {
+    if (!this.closingResources) {
+      this.mediaController.setLocalAudioPreviewEnabled(true);
+    }
+  }
+
+  private ensureGenerationOperation(operationVersion: number, generationVersion: number): void {
+    this.ensureOperation(operationVersion);
+    if (generationVersion !== this.generationVersion) {
+      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime generation was cancelled');
     }
   }
 
@@ -695,9 +770,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
 
     this.operationVersion++;
-    if (!this.closingResources) {
-      this.mediaController.setLocalAudioPreviewEnabled(true);
-    }
+    this.restoreLocalAudioPreview();
     this.terminationFinalState = finalState;
     const taskId: string = this.state.taskId ?? '';
     const terminationPromise: Promise<void> = Promise.resolve().then(
@@ -776,7 +849,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return;
     }
 
-    this.errorManager.handle(error);
+    this.errorManager.handle(error.withSeverity(XmaxErrorSeverity.FATAL));
+    // 致命错误监听器可能已同步发起关闭，避免重复终止旧会话。
+    if (this.connectionManager.currentSessionId !== sessionId ||
+      this.state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+      return;
+    }
     await this.beginTermination(RealtimeConnectionState.ERROR, sessionId);
   }
 

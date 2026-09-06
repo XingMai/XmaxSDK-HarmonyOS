@@ -1,4 +1,5 @@
 import { util } from '@kit.ArkTS';
+import { RUNTIME_PLATFORM } from '../../foundation/runtime/RuntimeInfo';
 import {
   XmaxError,
   XmaxErrorCode
@@ -10,8 +11,7 @@ import { StreamControlling } from '../../stream/StreamControlling';
 
 type GenerationValidity = () => void;
 
-const TASK_ID_PREFIX: string = 'task-';
-const TASK_ID_ALPHABET: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const TASK_ID_PREFIX: string = `task-${RUNTIME_PLATFORM}-`;
 
 /** 协调生成信令、远端结果确认、条件更新和交互任务。 */
 export class XmaxRealtimeGenerationManager {
@@ -112,6 +112,9 @@ export class XmaxRealtimeGenerationManager {
    * @returns 无返回值。
    */
   stop(taskId: string): void {
+    if (taskId.length > 0 && this.streamController.currentGenerationTaskId !== taskId) {
+      return;
+    }
     this.mediaController.stop();
 
     this.streamController.stopGeneration(taskId);
@@ -128,20 +131,16 @@ export class XmaxRealtimeGenerationManager {
     this.stop(taskId);
   }
 
-  /** @returns 带 `task-` 前缀的紧凑随机生成任务标识。 */
+  /** @returns 平台前缀加完整 UUID 字节的无填充 Base64URL，与 iOS 编码规则一致。 */
   private static createTaskId(): string {
     const uuid: string = util.generateRandomUUID(true).replace(/-/g, '');
-    const randomHex: string = uuid.substring(0, 12) +
-      uuid.substring(13, 16) +
-      uuid.substring(17, 26);
-    let encoded: string = '';
-
-    for (let index: number = 0; index < randomHex.length; index += 3) {
-      const value: number = Number.parseInt(randomHex.substring(index, index + 3), 16);
-      encoded += TASK_ID_ALPHABET.charAt(value >> 6);
-      encoded += TASK_ID_ALPHABET.charAt(value & 63);
+    const bytes: Uint8Array = new Uint8Array(16);
+    for (let index: number = 0; index < bytes.length; index++) {
+      bytes[index] = Number.parseInt(uuid.substring(index * 2, index * 2 + 2), 16);
     }
 
+    const encoded: string = new util.Base64Helper().encodeToStringSync(bytes)
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     return TASK_ID_PREFIX + encoded;
   }
 
