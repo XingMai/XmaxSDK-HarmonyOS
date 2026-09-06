@@ -418,5 +418,3 @@ Generation task IDs use `task-harmonyos-` followed by the full 16 UUID bytes enc
 as 22 unpadded Base64URL characters. The room event's `uid` and video-frame SEI use
 the same complete task ID; SEI contains its UTF-8 bytes. The encoding matches iOS,
 with a HarmonyOS platform prefix.
-
-For local builds and regression checks, see [Development validation](./development.md).
