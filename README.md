@@ -1,4 +1,6 @@
-<h1 align="center">XmaxSDK for HarmonyOS</h1>
+<p align="center">
+  <img src="./docs/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
+</p>
 
 <p align="center">
   <a href="https://developer.huawei.com/consumer/en/"><img src="https://img.shields.io/badge/HarmonyOS-5.1.0%2B-F05138" alt="HarmonyOS 5.1.0+"></a>
@@ -23,25 +25,166 @@ into HarmonyOS applications.
 XmaxSDK gives an end-to-end pipeline covering media capture, low-latency video
 communication, frame-by-frame generation, and in-app rendering. Whether
 processing live camera feeds, pre-recorded video, or still images, the SDK streams
-input to our cloud AI engine and renders the result. Developers can manage the
-workflow through Promise-based ArkTS APIs, with built-in touch interaction and
-media upload and download.
+input to our cloud AI engine, applies on-device enhancement to the returned video,
+and renders the result. With the entire workflow abstracted into simple API calls,
+integrating real-time video generation is seamless and intuitive.
 
 <br>
 
 ## What you can build with XmaxSDK
 
-| Realtime Use Case | Description |
-| --- | --- |
-| **Character Swapping** | Replace anyone in your live feed with a designated avatar in real time. |
-| **Virtual Try-On** | Change outfits using a reference image of the target clothing. |
-| **Video Restyling** | Transform your video using a reference image of the desired artistic style. |
-| **AI Companions** | Bring virtual characters into your live camera feed and interact through gestures. |
-| **Live Photo** | Animate characters in images by drawing motion trajectories. |
+<table>
+  <tr>
+    <th width="24%" align="left">Realtime Use Case</th>
+    <th width="60%" align="left">Description</th>
+    <th width="16%" align="center">Demo</th>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Character Swapping</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Replace anyone in your live feed with a designated avatar in real-time.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/character-swapping.mp4">
+        <img src="./docs/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频中角色替换成参考图中角色</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the desired character with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Virtual Try-On</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Seamlessly change outfits, preserving exact body shape, natural motion, and an
+      authentic fit.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/virtual-try-on.mp4">
+        <img src="./docs/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频中人物衣服替换成参考图中衣服</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the target outfit with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Video Restyling</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Reimagine your world in any style with an immersive visual experience.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/video-restyling.mp4">
+        <img src="./docs/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>视频风格变为参考图指定的风格</code>
+      <br><br>
+      <strong>Reference image:</strong> Select an image that captures the artistic style you want to apply.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>AI Companions</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Summon virtual characters into your live camera feed and interact with them
+      through gestures.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@88182780abe60b3df1c44f549487fcf8ab4b660c/docs/videos/use-cases/ai-companions.mp4">
+        <img src="./docs/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>指定角色在场景中互动</code>
+      <br><br>
+      <strong>Reference image:</strong> Select a clear image of the virtual character you want to summon with a clean background.
+    </td>
+  </tr>
+  <tr>
+    <td rowspan="2" width="24%" valign="middle">
+      <strong>Live Photo</strong>
+    </td>
+    <td width="60%" valign="middle">
+      Animate and control characters in your images simply by drawing motion
+      trajectories.
+    </td>
+    <td rowspan="2" width="16%" align="center" valign="middle">
+      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-iOS@4351aa869d4e24fd40690c670d8949bff270dee0/docs/videos/use-cases/live-photo.mp4">
+        <img src="./docs/images/use-cases/live-photo-poster.png" alt="Play the Live Photo demo" width="120">
+        <br>
+        <sub>▶ Play demo</sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="60%" valign="middle">
+      <strong>Prompt:</strong> <code>让画面自然动起来</code>
+      <br><br>
+      <strong>Reference image:</strong> Use the input image as the reference
+    </td>
+  </tr>
+</table>
+
+<br>
+
+## Why XmaxSDK?
+
+<table>
+  <thead>
+    <tr>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
+      </th>
+      <th height="104" align="center" valign="middle">
+        <img src="./docs/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>End-to-end latency is measured in <img src="./docs/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
+      <td>Run on a <img src="./docs/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
+      <td>Our models support real-time generation at up to <img src="./docs/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
+    </tr>
+  </tbody>
+</table>
 
 <br>
 
 ## Prerequisites
+
 - HarmonyOS 5.1.0 (API 18) or later
 - An Xmax API key from the [Xmax Platform](https://platform.xmaxai.com/api-keys)
 
@@ -65,6 +208,7 @@ to add XmaxSDK and the required VolcEngine RTC dependency to your application.
 ## Quick Start
 
 ### Configure permissions
+
 For camera-based input, declare the following permissions in the application
 module's `module.json5`:
 
