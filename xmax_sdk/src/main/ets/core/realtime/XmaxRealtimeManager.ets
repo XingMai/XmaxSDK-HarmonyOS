@@ -182,6 +182,35 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.streamController.setPerformanceAlarmListener(listener);
   }
 
+  /** @inheritdoc */
+  async setLocalAudioVolume(volume: number): Promise<void> {
+    try {
+      this.validateAudioVolume(volume);
+      await this.mediaController.setLocalAudioVolume(volume);
+    } catch (error) {
+      throw this.reportError(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+    }
+  }
+
+  /** @inheritdoc */
+  async setRemoteAudioVolume(volume: number): Promise<void> {
+    try {
+      this.validateAudioVolume(volume);
+      this.streamController.setRemoteAudioVolume(volume);
+    } catch (error) {
+      throw this.reportError(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+    }
+  }
+
+  private validateAudioVolume(volume: number): void {
+    if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Audio volume must be between 0 and 1'
+      );
+    }
+  }
+
   /**
    * 设置本地摄像头预览就绪监听器。
    *

@@ -103,4 +103,7 @@ export interface MediaControlling extends InteractionControlling {
    * @returns 无返回值。
    */
   setLocalAudioPreviewEnabled(enabled: boolean): void;
+
+  /** 设置并保留本地视频预览音量，范围为 0～1。 */
+  setLocalAudioVolume(volume: number): Promise<void>;
 }

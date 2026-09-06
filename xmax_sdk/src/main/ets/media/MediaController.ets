@@ -267,6 +267,11 @@ export class MediaController implements MediaControlling {
     }
   }
 
+  /** @inheritdoc */
+  async setLocalAudioVolume(volume: number): Promise<void> {
+    await this.videoController.setLocalAudioVolume(volume);
+  }
+
   /**
    * 在没有活动来源时创建新的本地媒体来源。
    *

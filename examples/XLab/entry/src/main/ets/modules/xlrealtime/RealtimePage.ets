@@ -16,6 +16,7 @@ import {
   RealtimeViewState
 } from './mvvm/model/RealtimeViewState';
 import { RealtimeLoadingView } from './mvvm/view/RealtimeLoadingView';
+import { RealtimeAudioControlsView } from './mvvm/view/RealtimeAudioControlsView';
 import { RealtimePromptInputView } from './mvvm/view/RealtimePromptInputView';
 import { RealtimeReferenceListView } from './mvvm/view/RealtimeReferenceListView';
 import { RealtimeViewModel } from './mvvm/viewmodel/RealtimeViewModel';
@@ -439,6 +440,21 @@ export struct RealtimePage {
             void this.switchCamera();
           })
         } else {
+          if (!this.hasLocalImage()) {
+            RealtimeAudioControlsView({
+              state: this.state,
+              onLocalVolumeChanged: (volume: number): void => {
+                void this.viewModel.setLocalAudioVolume(volume);
+              },
+              onRemoteVolumeChanged: (volume: number): void => {
+                void this.viewModel.setRemoteAudioVolume(volume);
+              },
+              onMuteChanged: (muted: boolean): void => {
+                void this.viewModel.setAudioMuted(muted);
+              }
+            })
+              .position({ right: 52, top: 18 })
+          }
           Button({ type: ButtonType.Normal }) {
             Column({ space: 4 }) {
               SymbolGlyph($r('sys.symbol.picture'))
@@ -455,7 +471,7 @@ export struct RealtimePage {
             .height(36)
             .justifyContent(FlexAlign.Center)
           }
-          .width(58)
+          .width(this.hasLocalImage() ? 58 : 44)
           .height(58)
           .padding(0)
           .position({ right: 8, top: 18 })

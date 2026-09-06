@@ -71,6 +71,57 @@ export class RealtimeViewModel {
     this.referenceUploader = uploader;
   }
 
+  async setAudioMuted(muted: boolean): Promise<void> {
+    this.state.isAudioMuted = muted;
+    await Promise.all([this.applyLocalAudioVolume(), this.applyRemoteAudioVolume()]);
+  }
+
+  async setLocalAudioVolume(volume: number): Promise<void> {
+    this.state.localAudioVolume = volume;
+    const wasMuted: boolean = this.state.isAudioMuted;
+    this.state.isAudioMuted = false;
+    await Promise.all([
+      this.applyLocalAudioVolume(),
+      wasMuted ? this.applyRemoteAudioVolume() : Promise.resolve()
+    ]);
+  }
+
+  async setRemoteAudioVolume(volume: number): Promise<void> {
+    this.state.remoteAudioVolume = volume;
+    const wasMuted: boolean = this.state.isAudioMuted;
+    this.state.isAudioMuted = false;
+    await Promise.all([
+      this.applyRemoteAudioVolume(),
+      wasMuted ? this.applyLocalAudioVolume() : Promise.resolve()
+    ]);
+  }
+
+  private async applyLocalAudioVolume(): Promise<void> {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    const volume: number = this.state.isAudioMuted ? 0 : this.state.localAudioVolume;
+    try {
+      await manager?.setLocalAudioVolume(volume);
+    } catch (error) {
+      if (this.realtimeManager === manager &&
+        volume === (this.state.isAudioMuted ? 0 : this.state.localAudioVolume)) {
+        this.onMessage?.(this.errorMessage(error));
+      }
+    }
+  }
+
+  private async applyRemoteAudioVolume(): Promise<void> {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    const volume: number = this.state.isAudioMuted ? 0 : this.state.remoteAudioVolume;
+    try {
+      await manager?.setRemoteAudioVolume(volume);
+    } catch (error) {
+      if (this.realtimeManager === manager &&
+        volume === (this.state.isAudioMuted ? 0 : this.state.remoteAudioVolume)) {
+        this.onMessage?.(this.errorMessage(error));
+      }
+    }
+  }
+
   async connect(
     context: common.UIAbilityContext,
     localVideoPath: string = '',
@@ -133,6 +184,10 @@ export class RealtimeViewModel {
         }
       });
 
+      await Promise.all([this.applyLocalAudioVolume(), this.applyRemoteAudioVolume()]);
+      if (this.realtimeManager !== manager) {
+        return;
+      }
       const localStream: RealtimeMediaStream = await this.createLocalStream(
         manager,
         localVideoPath,

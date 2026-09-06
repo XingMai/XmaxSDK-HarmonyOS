@@ -26,6 +26,9 @@ export interface AudioManaging {
    */
   setPlaybackEnabled(enabled: boolean): void;
 
+  /** 设置播放器音量（0～1），播放器停止后保留设置。 */
+  setVolume(volume: number): Promise<void>;
+
   /**
    * 清除尚未播放的音频数据。
    *

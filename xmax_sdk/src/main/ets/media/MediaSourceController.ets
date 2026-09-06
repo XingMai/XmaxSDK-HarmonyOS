@@ -206,6 +206,11 @@ export class MediaSourceController implements MediaSourceControlling {
     this.audioManager.setPlaybackEnabled(enabled);
   }
 
+  /** @inheritdoc */
+  async setLocalAudioVolume(volume: number): Promise<void> {
+    await this.audioManager.setVolume(volume);
+  }
+
   /**
    * 停止音视频输出并清理媒体文件状态。
    *

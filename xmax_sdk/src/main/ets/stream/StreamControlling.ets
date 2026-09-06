@@ -10,6 +10,9 @@ import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 /** 定义流层向 Core 和其他业务层暴露的统一能力。 */
 export interface StreamControlling {
 
+  /** 设置远端播放音量（0～1），未订阅时缓存到后续订阅。 */
+  setRemoteAudioVolume(volume: number): void;
+
   /** @returns 正在启动或运行的生成任务标识；没有任务时为空字符串。 */
   readonly currentGenerationTaskId: string;
 

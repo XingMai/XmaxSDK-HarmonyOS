@@ -11,6 +11,8 @@ export class AudioManager implements AudioManaging {
 
   // 平台资源
   private renderer: audio.AudioRenderer | null = null;
+  private volume: number = AudioManager.DEFAULT_VOLUME;
+  private pendingOperation: Promise<void> = Promise.resolve();
 
   // 音频缓冲
   private pendingFrames: Uint8Array[] = [];
@@ -22,7 +24,11 @@ export class AudioManager implements AudioManaging {
    *
    * @returns 播放器启动完成后的 Promise。
    */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.enqueueOperation((): Promise<void> => this.startRenderer());
+  }
+
+  private async startRenderer(): Promise<void> {
     if (this.renderer !== null) {
       return;
     }
@@ -48,7 +54,7 @@ export class AudioManager implements AudioManaging {
     );
 
     try {
-      await renderer.setVolume(AudioManager.DEFAULT_VOLUME);
+      await renderer.setVolume(this.volume);
       await renderer.start();
       this.renderer = renderer;
     } catch (error) {
@@ -102,6 +108,23 @@ export class AudioManager implements AudioManaging {
     }
   }
 
+  /** @inheritdoc */
+  setVolume(volume: number): Promise<void> {
+    return this.enqueueOperation(async (): Promise<void> => {
+      if (this.renderer !== null) {
+        await this.renderer.setVolume(volume);
+      }
+      this.volume = volume;
+    });
+  }
+
+  // 顺序执行音量与资源操作，避免连续拖动滑块或换视频时写入旧值、访问已释放播放器。
+  private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+    const result: Promise<void> = this.pendingOperation.then(operation);
+    this.pendingOperation = result.catch((): void => {});
+    return result;
+  }
+
   /**
    * 清除平台播放器及本地队列中尚未播放的音频数据。
    *
@@ -122,7 +145,11 @@ export class AudioManager implements AudioManaging {
    *
    * @returns 播放器停止完成后的 Promise。
    */
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    return this.enqueueOperation((): Promise<void> => this.stopRenderer());
+  }
+
+  private async stopRenderer(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     this.renderer = null;
     this.isPlaybackEnabled = true;

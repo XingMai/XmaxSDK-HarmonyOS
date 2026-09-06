@@ -71,6 +71,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
   private currentTask: GenerationTask | null = null;
   private activeRemoteStream: RemoteStream | null = null;
   private remoteAudioActive: boolean = false;
+  private remoteAudioVolume: number = DEFAULT_REMOTE_AUDIO_VOLUME;
   private readonly subscribedRemoteAudioUsers: Set<string> = new Set();
   private generationStartTimer: number = -1;
   private generationStartResolve: (() => void) | null = null;
@@ -100,6 +101,15 @@ export class StreamController implements StreamControlling, RtcEventListener {
   /** @inheritdoc */
   get currentGenerationTaskId(): string {
     return this.currentTask?.id ?? '';
+  }
+
+  /** @inheritdoc */
+  setRemoteAudioVolume(volume: number): void {
+    const rtcVolume: number = Math.round(volume * 100);
+    this.subscribedRemoteAudioUsers.forEach((userId: string): void => {
+      this.rtcManager.setRemoteAudioVolume(userId, rtcVolume);
+    });
+    this.remoteAudioVolume = rtcVolume;
   }
 
   /** @inheritdoc */
@@ -332,7 +342,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     if (this.subscribedRemoteAudioUsers.has(userId)) {
       return;
     }
-    this.rtcManager.setRemoteAudioVolume(userId, DEFAULT_REMOTE_AUDIO_VOLUME);
+    this.rtcManager.setRemoteAudioVolume(userId, this.remoteAudioVolume);
     this.rtcManager.subscribeRemoteAudio(userId, true);
     this.subscribedRemoteAudioUsers.add(userId);
   }

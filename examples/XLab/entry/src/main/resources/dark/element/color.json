@@ -1,28 +1,24 @@
 {
   "color": [
     {
-      "name": "start_window_background",
-      "value": "#F7F8FA"
-    },
-    {
       "name": "realtime_volume_background",
-      "value": "#F2F2F7"
+      "value": "#1C1C1E"
     },
     {
       "name": "realtime_volume_label",
-      "value": "#000000"
+      "value": "#FFFFFF"
     },
     {
       "name": "realtime_volume_secondary_label",
-      "value": "#993C3C43"
+      "value": "#99EBEBF5"
     },
     {
       "name": "realtime_volume_tint",
-      "value": "#FF2D55"
+      "value": "#FF375F"
     },
     {
       "name": "realtime_volume_track",
-      "value": "#33787880"
+      "value": "#52787880"
     }
   ]
 }

@@ -181,6 +181,11 @@ export class VideoController {
     this.mediaSourceController.setLocalAudioPreviewEnabled(enabled);
   }
 
+  /** 设置本地视频预览音量，未创建媒体源时缓存到后续播放。 */
+  async setLocalAudioVolume(volume: number): Promise<void> {
+    await this.mediaSourceController.setLocalAudioVolume(volume);
+  }
+
   /**
    * 准备文件媒体来源并装配权限、编码、传输和预览资源。
    *

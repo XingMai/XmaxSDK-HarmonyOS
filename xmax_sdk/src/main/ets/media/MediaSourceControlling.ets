@@ -34,6 +34,9 @@ export interface MediaSourceControlling {
    */
   setLocalAudioPreviewEnabled(enabled: boolean): void;
 
+  /** 设置本地预览音量，不改变输出给其他消费者的音频帧。 */
+  setLocalAudioVolume(volume: number): Promise<void>;
+
   /**
    * 停止输出并释放媒体文件资源。
    *

@@ -58,6 +58,9 @@ export class RealtimeViewState {
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;
   errorMessage: string = '';
+  localAudioVolume: number = 0.45;
+  remoteAudioVolume: number = 1;
+  isAudioMuted: boolean = false;
   readonly categories: ReferenceCategory[];
   readonly categoryStates: RealtimeCategoryState[];
   private readonly emptyReferenceList: RealtimeReferenceListState = new RealtimeReferenceListState([]);

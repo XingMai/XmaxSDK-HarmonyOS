@@ -311,6 +311,17 @@ const videoStream = await realtime.createLocalVideoStream(videoFilePath);
 
 Only one local input stream may be active at a time.
 
+### Adjust playback volume
+
+Control local video preview and generated audio separately, including before creating a stream or connecting:
+
+```ts
+await realtime.setLocalAudioVolume(0.45); // Local video preview; default 45%.
+await realtime.setRemoteAudioVolume(1);   // Generated audio; default 100%.
+```
+
+Both methods accept finite values from `0` (mute) to `1` (original volume) and reject invalid values with `INVALID_CONFIGURATION`. Settings persist across stream replacement and reconnection on the same manager. Local volume does not affect uploaded audio or override automatic preview muting during generation. XLab's video input page exposes both sliders and a shared mute switch in its top bar.
+
 ### Render local preview and generated video
 
 Store the tracks in component state and render them with `XmaxRealtimeVideoView`:

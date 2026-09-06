@@ -37,6 +37,7 @@ function managerFixture() {
     async stopLocalStream() { this.currentTrack = null; }
     owns(local) { return local.videoTrack !== undefined && Track.resolve(local.videoTrack) === this.currentTrack; }
     setLocalAudioPreviewEnabled(value) { calls.audio.push(value); }
+    async setLocalAudioVolume(value) { this.volume = value; }
     start(task) { this.interactionTask = task; }
     stop() { this.interactionTask = null; }
     prepareForClose() {}
@@ -49,6 +50,7 @@ function managerFixture() {
   }
   class FakeStream {
     constructor() { stream = this; this.currentGenerationTaskId = ''; }
+    setRemoteAudioVolume(value) { this.volume = value; }
     async connect(_connection, _audio, ensure) { ensure(); }
     async disconnect() { this.stopGeneration(''); }
     activateRemoteAudio() {}
@@ -98,13 +100,52 @@ function managerFixture() {
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const manager = new XmaxRealtimeManager({}, { model: { name: 'x2.0-sla' } }, {});
-  return { manager, media, stream, calls, timers, State, Context, Format, Track, MediaStream,
+  return { manager, media, stream, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
     create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
+
+test('public volume APIs validate finite normalized values before touching playback', async () => {
+  const f = managerFixture(), errors = [];
+  f.manager.setErrorListener(error => errors.push(error));
+  for (const volume of [-0.01, 1.01, NaN, Infinity, -Infinity]) {
+    for (const method of ['setLocalAudioVolume', 'setRemoteAudioVolume']) {
+      await assert.rejects(f.manager[method](volume), {
+        code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE'
+      });
+    }
+  }
+  assert.equal(f.media.volume, undefined);
+  assert.equal(f.stream.volume, undefined);
+  for (const volume of [0, 0.45, 1]) {
+    await f.manager.setLocalAudioVolume(volume);
+    await f.manager.setRemoteAudioVolume(volume);
+    assert.equal(f.media.volume, volume);
+    assert.equal(f.stream.volume, volume);
+  }
+  assert.deepEqual(errors, []);
+  assert.equal(f.calls.sessions.length, 0);
+});
+
+test('volume failures retain their error code and remain recoverable during generation', async () => {
+  const f = managerFixture(), errors = [];
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('generate'));
+  f.manager.setErrorListener(error => errors.push(error));
+  f.media.setLocalAudioVolume = async () => { throw new f.XmaxError(f.Code.MEDIA_ERROR, 'local failed'); };
+  f.stream.setRemoteAudioVolume = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'remote failed'); };
+  await assert.rejects(f.manager.setLocalAudioVolume(0.6), {
+    code: 'MEDIA_ERROR', message: 'local failed', severity: 'RECOVERABLE'
+  });
+  await assert.rejects(f.manager.setRemoteAudioVolume(0.6), {
+    code: 'RTC_ERROR', message: 'remote failed', severity: 'RECOVERABLE'
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+});
 
 test('one-call generation connects on demand, reuses its remote track and supports the original API', async () => {
   const f = managerFixture(), local = await f.create();
@@ -428,6 +469,7 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unpublish 
 
 function exampleFixture() {
   const f = managerFixture();
+  let nextManager = f.manager;
   const load = loadEts({ ...platform,
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
     '@xmax/sdk': {
@@ -435,7 +477,7 @@ function exampleFixture() {
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
       RealtimeConfiguration: class {}, RealtimeModels: { realtime() {} }, XmaxConfiguration: class {},
-      XmaxClient: class { createRealtimeManager() { return f.manager; } }
+      XmaxClient: class { createRealtimeManager() { return nextManager; } }
     },
     XLabConfiguration: { XLabConfiguration: { currentApiKey: () => 'test-only' } },
     XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-sla' } },
@@ -444,8 +486,83 @@ function exampleFixture() {
   const path = require('node:path');
   const { RealtimeViewModel } = load(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/mvvm/viewmodel/RealtimeViewModel.ets'));
-  return { ...f, viewModel: new RealtimeViewModel([]) };
+  return { ...f, viewModel: new RealtimeViewModel([]),
+    useManager(manager) { nextManager = manager; }
+  };
 }
+
+test('XLab applies remembered volumes before local playback and restores both after mute', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  assert.equal(vm.state.localAudioVolume, 0.45);
+  assert.equal(vm.state.remoteAudioVolume, 1);
+  await vm.setLocalAudioVolume(0.3);
+  await vm.setRemoteAudioVolume(0.8);
+  const create = f.media.createLocalCameraStream.bind(f.media);
+  f.media.createLocalCameraStream = async (...args) => {
+    assert.equal(f.media.volume, 0.3);
+    assert.equal(f.stream.volume, 0.8);
+    return create(...args);
+  };
+  await vm.connect({});
+  await vm.setAudioMuted(true);
+  assert.equal(f.media.volume, 0);
+  assert.equal(f.stream.volume, 0);
+  assert.equal(vm.state.localAudioVolume, 0.3);
+  assert.equal(vm.state.remoteAudioVolume, 0.8);
+  await vm.setAudioMuted(false);
+  assert.equal(f.media.volume, 0.3);
+  assert.equal(f.stream.volume, 0.8);
+});
+
+test('either XLab slider unmutes both channels and restores the other remembered volume', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await vm.setAudioMuted(true);
+  await vm.setLocalAudioVolume(0.2);
+  assert.equal(vm.state.isAudioMuted, false);
+  assert.equal(f.media.volume, 0.2);
+  assert.equal(f.stream.volume, 1);
+  await vm.setAudioMuted(true);
+  await vm.setRemoteAudioVolume(0.7);
+  assert.equal(vm.state.isAudioMuted, false);
+  assert.equal(f.media.volume, 0.2);
+  assert.equal(f.stream.volume, 0.7);
+});
+
+test('XLab volume errors show a toast without covering or stopping generation', async () => {
+  const f = exampleFixture(), messages = [], vm = f.viewModel;
+  await vm.connect({});
+  vm.onMessage = message => messages.push(message);
+  f.stream.setRemoteAudioVolume = () => { throw new Error('volume failed'); };
+  await vm.setRemoteAudioVolume(0.6);
+  assert.deepEqual(messages, ['volume failed']);
+  assert.equal(vm.state.errorMessage, '');
+  assert.ok(vm.state.localVideoTrack);
+});
+
+test('XLab restores mute and slider values when recreating its manager after suspension', async () => {
+  const f = exampleFixture(), next = managerFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await vm.setLocalAudioVolume(0.2);
+  await vm.setRemoteAudioVolume(0.7);
+  await vm.setAudioMuted(true);
+  await vm.suspend();
+  f.useManager(next.manager);
+  const create = next.media.createLocalCameraStream.bind(next.media);
+  next.media.createLocalCameraStream = async (...args) => {
+    assert.equal(next.media.volume, 0);
+    assert.equal(next.stream.volume, 0);
+    return create(...args);
+  };
+  await vm.resume({});
+  assert.ok(vm.state.localVideoTrack);
+  assert.equal(vm.state.isAudioMuted, true);
+  assert.equal(vm.state.localAudioVolume, 0.2);
+  assert.equal(vm.state.remoteAudioVolume, 0.7);
+  await vm.setAudioMuted(false);
+  assert.equal(next.media.volume, 0.2);
+  assert.equal(next.stream.volume, 0.7);
+});
 
 test('XLab starts with local preview only, then starts MOX directly from idle', async () => {
   const f = exampleFixture();

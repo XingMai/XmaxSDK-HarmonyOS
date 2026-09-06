@@ -55,6 +55,21 @@ export interface XmaxRealtimeManaging {
   setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void;
 
   /**
+   * 设置本地视频文件的预览音量，不影响上传的音频和生成期间的自动静音。
+   * 可在创建本地流前设置，停止或替换视频后保留。
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
+   * @returns 设置完成后的 Promise；无效参数或设置失败时返回可恢复错误。
+   */
+  setLocalAudioVolume(volume: number): Promise<void>;
+
+  /**
+   * 设置远端生成结果的播放音量。可在连接前设置，后续音频订阅沿用该值。
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 1。
+   * @returns 设置完成后的 Promise；无效参数或设置失败时返回可恢复错误。
+   */
+  setRemoteAudioVolume(volume: number): Promise<void>;
+
+  /**
    * 设置本地摄像头预览就绪监听器。
    *
    * @param listener 预览就绪监听器；传入空值时清除监听器。
