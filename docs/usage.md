@@ -8,6 +8,7 @@ component and handle rejected promises.
 
 - [Create an input stream](#create-an-input-stream)
 - [Model capabilities](#model-capabilities)
+- [Service environments](#service-environments)
 - [Reference Image Upload](#reference-image-upload)
 - [Render local preview and generated video](#render-local-preview-and-generated-video)
 - [Start generation in one call](#start-generation-in-one-call)
@@ -72,6 +73,24 @@ Unsupported sources reject with `INVALID_CONFIGURATION` and `RECOVERABLE`
 severity before media preparation begins, preserving any active input and session.
 Use `supportedMediaSources` to configure your UI. XLab dims unsupported entries
 and prompts the user to switch models when they are tapped.
+
+## Service environments
+
+The China service environment is used by default. Select the global environment
+when creating the client to route realtime-session and storage API requests to
+Xmax's global service:
+
+```ts
+import { XmaxConfiguration, XmaxEnvironment } from '@xmax/sdk';
+
+const configuration = new XmaxConfiguration(
+  'YOUR_API_KEY',
+  XmaxEnvironment.GLOBAL
+);
+```
+
+Use `XmaxEnvironment.CHINA` to select the China service explicitly. RTC room
+credentials and storage configuration are returned by the selected service.
 
 Omitting a camera format uses `defaultCameraVideoFormat`. For images and videos,
 omitting the format derives dimensions from the source's display size and uses
@@ -347,11 +366,17 @@ SDK logging is **off by default**, in both debug and release builds. Set
 `loggerOptions` when creating a client to opt in:
 
 ```ts
-import { XmaxClient, XmaxConfiguration, XmaxLoggerOption } from '@xmax/sdk';
+import {
+  XmaxClient,
+  XmaxConfiguration,
+  XmaxEnvironment,
+  XmaxLoggerOption
+} from '@xmax/sdk';
 
 const client = new XmaxClient(
   new XmaxConfiguration(
     'YOUR_API_KEY',
+    XmaxEnvironment.CHINA,
     XmaxLoggerOption.BUSINESS | XmaxLoggerOption.PERFORMANCE
   ),
   context

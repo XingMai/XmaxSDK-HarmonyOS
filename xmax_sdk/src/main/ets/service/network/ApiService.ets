@@ -8,7 +8,6 @@ import {
 import { ApiLogger } from './ApiLogger';
 import { ApiServicing } from './ApiServicing';
 
-const API_BASE_URL: string = 'https://cloud.xmax.22duck.cn/open/api/v1';
 const API_TIMEOUT_MS: number = 15000;
 
 /** 表示 Xmax API 的统一响应结构。 */
@@ -24,14 +23,17 @@ interface ApiEnvelope {
 export class ApiService implements ApiServicing {
 
   private readonly apiKey: string;
+  private readonly baseURL: string;
 
   /**
    * 创建 API Service。
    *
    * @param apiKey 调用 Xmax API 使用的访问密钥。
+   * @param baseURL Xmax API 基础地址。
    */
-  constructor(apiKey: string) {
+  constructor(apiKey: string, baseURL: string) {
     this.apiKey = apiKey;
+    this.baseURL = baseURL;
   }
 
   /**
@@ -98,7 +100,7 @@ export class ApiService implements ApiServicing {
     this.validateApiKey();
 
     const request: http.HttpRequest = http.createHttp();
-    const url: string = `${API_BASE_URL}${path}`;
+    const url: string = `${this.baseURL}${path}`;
     const startedAt: number = Date.now();
 
     try {

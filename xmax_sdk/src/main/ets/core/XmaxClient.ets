@@ -9,6 +9,7 @@ import { MediaServicing } from '../service/media/MediaServicing';
 import { ApiService } from '../service/network/ApiService';
 import { ApiServicing } from '../service/network/ApiServicing';
 import { XmaxConfiguration } from './XmaxConfiguration';
+import { apiBaseURL } from './XmaxEnvironment';
 import { RealtimeConfiguration } from './realtime/RealtimeConfiguration';
 import { RealtimeModel, RealtimeModels } from './realtime/RealtimeModel';
 import { XmaxRealtimeManaging } from './realtime/XmaxRealtimeManaging';
@@ -41,7 +42,10 @@ export class XmaxClient {
     this.configuration = configuration;
     XmaxLogger.configure(configuration.loggerOptions);
     this.context = context;
-    this.apiService = new ApiService(configuration.apiKey);
+    this.apiService = new ApiService(
+      configuration.apiKey,
+      apiBaseURL(configuration.environment)
+    );
   }
 
   /**

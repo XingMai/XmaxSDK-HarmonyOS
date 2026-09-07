@@ -10,6 +10,7 @@ import {
   RealtimeState,
   XmaxClient,
   XmaxConfiguration,
+  XmaxEnvironment,
   XmaxLoggerOption,
   XmaxError,
   XmaxRealtimeManaging
@@ -138,7 +139,11 @@ export class RealtimeViewModel {
     let connectingManager: XmaxRealtimeManaging | null = null;
     try {
       const client = new XmaxClient(
-        new XmaxConfiguration(XLabConfiguration.currentApiKey(), XmaxLoggerOption.ALL),
+        new XmaxConfiguration(
+          XLabConfiguration.currentApiKey(),
+          XmaxEnvironment.CHINA,
+          XmaxLoggerOption.ALL
+        ),
         context
       );
       const manager: XmaxRealtimeManaging = client.createRealtimeManager(

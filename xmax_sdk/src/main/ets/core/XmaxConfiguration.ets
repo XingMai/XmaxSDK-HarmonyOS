@@ -3,12 +3,16 @@ import {
   XmaxError,
   XmaxErrorCode
 } from '../foundation/errors/XmaxError';
+import { XmaxEnvironment } from './XmaxEnvironment';
 
 /** SDK 全局配置。 */
 export class XmaxConfiguration {
 
   /** 调用 Xmax 服务使用的 API Key。 */
   readonly apiKey: string;
+
+  /** SDK 连接的服务环境。 */
+  readonly environment: XmaxEnvironment;
 
   /** SDK 全局日志选项；默认为关闭。 */
   readonly loggerOptions: XmaxLoggerOption;
@@ -17,11 +21,22 @@ export class XmaxConfiguration {
    * 创建 SDK 全局配置。
    *
    * @param apiKey 调用 Xmax 服务使用的 API Key。
+   * @param environmentOrLoggerOptions SDK 连接的服务环境；也兼容旧版第二参数日志选项。
    * @param loggerOptions SDK 输出的日志类型，可按位或组合。
    */
-  constructor(apiKey: string, loggerOptions: XmaxLoggerOption = XmaxLoggerOption.NONE) {
+  constructor(
+    apiKey: string,
+    environmentOrLoggerOptions: XmaxEnvironment | XmaxLoggerOption = XmaxEnvironment.CHINA,
+    loggerOptions: XmaxLoggerOption = XmaxLoggerOption.NONE
+  ) {
     this.apiKey = apiKey.trim();
-    this.loggerOptions = loggerOptions;
+    if (typeof environmentOrLoggerOptions === 'number') {
+      this.environment = XmaxEnvironment.CHINA;
+      this.loggerOptions = environmentOrLoggerOptions;
+    } else {
+      this.environment = environmentOrLoggerOptions;
+      this.loggerOptions = loggerOptions;
+    }
   }
 
   /**

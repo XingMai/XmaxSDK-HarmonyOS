@@ -679,6 +679,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
       CameraPosition: { FRONT: 'front' }, RealtimeConnectionState: f.State,
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
+      XmaxEnvironment: { CHINA: 'china', GLOBAL: 'global' },
       RealtimeConfiguration: class {}, RealtimeModels: { realtime() {} }, XmaxConfiguration: class {},
       XmaxClient: class { createRealtimeManager() { return nextManager; } }
     },

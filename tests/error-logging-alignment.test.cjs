@@ -166,19 +166,38 @@ test('logging defaults off for every level, filters options independently and sk
   assert.equal(f.logs.length, 2);
 });
 
-test('client applies global loggerOptions; a default client switches logging off again', () => {
+test('client applies environment and global loggerOptions; defaults remain China and logging off', () => {
+  const services = [];
   const f = fixture({
-    ApiService: { ApiService: class {} }, XmaxRealtimeManager: {}, XmaxStorageManager: {}
+    ApiService: { ApiService: class {
+      constructor(apiKey, baseURL) { services.push({ apiKey, baseURL }); }
+    } }, XmaxRealtimeManager: {}, XmaxStorageManager: {}
   });
   const { XmaxConfiguration } = f.load('core/XmaxConfiguration.ets');
+  const { XmaxEnvironment, apiBaseURL } = f.load('core/XmaxEnvironment.ets');
   const { XmaxClient } = f.load('core/XmaxClient.ets');
-  const config = new XmaxConfiguration('  test-key\n', f.Option.ALL);
+  const config = new XmaxConfiguration('  test-key\n', XmaxEnvironment.CHINA, f.Option.ALL);
   assert.equal(config.apiKey, 'test-key');
+  assert.equal(config.environment, XmaxEnvironment.CHINA);
   new XmaxClient(config);
+  assert.deepEqual(services[0], {
+    apiKey: 'test-key', baseURL: 'https://cloud.xmax.22duck.cn/open/api/v1'
+  });
   assert.equal(f.Logger.isEnabled(f.Option.PERFORMANCE), true);
   assert.equal(f.Logger.isEnabled(f.Option.BUSINESS), true);
-  new XmaxClient(new XmaxConfiguration('test-key'));
+  const defaultConfiguration = new XmaxConfiguration('test-key');
+  assert.equal(defaultConfiguration.environment, XmaxEnvironment.CHINA);
+  new XmaxClient(defaultConfiguration);
   assert.equal(f.Logger.isEnabled(f.Option.BUSINESS), false);
+  const legacyConfiguration = new XmaxConfiguration('legacy-key', f.Option.ALL);
+  assert.equal(legacyConfiguration.environment, XmaxEnvironment.CHINA);
+  assert.equal(legacyConfiguration.loggerOptions, f.Option.ALL);
+  const globalConfiguration = new XmaxConfiguration('global-key', XmaxEnvironment.GLOBAL);
+  new XmaxClient(globalConfiguration);
+  assert.deepEqual(services[2], {
+    apiKey: 'global-key', baseURL: 'https://api.xmax.cloud/open/api/v1'
+  });
+  assert.equal(apiBaseURL(XmaxEnvironment.GLOBAL), 'https://api.xmax.cloud/open/api/v1');
   assert.throws(() => new XmaxConfiguration(' ').validate(), { code: 'INVALID_API_KEY' });
 });
 
