@@ -17,7 +17,7 @@ Native HarmonyOS SDK, providing access to Xmax's real-time, interactive video ge
 
 ## What XmaxSDK does
 
-XmaxSDK offers a complete workflow that covers media acquisition, low-latency video communication, frame-by-frame generation, and in-app rendering. Whether processing live camera feeds, pre-recorded video, or still images, it streams media to our cloud inference service, applies on-device enhancement to the returned video, and renders the result. With the entire workflow abstracted into simple API calls, integrating real-time video generation is seamless and intuitive.
+XmaxSDK offers a complete workflow that covers media acquisition, low-latency video communication, frame-by-frame generation, and in-app rendering. Whether processing live camera feeds, pre-recorded video, or still images, it streams media to our cloud inference service, applies on-device enhancement to the returned video, and renders the result to screen. With the entire workflow abstracted into simple API calls, integrating real-time video generation is seamless and intuitive.
 
 <br>
 
