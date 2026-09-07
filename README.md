@@ -9,12 +9,11 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-XmaxSDK is a native HarmonyOS SDK that provides access to Xmax's real-time,
-interactive video generation models. It enables low-latency, cost-efficiency,
-and high-fidelity video transformations, conditioned on reference images, text
-prompts, and user interactions. With concise ArkTS APIs, developers can integrate
-features such as real-time character swapping, virtual try-on, or AI companions
-into HarmonyOS applications.
+Built natively with concise ArkTS APIs, this SDK brings Xmax’s real-time video generation capabilities directly into the HarmonyOS ecosystem.
+
+- **High-Fidelity Real-Time Rendering:** Optimized for low latency and cost efficiency, enabling instant video transformations across diverse characters, outfits, and aesthetic styles.
+- **Multimodal Input Support:** Accepts text prompts, reference images, and user interactions for precise creative control.
+- **Native HarmonyOS Integration:** Offers clean, intuitive APIs that make it easy for developers to build next-generation interactive video applications.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
