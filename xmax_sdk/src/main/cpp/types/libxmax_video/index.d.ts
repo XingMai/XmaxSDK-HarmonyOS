@@ -25,6 +25,15 @@ export interface NativeAudioFileDecoder {
   release(): void;
 }
 
+/** Per-frame wall-clock durations in milliseconds; conversion stages are absent on scalar fallback. */
+export interface NativeCameraFrameTiming {
+  allocationMilliseconds: number;
+  uvSplitMilliseconds?: number;
+  scaleMilliseconds?: number;
+  rotationMilliseconds?: number;
+  uvMergeMilliseconds?: number;
+}
+
 type NativeCameraFrameListener = (
   data: ArrayBuffer | undefined,
   width: number,
@@ -36,7 +45,8 @@ type NativeCameraFrameListener = (
   skippedFrames?: number,
   conversionBackend?: string,
   threadCpuMilliseconds?: number,
-  sampleTimeMilliseconds?: number
+  sampleTimeMilliseconds?: number,
+  timing?: NativeCameraFrameTiming
 ) => void;
 
 export interface NativeFrameReceiver {

@@ -106,9 +106,49 @@ test('CameraFrameOutput forwards native CPU snapshots and backend into performan
   output.configure(f.format, 30);
   callback(new ArrayBuffer(6), 2, 2, 1000, undefined, 5, 0, 0, 'libyuv (NEON enabled)', 100, 1000);
   f.time(2000);
-  callback(new ArrayBuffer(6), 2, 2, 2001000, undefined, 3, 2, 4, 'libyuv (NEON enabled)', 300, 3000);
+  callback(new ArrayBuffer(6), 2, 2, 2001000, undefined, 3, 2, 4, 'libyuv (NEON enabled)', 300, 3000,
+    { allocationMilliseconds: 0.2, uvSplitMilliseconds: 0.3, scaleMilliseconds: 1.4,
+      rotationMilliseconds: 0.8, uvMergeMilliseconds: 0.2 });
   assert.equal(delivered, 2);
   assert.match(f.logs[0].message, /CPU：10.0%/);
   assert.match(f.logs[0].message, /平均帧处理：3.00 ms/);
   assert.match(f.logs[0].message, /libyuv \(NEON enabled\)/);
+  assert.match(f.logs[0].message, /缩放：平均 1.40 ms/);
+  assert.match(f.logs[0].message, /输出分配\/初始化：平均 0.20 ms/);
+});
+
+
+test('stage timing averages use the same complete frame window and reset after logging', () => {
+  const f = fixture(), s = f.statistics;
+  const first = { allocationMilliseconds: 1, uvSplitMilliseconds: 2, scaleMilliseconds: 3,
+    rotationMilliseconds: 4, uvMergeMilliseconds: 0 };
+  const second = { allocationMilliseconds: 3, uvSplitMilliseconds: 4, scaleMilliseconds: 5,
+    rotationMilliseconds: 6, uvMergeMilliseconds: 2 };
+  const record = (total, timing) => s.record(total, 0, 0, 'libyuv', undefined, undefined, timing);
+  record(999, second); // baseline frame excluded, including its timing
+  f.time(1000); record(10, first);
+  f.time(2000); record(20, second);
+  const message = f.logs[0].message;
+  for (const text of ['平均帧处理：15.00 ms', '输出分配/初始化：平均 2.00 ms',
+    'UV 拆分：平均 3.00 ms', '缩放：平均 4.00 ms', '旋转：平均 5.00 ms', 'UV 合并：平均 1.00 ms']) {
+    assert.ok(message.includes(text), message);
+  }
+  assert.doesNotMatch(message, /P95|最大/);
+  f.time(3000); record(10, { allocationMilliseconds: 1 }); // scalar fallback: no libyuv stages
+  f.time(4000); record(20, second);
+  assert.match(f.logs[1].message, /分段平均：不可用（完整样本 1\/2）/);
+  f.time(6000); record(6, { ...first, rotationMilliseconds: 0 });
+  assert.match(f.logs[2].message, /旋转：平均 0.00 ms/);
+  assert.match(f.logs[2].message, /输出分配\/初始化：平均 1.00 ms/);
+});
+
+test('invalid stage durations are unavailable instead of zero or NaN', () => {
+  const f = fixture(), s = f.statistics;
+  s.record(1, 0, 0, 'libyuv');
+  f.time(2000);
+  s.record(1, 0, 0, 'libyuv', undefined, undefined,
+    { allocationMilliseconds: 0, uvSplitMilliseconds: 0, scaleMilliseconds: NaN,
+      rotationMilliseconds: 0, uvMergeMilliseconds: -1 });
+  assert.match(f.logs[0].message, /分段平均：不可用/);
+  assert.doesNotMatch(f.logs[0].message, /NaN/);
 });

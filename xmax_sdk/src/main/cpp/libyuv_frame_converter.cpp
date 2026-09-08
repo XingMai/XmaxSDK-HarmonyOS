@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -56,14 +57,17 @@ class I420Buffer {
  public:
   void Reset(
       int32_t width,
-      int32_t height) {
+      int32_t height,
+      bool allocateLuma) {
     width_ = width;
     height_ = height;
     chromaWidth_ = (width + 1) / 2;
     chromaHeight_ = (height + 1) / 2;
 
-    const size_t lumaLength = static_cast<size_t>(width_) *
-        static_cast<size_t>(height_);
+    // Converted/rotated Y is read from the source or written directly to the
+    // caller. Only allocate intermediate Y when a separate rotation is needed.
+    const size_t lumaLength = allocateLuma ? static_cast<size_t>(width_) *
+        static_cast<size_t>(height_) : 0;
     const size_t chromaLength = static_cast<size_t>(chromaWidth_) *
         static_cast<size_t>(chromaHeight_);
     data_.resize(lumaLength + chromaLength * 2);
@@ -84,11 +88,11 @@ class I420Buffer {
   }
 
   uint8_t* y() {
-    return data_.data();
+    return uOffset_ == 0 ? nullptr : data_.data();
   }
 
   const uint8_t* y() const {
-    return data_.data();
+    return uOffset_ == 0 ? nullptr : data_.data();
   }
 
   uint8_t* u() {
@@ -141,12 +145,13 @@ struct LibyuvTransformPlan {
     const int32_t scaledHeight = swapsDimensions ?
         geometry.targetWidth : geometry.targetHeight;
 
-    convertedFrame.Reset(cropWidth, cropHeight);
-    scaledFrame.Reset(scaledWidth, scaledHeight);
+    convertedFrame.Reset(cropWidth, cropHeight, false);
+    scaledFrame.Reset(scaledWidth, scaledHeight, geometry.rotation != 0);
     if (geometry.rotation != 0) {
       rotatedFrame.Reset(
           geometry.targetWidth,
-          geometry.targetHeight);
+          geometry.targetHeight,
+          false);
     }
   }
 
@@ -164,26 +169,13 @@ struct LibyuvTransformPlan {
   I420Buffer rotatedFrame;
 };
 
-void ConvertFrameToI420(
-    const uint8_t* sourceLuma,
+void SplitSourceChroma(
     const uint8_t* sourceChroma,
     LibyuvTransformPlan* plan) {
-  const uint8_t* croppedLuma = sourceLuma +
-      static_cast<size_t>(plan->cropY) *
-          static_cast<size_t>(plan->geometry.sourceStride) +
-      static_cast<size_t>(plan->cropX);
   const uint8_t* croppedChroma = sourceChroma +
       static_cast<size_t>(plan->cropY / 2) *
           static_cast<size_t>(plan->geometry.sourceChromaStride) +
       static_cast<size_t>(plan->cropX);
-
-  libyuv::CopyPlane(
-      croppedLuma,
-      plan->geometry.sourceStride,
-      plan->convertedFrame.y(),
-      plan->convertedFrame.width(),
-      plan->cropWidth,
-      plan->cropHeight);
 
   libyuv::SplitUVPlane(
       croppedChroma,
@@ -196,17 +188,26 @@ void ConvertFrameToI420(
       plan->cropHeight / 2);
 }
 
-bool ScaleFrame(LibyuvTransformPlan* plan) {
+bool ScaleFrame(
+    const uint8_t* sourceLuma,
+    uint8_t* destination,
+    LibyuvTransformPlan* plan) {
+  const uint8_t* croppedLuma = sourceLuma +
+      static_cast<size_t>(plan->cropY) *
+          static_cast<size_t>(plan->geometry.sourceStride) +
+      static_cast<size_t>(plan->cropX);
+  uint8_t* scaledLuma = plan->geometry.rotation == 0 ?
+      destination : plan->scaledFrame.y();
   return libyuv::I420Scale(
-      plan->convertedFrame.y(),
-      plan->convertedFrame.width(),
+      croppedLuma,
+      plan->geometry.sourceStride,
       plan->convertedFrame.u(),
       plan->convertedFrame.chromaStride(),
       plan->convertedFrame.v(),
       plan->convertedFrame.chromaStride(),
       plan->convertedFrame.width(),
       plan->convertedFrame.height(),
-      plan->scaledFrame.y(),
+      scaledLuma,
       plan->scaledFrame.width(),
       plan->scaledFrame.u(),
       plan->scaledFrame.chromaStride(),
@@ -217,7 +218,7 @@ bool ScaleFrame(LibyuvTransformPlan* plan) {
       libyuv::kFilterBilinear) == 0;
 }
 
-bool RotateFrame(LibyuvTransformPlan* plan) {
+bool RotateFrame(uint8_t* destination, LibyuvTransformPlan* plan) {
   if (plan->geometry.rotation == 0) {
     return true;
   }
@@ -229,8 +230,8 @@ bool RotateFrame(LibyuvTransformPlan* plan) {
       plan->scaledFrame.chromaStride(),
       plan->scaledFrame.v(),
       plan->scaledFrame.chromaStride(),
-      plan->rotatedFrame.y(),
-      plan->rotatedFrame.width(),
+      destination,
+      plan->geometry.targetWidth,
       plan->rotatedFrame.u(),
       plan->rotatedFrame.chromaStride(),
       plan->rotatedFrame.v(),
@@ -240,21 +241,13 @@ bool RotateFrame(LibyuvTransformPlan* plan) {
       ToRotationMode(plan->geometry.rotation)) == 0;
 }
 
-void WriteNv12Frame(
+void WriteNv12Chroma(
     uint8_t* destination,
     const LibyuvTransformPlan& plan) {
   const I420Buffer& frame = plan.finalFrame();
   uint8_t* destinationChroma = destination +
       static_cast<size_t>(plan.geometry.targetWidth) *
           static_cast<size_t>(plan.geometry.targetHeight);
-
-  libyuv::CopyPlane(
-      frame.y(),
-      frame.width(),
-      destination,
-      plan.geometry.targetWidth,
-      plan.geometry.targetWidth,
-      plan.geometry.targetHeight);
 
   libyuv::MergeUVPlane(
       frame.u(),
@@ -284,7 +277,11 @@ bool LibyuvFrameTransformer::TransformNv21ToNv12(
     const uint8_t* sourceLuma,
     const uint8_t* sourceChroma,
     uint8_t* destination,
-    const VideoFrameTransformGeometry& geometry) {
+    const VideoFrameTransformGeometry& geometry,
+    VideoFrameConversionTiming* timing) {
+  if (timing != nullptr) {
+    *timing = {};
+  }
   if (sourceLuma == nullptr || sourceChroma == nullptr ||
       destination == nullptr || geometry.sourceWidth < 2 ||
       geometry.sourceHeight < 2 || geometry.targetWidth < 2 ||
@@ -297,16 +294,30 @@ bool LibyuvFrameTransformer::TransformNv21ToNv12(
     impl_->plan = std::make_unique<LibyuvTransformPlan>(geometry);
   }
 
-  ConvertFrameToI420(
-      sourceLuma,
-      sourceChroma,
-      impl_->plan.get());
-  if (!ScaleFrame(impl_->plan.get()) ||
-      !RotateFrame(impl_->plan.get())) {
+  const auto splitStartedAt = std::chrono::steady_clock::now();
+  SplitSourceChroma(sourceChroma, impl_->plan.get());
+  const auto scaleStartedAt = std::chrono::steady_clock::now();
+  if (!ScaleFrame(sourceLuma, destination, impl_->plan.get())) {
     return false;
   }
-
-  WriteNv12Frame(destination, *impl_->plan);
+  const auto rotationStartedAt = std::chrono::steady_clock::now();
+  if (!RotateFrame(destination, impl_->plan.get())) {
+    return false;
+  }
+  const auto mergeStartedAt = std::chrono::steady_clock::now();
+  WriteNv12Chroma(destination, *impl_->plan);
+  const auto finishedAt = std::chrono::steady_clock::now();
+  if (timing != nullptr) {
+    timing->uvSplitMilliseconds = std::chrono::duration<double, std::milli>(
+        scaleStartedAt - splitStartedAt).count();
+    timing->scaleMilliseconds = std::chrono::duration<double, std::milli>(
+        rotationStartedAt - scaleStartedAt).count();
+    timing->rotationMilliseconds = geometry.rotation == 0 ? 0.0 :
+        std::chrono::duration<double, std::milli>(mergeStartedAt - rotationStartedAt).count();
+    timing->uvMergeMilliseconds = std::chrono::duration<double, std::milli>(
+        finishedAt - mergeStartedAt).count();
+    timing->valid = true;
+  }
   return true;
 }
 }  // namespace internal

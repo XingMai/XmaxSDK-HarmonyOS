@@ -12,7 +12,6 @@
 #include <thread>
 #include <time.h>
 #include <unordered_map>
-#include <vector>
 
 #include "multimedia/image_framework/image/image_native.h"
 #include "multimedia/image_framework/image/image_receiver_native.h"
@@ -23,11 +22,14 @@ namespace {
 constexpr int32_t kFrameBufferCapacity = 4;
 
 struct FramePacket {
-  std::vector<uint8_t> data;
+  std::unique_ptr<uint8_t[]> data;
+  size_t dataLength = 0;
   int32_t width = 0;
   int32_t height = 0;
   int64_t timestampUs = 0;
   double processingMilliseconds = 0.0;
+  double allocationMilliseconds = 0.0;
+  xmax::VideoFrameConversionTiming conversionTiming;
   int32_t droppedFrames = 0;
   int32_t skippedFrames = 0;
   std::string error;
@@ -220,6 +222,12 @@ class NativeFrameReceiver {
     frameReceiver->frameCondition_.notify_one();
   }
 
+  static void SetTimingValue(napi_env env, napi_value object, const char* name, double milliseconds) {
+    napi_value value = nullptr;
+    napi_create_double(env, milliseconds, &value);
+    napi_set_named_property(env, object, name, value);
+  }
+
   static void CallListener(
       napi_env env,
       napi_value callback,
@@ -236,7 +244,7 @@ class NativeFrameReceiver {
 
     napi_value undefined = nullptr;
     napi_get_undefined(env, &undefined);
-    napi_value arguments[11];
+    napi_value arguments[12];
     for (auto& argument : arguments) {
       argument = undefined;
     }
@@ -245,8 +253,8 @@ class NativeFrameReceiver {
     if (!hasError) {
       if (napi_create_external_arraybuffer(
           env,
-          packet->data.data(),
-          packet->data.size(),
+          packet->data.get(),
+          packet->dataLength,
           FinalizeFramePacket,
           packet,
           &arguments[0]) != napi_ok || arguments[0] == nullptr) {
@@ -279,6 +287,14 @@ class NativeFrameReceiver {
         napi_create_double(env, packet->threadCpuMilliseconds, &arguments[9]);
       }
       napi_create_double(env, packet->sampleTimeMilliseconds, &arguments[10]);
+      napi_create_object(env, &arguments[11]);
+      SetTimingValue(env, arguments[11], "allocationMilliseconds", packet->allocationMilliseconds);
+      if (packet->conversionTiming.valid) {
+        SetTimingValue(env, arguments[11], "uvSplitMilliseconds", packet->conversionTiming.uvSplitMilliseconds);
+        SetTimingValue(env, arguments[11], "scaleMilliseconds", packet->conversionTiming.scaleMilliseconds);
+        SetTimingValue(env, arguments[11], "rotationMilliseconds", packet->conversionTiming.rotationMilliseconds);
+        SetTimingValue(env, arguments[11], "uvMergeMilliseconds", packet->conversionTiming.uvMergeMilliseconds);
+      }
     }
     if (hasError) {
       napi_create_string_utf8(
@@ -436,13 +452,18 @@ class NativeFrameReceiver {
         static_cast<size_t>(outputConfiguration.width) *
         static_cast<size_t>(outputConfiguration.height);
     const auto processingStartedAt = std::chrono::steady_clock::now();
-    auto* packet = new FramePacket();
+    auto packet = std::make_unique<FramePacket>();
+    packet->dataLength = targetLumaLength + targetLumaLength / 2;
+    // The converter writes every output byte; avoid a redundant zero fill.
+    // Each delivery owns its storage until the external ArrayBuffer is finalized.
+    packet->data.reset(new uint8_t[packet->dataLength]);
+    packet->allocationMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - processingStartedAt).count();
     packet->width = outputConfiguration.width;
     packet->height = outputConfiguration.height;
     packet->timestampUs = timestamp > 0 ? timestamp / 1000 :
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
-    packet->data.resize(targetLumaLength + targetLumaLength / 2);
 
     const xmax::VideoFrameTransformConfiguration configuration{
         static_cast<int32_t>(sourceSize.width),
@@ -456,12 +477,14 @@ class NativeFrameReceiver {
     transformer_.TransformNv21ToNv12(
         address,
         address + sourceLumaLength,
-        packet->data.data(),
+        packet->data.get(),
         configuration);
+
     packet->processingMilliseconds =
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - processingStartedAt).count();
     packet->conversionBackend = transformer_.backend();
+    packet->conversionTiming = transformer_.timing();
     // Read on the capture worker, not on the ArkTS callback thread. Cumulative
     // samples include work spent on skipped/dropped frames between deliveries.
     timespec cpuTime{};
@@ -473,7 +496,7 @@ class NativeFrameReceiver {
         std::chrono::steady_clock::now().time_since_epoch()).count();
     packet->droppedFrames = droppedFrameCount_.exchange(0);
     packet->skippedFrames = skippedFrameCount_.exchange(0);
-    Dispatch(packet);
+    Dispatch(packet.release());
   }
 
   bool ShouldProcessFrame(
@@ -523,7 +546,7 @@ class NativeFrameReceiver {
   void Dispatch(FramePacket* packet) {
     if (listener_ == nullptr || napi_call_threadsafe_function(
         listener_, packet, napi_tsfn_nonblocking) != napi_ok) {
-      if (packet->error.empty() && !packet->data.empty()) {
+      if (packet->error.empty() && packet->data.get() != nullptr && packet->dataLength > 0) {
         droppedFrameCount_.fetch_add(packet->droppedFrames + 1);
         skippedFrameCount_.fetch_add(packet->skippedFrames);
       }

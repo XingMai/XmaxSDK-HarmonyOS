@@ -1,7 +1,8 @@
 import { display } from '@kit.ArkUI';
 import { camera } from '@kit.CameraKit';
 import xmaxVideoNative, {
-  NativeFrameReceiver
+  NativeFrameReceiver,
+  NativeCameraFrameTiming
 } from 'libxmax_video.so';
 import {
   XmaxError,
@@ -59,7 +60,8 @@ export class CameraFrameOutput {
         skippedFrames?: number,
         conversionBackend?: string,
         threadCpuMilliseconds?: number,
-        sampleTimeMilliseconds?: number
+        sampleTimeMilliseconds?: number,
+        timing?: NativeCameraFrameTiming
       ): void => {
         CameraFrameOutput.handleNativeFrame(
           statistics,
@@ -75,7 +77,8 @@ export class CameraFrameOutput {
           skippedFrames,
           conversionBackend,
           threadCpuMilliseconds,
-          sampleTimeMilliseconds
+          sampleTimeMilliseconds,
+          timing
         );
       }
     );
@@ -140,7 +143,8 @@ export class CameraFrameOutput {
     skippedFrames?: number,
     conversionBackend?: string,
     threadCpuMilliseconds?: number,
-    sampleTimeMilliseconds?: number
+    sampleTimeMilliseconds?: number,
+    timing?: NativeCameraFrameTiming
   ): void {
     if (error !== undefined) {
       XmaxLogger.error(
@@ -172,7 +176,8 @@ export class CameraFrameOutput {
       skippedFrames ?? 0,
       conversionBackend ?? 'unknown',
       threadCpuMilliseconds,
-      sampleTimeMilliseconds
+      sampleTimeMilliseconds,
+      timing
     );
 
     const lumaLength: number = width * height;

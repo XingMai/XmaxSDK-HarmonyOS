@@ -20,7 +20,8 @@ class LibyuvFrameTransformer {
       const uint8_t* sourceLuma,
       const uint8_t* sourceChroma,
       uint8_t* destination,
-      const VideoFrameTransformGeometry& geometry);
+      const VideoFrameTransformGeometry& geometry,
+      VideoFrameConversionTiming* timing = nullptr);
 
  private:
   class Impl;

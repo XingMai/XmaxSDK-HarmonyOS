@@ -344,6 +344,7 @@ class VideoFrameTransformer::Impl {
   std::unique_ptr<TransformPlan> fallbackPlan;
   internal::LibyuvFrameTransformer libyuvTransformer;
   const char* backend = "uninitialized";
+  VideoFrameConversionTiming timing;
 };
 
 VideoFrameTransformer::VideoFrameTransformer()
@@ -355,11 +356,16 @@ const char* VideoFrameTransformer::backend() const {
   return impl_->backend;
 }
 
+const VideoFrameConversionTiming& VideoFrameTransformer::timing() const {
+  return impl_->timing;
+}
+
 void VideoFrameTransformer::TransformNv21ToNv12(
     const uint8_t* sourceLuma,
     const uint8_t* sourceChroma,
     uint8_t* destination,
     const VideoFrameTransformConfiguration& configuration) {
+  impl_->timing = {};
   if (impl_->geometry == nullptr ||
       !MatchesConfiguration(*impl_->geometry, configuration)) {
     impl_->geometry =
@@ -369,7 +375,7 @@ void VideoFrameTransformer::TransformNv21ToNv12(
   }
 
   if (impl_->libyuvTransformer.TransformNv21ToNv12(
-      sourceLuma, sourceChroma, destination, *impl_->geometry)) {
+      sourceLuma, sourceChroma, destination, *impl_->geometry, &impl_->timing)) {
     impl_->backend = libyuv::TestCpuFlag(libyuv::kCpuHasNEON) ?
         "libyuv (NEON enabled)" : "libyuv (C)";
     return;
