@@ -29,6 +29,9 @@ class VideoFrameTransformer {
       uint8_t* destination,
       const VideoFrameTransformConfiguration& configuration);
 
+  // Backend used by the most recent frame; for capture performance diagnostics.
+  const char* backend() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

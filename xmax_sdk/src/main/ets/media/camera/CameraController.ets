@@ -1,9 +1,11 @@
 import { common } from '@kit.AbilityKit';
 import { camera } from '@kit.CameraKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import {
   XmaxError,
   XmaxErrorCode,
-  XmaxErrorListener
+  XmaxErrorListener,
+  XmaxErrorSeverity
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -31,9 +33,9 @@ import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 import { CameraFrameOutput } from './CameraFrameOutput';
 
-const PREFERRED_CAPTURE_WIDTH: number = 1440;
-const PREFERRED_CAPTURE_HEIGHT: number = 1080;
-const MAXIMUM_CAMERA_FRAME_RATE: number = 30;
+const MAXIMUM_CAPTURE_WIDTH: number = 1920;
+const MAXIMUM_CAPTURE_HEIGHT: number = 1440;
+const CAMERA_CAPTURE_FRAME_RATE: number = 30;
 
 /** 使用 CameraKit 采集原始视频帧，并交给 RTC 外部视频源。 */
 export class CameraController {
@@ -132,7 +134,7 @@ export class CameraController {
     const position: CameraPosition | undefined = currentTrack?.position;
     if (currentTrack === null || videoFormat === undefined || position === undefined ||
       this.captureSession === null) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Local camera preview is not started');
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Local camera preview is not started');
     }
 
     const nextPosition: CameraPosition = position === CameraPosition.FRONT ?
@@ -200,7 +202,7 @@ export class CameraController {
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition
   ): Promise<void> {
-    if (videoFormat.fps > MAXIMUM_CAMERA_FRAME_RATE ||
+    if (videoFormat.fps > CAMERA_CAPTURE_FRAME_RATE ||
       Math.floor(videoFormat.fps) !== videoFormat.fps) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -208,11 +210,70 @@ export class CameraController {
       );
     }
 
-    const device: camera.CameraDevice = this.selectCamera(position);
-    const profile: camera.Profile = this.selectProfile(device);
-    const generation: number = ++this.captureGeneration;
+    let operation: string = 'Select camera capture profiles';
+    try {
+      const device: camera.CameraDevice = this.selectCamera(position);
+      const profiles: Array<camera.Profile> = this.captureProfiles(device);
+      this.resetPreviewReadiness();
+
+      for (const profile of profiles) {
+        const dimensions: string = `${profile.size.width} × ${profile.size.height}`;
+        operation = `Configure CameraKit session (${dimensions})`;
+        const generation: number = ++this.captureGeneration;
+        const output: CameraFrameOutput = await this.prepareFrameOutput(device, profile, generation);
+
+        // 帧率能力依赖输出所关联的相机和会话，必须在提交配置后查询。
+        operation = `Query CameraKit frame rates (${dimensions})`;
+        const ranges: Array<camera.FrameRateRange> = output.output.getSupportedFrameRates();
+        if (ranges.length === 0) {
+          throw this.cameraError(`${operation}: no frame rate capabilities returned`);
+        }
+        if (!ranges.some((range: camera.FrameRateRange): boolean =>
+          range.min <= CAMERA_CAPTURE_FRAME_RATE && range.max >= CAMERA_CAPTURE_FRAME_RATE)) {
+          XmaxLogger.debug(
+            `CameraKit 采集规格 ${dimensions} 不支持 30 fps，尝试下一档规格`, 'Camera');
+          await this.releaseCamera();
+          continue;
+        }
+
+        operation = `Set CameraKit frame rate to 30 fps (${dimensions})`;
+        output.output.setFrameRate(CAMERA_CAPTURE_FRAME_RATE, CAMERA_CAPTURE_FRAME_RATE);
+        operation = `Start CameraKit capture (${dimensions})`;
+        await this.captureSession!.start();
+        output.configure(videoFormat, CAMERA_CAPTURE_FRAME_RATE);
+
+        XmaxLogger.debug(
+          `CameraKit 相机采集已启动\n` +
+          `├─ 采集：${dimensions} @ ${CAMERA_CAPTURE_FRAME_RATE} fps\n` +
+          `└─ 输出：${videoFormat.width} × ${videoFormat.height} @ ${videoFormat.fps} fps`,
+          'Camera'
+        );
+        return;
+      }
+
+      throw this.cameraError('Camera does not support a compatible 4:3 YUV output at 30 fps');
+    } catch (error) {
+      await this.releaseCamera();
+      if (error instanceof XmaxError) {
+        throw error;
+      }
+      const platformError: BusinessError = error as BusinessError;
+      const code: string = typeof platformError.code === 'number' ?
+        ` (CameraKit code ${platformError.code})` : '';
+      const reason: string = platformError.message || String(error);
+      throw this.cameraError(`${operation}${code}: ${reason}`);
+    }
+  }
+
+  /** 将候选输出接入实际会话，使帧率查询具备设备与配置上下文。 */
+  private async prepareFrameOutput(
+    device: camera.CameraDevice,
+    profile: camera.Profile,
+    generation: number
+  ): Promise<CameraFrameOutput> {
     const input: camera.CameraInput = this.platformManager.createCameraInput(device);
     this.cameraInput = input;
+    await input.open();
     const output: CameraFrameOutput = CameraFrameOutput.create(
       this.platformManager,
       profile,
@@ -223,34 +284,23 @@ export class CameraController {
     const session: camera.Session = this.platformManager.createSession<camera.Session>(
       camera.SceneMode.NORMAL_VIDEO
     );
-
     this.captureSession = session;
-    this.resetPreviewReadiness();
-
-    await input.open();
     session.beginConfig();
     if (!session.canAddInput(input)) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Camera input is not supported by the capture session');
+      throw this.cameraError('Camera input is not supported by the capture session');
     }
     session.addInput(input);
     if (!session.canAddOutput(output.output)) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Camera frame output is not supported by the capture session');
+      throw this.cameraError('Camera frame output is not supported by the capture session');
     }
     session.addOutput(output.output);
     await session.commitConfig();
+    return output;
+  }
 
-    this.configureFrameRate(output.output, videoFormat.fps);
-    await session.start();
-    output.configure(videoFormat, videoFormat.fps);
-
-    XmaxLogger.debug(
-      `CameraKit 相机采集已启动\n` +
-      `├─ 采集：${profile.size.width} × ${profile.size.height}\n` +
-      `└─ 输出：${videoFormat.width} × ${videoFormat.height} @ ${videoFormat.fps} fps`,
-      'Camera'
-    );
+  private cameraError(message: string): XmaxError {
+    return new XmaxError(XmaxErrorCode.MEDIA_ERROR, message,
+      undefined, undefined, XmaxErrorSeverity.RECOVERABLE);
   }
 
   /** 将相机帧交给统一外部视频推送链路。 */
@@ -336,68 +386,29 @@ export class CameraController {
       .find((candidate: camera.CameraDevice): boolean =>
         candidate.cameraPosition === platformPosition);
     if (device === undefined) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Requested camera is unavailable');
+      throw this.cameraError('Requested camera is unavailable');
     }
     return device;
   }
 
-  /** 优先选择 1440×1080 YUV 采集规格，并回退到最大的 4:3 规格。 */
-  private selectProfile(device: camera.CameraDevice): camera.Profile {
+  /** 按面积从 1920×1440 向下排列设备支持的 4:3 YUV 采集规格。 */
+  private captureProfiles(device: camera.CameraDevice): Array<camera.Profile> {
     const capability: camera.CameraOutputCapability = this.platformManager
       .getSupportedOutputCapability(device, camera.SceneMode.NORMAL_VIDEO);
     const profiles: Array<camera.Profile> = capability.previewProfiles.filter(
-      (profile: camera.Profile): boolean =>
-        profile.format === camera.CameraFormat.CAMERA_FORMAT_YUV_420_SP);
-    if (profiles.length === 0) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Camera does not support YUV preview output');
-    }
-
-    const preferred: camera.Profile | undefined = profiles.find(
-      (profile: camera.Profile): boolean =>
-        this.matchesResolution(profile, PREFERRED_CAPTURE_WIDTH, PREFERRED_CAPTURE_HEIGHT));
-    if (preferred !== undefined) {
-      return preferred;
-    }
-
-    const compatible: Array<camera.Profile> = profiles.filter(
       (profile: camera.Profile): boolean => {
         const width: number = Math.max(profile.size.width, profile.size.height);
         const height: number = Math.min(profile.size.width, profile.size.height);
-        return width * 3 === height * 4 &&
-          width <= PREFERRED_CAPTURE_WIDTH && height <= PREFERRED_CAPTURE_HEIGHT;
+        return profile.format === camera.CameraFormat.CAMERA_FORMAT_YUV_420_SP &&
+          width * 3 === height * 4 &&
+          width <= MAXIMUM_CAPTURE_WIDTH && height <= MAXIMUM_CAPTURE_HEIGHT;
       });
-    compatible.sort((left: camera.Profile, right: camera.Profile): number =>
+    profiles.sort((left: camera.Profile, right: camera.Profile): number =>
       right.size.width * right.size.height - left.size.width * left.size.height);
-    const fallback: camera.Profile | undefined = compatible[0];
-    if (fallback === undefined) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Camera does not support a compatible 4:3 YUV preview output');
+    if (profiles.length === 0) {
+      throw this.cameraError('Camera does not support a compatible 4:3 YUV preview output');
     }
-    return fallback;
-  }
-
-  private matchesResolution(
-    profile: camera.Profile,
-    targetWidth: number,
-    targetHeight: number
-  ): boolean {
-    const width: number = Math.max(profile.size.width, profile.size.height);
-    const height: number = Math.min(profile.size.width, profile.size.height);
-    return width === targetWidth && height === targetHeight;
-  }
-
-  /** 将 CameraKit 输出设置为模型要求的固定采集帧率。 */
-  private configureFrameRate(output: camera.PreviewOutput, frameRate: number): void {
-    const supported: camera.FrameRateRange | undefined = output
-      .getSupportedFrameRates()
-      .find((range: camera.FrameRateRange): boolean =>
-        range.min <= frameRate && range.max >= frameRate);
-    if (supported === undefined) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Camera does not support the required capture frame rate');
-    }
-    output.setFrameRate(frameRate, frameRate);
+    return profiles;
   }
 
   /** 校验视频格式并将尺寸调整为模型支持的输入规格。 */

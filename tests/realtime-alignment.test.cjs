@@ -638,6 +638,11 @@ test('camera controller uses CameraKit external frames and preserves its track w
   camera.setPreviewReadyListener(() => readyCount++);
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
   assert.ok(calls.some(call => call[0] === 'external-video'));
+  assert.deepEqual(calls.find(call => call[0] === 'camera-frame-output'),
+    ['camera-frame-output', 1920, 1440]);
+  assert.deepEqual(calls.find(call => call[0] === 'camera-frame-rate'),
+    ['camera-frame-rate', 30, 30]);
+  assert.ok(calls.filter(call => call[0] === 'camera-query-frame-rates').every(call => call[1]));
   assert.deepEqual(calls.find(call => call[0] === 'camera'), ['camera', 1024, 1920, 30]);
   const frame = { timestampUs: 123 };
   cameraKit.emit(frame);
@@ -660,6 +665,136 @@ test('camera controller uses CameraKit external frames and preserves its track w
   assert.ok(calls.some(call => call[0] === 'camera-close' && call[1] === 'back'));
   cameraKit.emit({ timestampUs: 999 }, 1);
   assert.deepEqual(pushedFrames, [frame, switchedFrame]);
+});
+
+test('camera capture selects the largest 4:3 profile up to 1920x1440 that supports 30 fps', async () => {
+  const calls = [];
+  const cameraKit = createCameraKitFixture(calls, { profiles: [
+    { format: 'yuv420sp', size: { width: 2560, height: 1920 }, frameRates: [{ min: 30, max: 30 }] },
+    { format: 'yuv420sp', size: { width: 1920, height: 1080 }, frameRates: [{ min: 30, max: 30 }] },
+    { format: 'yuv420sp', size: { width: 1440, height: 1920 }, frameRates: [{ min: 24, max: 24 }] },
+    { format: 'yuv420sp', size: { width: 1200, height: 1600 }, frameRates: [{ min: 15, max: 30 }] },
+    { format: 'yuv420sp', size: { width: 1440, height: 1080 }, frameRates: [{ min: 30, max: 30 }] }
+  ] });
+  const load = loadEts({ ...platform,
+    '@kit.CameraKit': cameraKit.kit,
+    CameraFrameOutput: cameraKit.frameOutput,
+    PermissionManager: { PermissionManager: class { async ensureCameraPermission() {} } }
+  });
+  const { CameraController } = load('media/camera/CameraController.ets');
+  const { RealtimeVideoFormat } = load('service/realtime/RealtimeVideoFormat.ets');
+  const { CameraPosition } = load('foundation/media/camera/CameraPosition.ets');
+  const camera = new CameraController({}, {
+    useExternalVideoSource() {}, configureLocalVideoMirror() {},
+    renderLibraryName() { return 'rtc'; }, bindLocalVideo() {}, unbindLocalVideo() {}
+  }, {
+    setVideoEncoderConfig() {}, pushLocalVideoFrame() {}
+  }, new (load('service/media/MediaService.ets').MediaService)(
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+
+  await camera.createLocalCameraStream(
+    new RealtimeVideoFormat(1024, 1920, 30),
+    CameraPosition.FRONT
+  );
+
+  assert.deepEqual(calls.filter(call => call[0] === 'camera-frame-output'), [
+    ['camera-frame-output', 1440, 1920],
+    ['camera-frame-output', 1200, 1600]
+  ]);
+  assert.equal(calls.filter(call => call[0] === 'camera-output-release').length, 1);
+  assert.deepEqual(calls.find(call => call[0] === 'camera-frame-rate'),
+    ['camera-frame-rate', 30, 30]);
+  assert.ok(calls.filter(call => call[0] === 'camera-query-frame-rates').every(call => call[1]));
+  await camera.stopLocalCameraStream();
+});
+
+function cameraFailureFixture(options = {}, rtcError) {
+  const calls = [];
+  const cameraKit = createCameraKitFixture(calls, options);
+  const load = loadEts({ ...platform,
+    '@kit.CameraKit': cameraKit.kit,
+    CameraFrameOutput: cameraKit.frameOutput,
+    PermissionManager: { PermissionManager: class { async ensureCameraPermission() {} } }
+  });
+  const { CameraController } = load('media/camera/CameraController.ets');
+  const { RealtimeVideoFormat } = load('service/realtime/RealtimeVideoFormat.ets');
+  const { CameraPosition } = load('foundation/media/camera/CameraPosition.ets');
+  const errors = load('foundation/errors/XmaxError.ets');
+  const camera = new CameraController({}, {
+    useExternalVideoSource() { if (rtcError) throw rtcError(errors); },
+    configureLocalVideoMirror() {}, renderLibraryName() { return 'rtc'; },
+    bindLocalVideo() {}, unbindLocalVideo() {}
+  }, { setVideoEncoderConfig() {}, pushLocalVideoFrame() {} },
+  new (load('service/media/MediaService.ets').MediaService)(
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+  return { camera, calls, start: () => camera.createLocalCameraStream(
+    new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
+}
+
+test('camera rejects genuinely unsupported frame rates as recoverable media errors and releases each session', async () => {
+  const f = cameraFailureFixture({ profiles: [
+    { format: 'yuv420sp', size: { width: 1920, height: 1440 }, frameRates: [{ min: 24, max: 24 }] },
+    { format: 'yuv420sp', size: { width: 1440, height: 1080 }, frameRates: [{ min: 60, max: 60 }] }
+  ] });
+  await assert.rejects(f.start(), error => {
+    assert.equal(error.code, 'MEDIA_ERROR');
+    assert.equal(error.severity, 'RECOVERABLE');
+    assert.match(error.message, /at 30 fps/);
+    return true;
+  });
+  assert.equal(f.camera.currentTrack, null);
+  for (const event of ['camera-session-release', 'camera-output-release', 'camera-close']) {
+    assert.equal(f.calls.filter(call => call[0] === event).length, 2);
+  }
+  assert.equal(f.calls.some(call => call[0] === 'camera-start'), false);
+});
+
+test('camera platform failures retain the failing stage and native code instead of claiming no compatible profile', async () => {
+  for (const [option, stage] of [
+    ['commitError', /Configure CameraKit session/],
+    ['queryError', /Query CameraKit frame rates/],
+    ['frameRateError', /Set CameraKit frame rate/]
+  ]) {
+    const options = { [option]: Object.assign(new Error('native failure'), { code: 7400110 }) };
+    const f = cameraFailureFixture(options);
+    await assert.rejects(f.start(), error => {
+      assert.equal(error.code, 'MEDIA_ERROR');
+      assert.equal(error.severity, 'RECOVERABLE');
+      assert.match(error.message, stage);
+      assert.match(error.message, /7400110.*native failure/);
+      assert.doesNotMatch(error.message, /does not support/);
+      return true;
+    });
+    for (const event of ['camera-session-release', 'camera-output-release', 'camera-close']) {
+      assert.equal(f.calls.filter(call => call[0] === event).length, 1);
+    }
+    delete options[option];
+    await f.start();
+    assert.ok(f.camera.currentTrack);
+    await f.camera.stopLocalCameraStream();
+  }
+});
+
+test('camera missing capabilities and invalid lifecycle have the appropriate error categories', async () => {
+  for (const options of [{ devices: [] }, { profiles: [] }, { profiles: [
+    { format: 'yuv420sp', size: { width: 1920, height: 1440 }, frameRates: [] }
+  ] }]) {
+    const f = cameraFailureFixture(options);
+    await assert.rejects(f.start(), { code: 'MEDIA_ERROR', severity: 'RECOVERABLE' });
+    assert.equal(f.camera.currentTrack, null);
+  }
+  const f = cameraFailureFixture();
+  await assert.rejects(f.camera.switchCamera(), { code: 'INVALID_CONFIGURATION' });
+});
+
+test('camera setup preserves errors originating in RTC', async () => {
+  let original;
+  const f = cameraFailureFixture({}, ({ XmaxError, XmaxErrorCode }) => {
+    original = new XmaxError(XmaxErrorCode.RTC_ERROR, 'external source failed');
+    return original;
+  });
+  await assert.rejects(f.start(), error => error === original);
+  assert.equal(f.calls.some(call => call[0] === 'camera-open'), false);
 });
 
 test('RTC first-frame cache ignores other rooms/engines and resets on unpublish and leaving', async () => {

@@ -4,7 +4,7 @@ export enum XmaxLoggerOption {
   NONE = 0,
   /** API、Room、Realtime、Storage 等业务运行日志。 */
   BUSINESS = 1 << 0,
-  /** 生成启动耗时、RTC 性能指标、网络质量及性能告警日志。 */
+  /** 生成启动耗时、相机处理性能、RTC 性能指标、网络质量及性能告警日志。 */
   PERFORMANCE = 1 << 1,
   /** 开启所有 SDK 日志。 */
   ALL = BUSINESS | PERFORMANCE

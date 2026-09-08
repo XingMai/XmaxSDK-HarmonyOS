@@ -33,7 +33,10 @@ type NativeCameraFrameListener = (
   error?: string,
   processingMilliseconds?: number,
   droppedFrames?: number,
-  skippedFrames?: number
+  skippedFrames?: number,
+  conversionBackend?: string,
+  threadCpuMilliseconds?: number,
+  sampleTimeMilliseconds?: number
 ) => void;
 
 export interface NativeFrameReceiver {

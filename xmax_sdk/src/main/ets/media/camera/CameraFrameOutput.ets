@@ -26,13 +26,16 @@ export class CameraFrameOutput {
   // 平台资源
   readonly output: camera.PreviewOutput;
   private readonly receiver: NativeFrameReceiver;
+  private readonly statistics: CameraFrameStatistics;
 
   private constructor(
     output: camera.PreviewOutput,
-    receiver: NativeFrameReceiver
+    receiver: NativeFrameReceiver,
+    statistics: CameraFrameStatistics
   ) {
     this.output = output;
     this.receiver = receiver;
+    this.statistics = statistics;
   }
 
   static create(
@@ -41,7 +44,7 @@ export class CameraFrameOutput {
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
   ): CameraFrameOutput {
-    const statistics: CameraFrameStatistics = new CameraFrameStatistics();
+    const statistics: CameraFrameStatistics = new CameraFrameStatistics(profile.size.width, profile.size.height);
     const receiver: NativeFrameReceiver = xmaxVideoNative.createFrameReceiver(
       profile.size.width,
       profile.size.height,
@@ -53,7 +56,10 @@ export class CameraFrameOutput {
         error?: string,
         processingMilliseconds?: number,
         droppedFrames?: number,
-        skippedFrames?: number
+        skippedFrames?: number,
+        conversionBackend?: string,
+        threadCpuMilliseconds?: number,
+        sampleTimeMilliseconds?: number
       ): void => {
         CameraFrameOutput.handleNativeFrame(
           statistics,
@@ -66,7 +72,10 @@ export class CameraFrameOutput {
           error,
           processingMilliseconds,
           droppedFrames,
-          skippedFrames
+          skippedFrames,
+          conversionBackend,
+          threadCpuMilliseconds,
+          sampleTimeMilliseconds
         );
       }
     );
@@ -78,13 +87,13 @@ export class CameraFrameOutput {
       );
       return new CameraFrameOutput(
         output,
-        receiver
+        receiver,
+        statistics
       );
     } catch (error) {
       receiver.release();
 
-      const reason: string = error instanceof Error ? error.message : String(error);
-      throw new Error(reason);
+      throw error as Error;
     }
   }
 
@@ -92,10 +101,12 @@ export class CameraFrameOutput {
     videoFormat: RealtimeVideoFormat,
     captureFrameRate: number
   ): void {
+    const rotation: VideoRotation = this.currentRotation();
+    this.statistics.configure(videoFormat, captureFrameRate, rotation);
     this.receiver.configure(
       videoFormat.width,
       videoFormat.height,
-      this.currentRotation(),
+      rotation,
       videoFormat.fps,
       captureFrameRate
     );
@@ -126,7 +137,10 @@ export class CameraFrameOutput {
     error?: string,
     processingMilliseconds?: number,
     droppedFrames?: number,
-    skippedFrames?: number
+    skippedFrames?: number,
+    conversionBackend?: string,
+    threadCpuMilliseconds?: number,
+    sampleTimeMilliseconds?: number
   ): void {
     if (error !== undefined) {
       XmaxLogger.error(
@@ -155,7 +169,10 @@ export class CameraFrameOutput {
     statistics.record(
       processingMilliseconds ?? 0,
       droppedFrames ?? 0,
-      skippedFrames ?? 0
+      skippedFrames ?? 0,
+      conversionBackend ?? 'unknown',
+      threadCpuMilliseconds,
+      sampleTimeMilliseconds
     );
 
     const lumaLength: number = width * height;

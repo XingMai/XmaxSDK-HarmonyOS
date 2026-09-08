@@ -127,7 +127,7 @@ for (const name of ['x2.0', 'x2.0-sla']) {
     const expected = service.resolveModelInputSize(new f.Size(1024, 1920));
     const camera = await media.createLocalCameraStream(new f.Format(1024, 1920, 25), 'front');
     assert.deepEqual(camera.videoTrack.videoFormat, new f.Format(expected.width, expected.height, 25));
-    assert.deepEqual(f.calls.find(call => call[0] === 'camera'), ['camera', expected.width, expected.height, 25]);
+    assert.deepEqual(f.calls.find(call => call[0] === 'camera'), ['camera', expected.width, expected.height, 30]);
     await media.stopLocalStream();
     for (const source of ['Image', 'Video']) {
       for (const fps of [undefined, 20]) {

@@ -22,7 +22,7 @@ export enum XmaxErrorCode {
   /** RTC Engine、房间、媒体传输或渲染绑定发生错误。 */
   RTC_ERROR = 'RTC_ERROR',
 
-  /** 本地媒体读取、解码、同步或帧处理发生错误。 */
+  /** 本地媒体采集、读取、解码、同步或帧处理发生错误。 */
   MEDIA_ERROR = 'MEDIA_ERROR',
 
   /** 接入方未授予相机权限。 */

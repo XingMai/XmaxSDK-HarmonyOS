@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <time.h>
 #include <unordered_map>
 #include <vector>
 
@@ -30,6 +31,9 @@ struct FramePacket {
   int32_t droppedFrames = 0;
   int32_t skippedFrames = 0;
   std::string error;
+  const char* conversionBackend = "unknown";
+  double threadCpuMilliseconds = -1.0;
+  double sampleTimeMilliseconds = 0.0;
 };
 
 struct OutputConfiguration {
@@ -232,16 +236,10 @@ class NativeFrameReceiver {
 
     napi_value undefined = nullptr;
     napi_get_undefined(env, &undefined);
-    napi_value arguments[8] = {
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined
-    };
+    napi_value arguments[11];
+    for (auto& argument : arguments) {
+      argument = undefined;
+    }
 
     const bool hasError = !packet->error.empty();
     if (!hasError) {
@@ -276,6 +274,11 @@ class NativeFrameReceiver {
           env,
           packet->skippedFrames,
           &arguments[7]);
+      napi_create_string_utf8(env, packet->conversionBackend, NAPI_AUTO_LENGTH, &arguments[8]);
+      if (packet->threadCpuMilliseconds >= 0.0) {
+        napi_create_double(env, packet->threadCpuMilliseconds, &arguments[9]);
+      }
+      napi_create_double(env, packet->sampleTimeMilliseconds, &arguments[10]);
     }
     if (hasError) {
       napi_create_string_utf8(
@@ -458,6 +461,16 @@ class NativeFrameReceiver {
     packet->processingMilliseconds =
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - processingStartedAt).count();
+    packet->conversionBackend = transformer_.backend();
+    // Read on the capture worker, not on the ArkTS callback thread. Cumulative
+    // samples include work spent on skipped/dropped frames between deliveries.
+    timespec cpuTime{};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuTime) == 0) {
+      packet->threadCpuMilliseconds = static_cast<double>(cpuTime.tv_sec) * 1000.0 +
+          static_cast<double>(cpuTime.tv_nsec) / 1000000.0;
+    }
+    packet->sampleTimeMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     packet->droppedFrames = droppedFrameCount_.exchange(0);
     packet->skippedFrames = skippedFrameCount_.exchange(0);
     Dispatch(packet);

@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 
+#include "libyuv_frame_converter.h"
+#include "libyuv/cpu_id.h"
 #include "video_frame_converter.h"
 #include "video_frame_geometry.h"
 
@@ -340,12 +342,18 @@ class VideoFrameTransformer::Impl {
  public:
   std::unique_ptr<internal::VideoFrameTransformGeometry> geometry;
   std::unique_ptr<TransformPlan> fallbackPlan;
+  internal::LibyuvFrameTransformer libyuvTransformer;
+  const char* backend = "uninitialized";
 };
 
 VideoFrameTransformer::VideoFrameTransformer()
     : impl_(std::make_unique<Impl>()) {}
 
 VideoFrameTransformer::~VideoFrameTransformer() = default;
+
+const char* VideoFrameTransformer::backend() const {
+  return impl_->backend;
+}
 
 void VideoFrameTransformer::TransformNv21ToNv12(
     const uint8_t* sourceLuma,
@@ -360,10 +368,18 @@ void VideoFrameTransformer::TransformNv21ToNv12(
     impl_->fallbackPlan.reset();
   }
 
+  if (impl_->libyuvTransformer.TransformNv21ToNv12(
+      sourceLuma, sourceChroma, destination, *impl_->geometry)) {
+    impl_->backend = libyuv::TestCpuFlag(libyuv::kCpuHasNEON) ?
+        "libyuv (NEON enabled)" : "libyuv (C)";
+    return;
+  }
+
   if (impl_->fallbackPlan == nullptr) {
     impl_->fallbackPlan = std::make_unique<TransformPlan>(*impl_->geometry);
   }
 
+  impl_->backend = "scalar";
   TransformFrame(
       sourceLuma,
       sourceChroma,
