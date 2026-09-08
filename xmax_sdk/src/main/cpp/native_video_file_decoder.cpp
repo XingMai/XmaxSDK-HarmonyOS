@@ -15,7 +15,6 @@
 #include <vector>
 
 #include <poll.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include "multimedia/player_framework/native_avbuffer.h"

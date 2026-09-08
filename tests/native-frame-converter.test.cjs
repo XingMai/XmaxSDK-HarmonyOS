@@ -24,7 +24,7 @@ test('native libyuv/NEON camera conversion preserves frame geometry and color', 
       path.join(__dirname, 'native/video-frame-converter.cpp'),
       path.join(cpp, 'video_frame_converter.cpp'),
       path.join(cpp, 'video_frame_geometry.cpp'),
-      path.join(cpp, 'libyuv_frame_converter.cpp'), ...sourceFiles,
+      ...sourceFiles,
       '-o', executable
     ], { encoding: 'utf8', timeout: 120000 });
     assert.equal(compile.status, 0, compile.error?.message || compile.stderr);

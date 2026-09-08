@@ -1,8 +1,7 @@
 import { display } from '@kit.ArkUI';
 import { camera } from '@kit.CameraKit';
 import xmaxVideoNative, {
-  NativeFrameReceiver,
-  NativeCameraFrameTiming
+  NativeFrameReceiver
 } from 'libxmax_video.so';
 import {
   XmaxError,
@@ -45,7 +44,7 @@ export class CameraFrameOutput {
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
   ): CameraFrameOutput {
-    const statistics: CameraFrameStatistics = new CameraFrameStatistics(profile.size.width, profile.size.height);
+    const statistics: CameraFrameStatistics = new CameraFrameStatistics();
     const receiver: NativeFrameReceiver = xmaxVideoNative.createFrameReceiver(
       profile.size.width,
       profile.size.height,
@@ -56,12 +55,11 @@ export class CameraFrameOutput {
         timestampUs: number,
         error?: string,
         processingMilliseconds?: number,
-        droppedFrames?: number,
-        skippedFrames?: number,
-        conversionBackend?: string,
+        _droppedFrames?: number,
+        _skippedFrames?: number,
+        _conversionBackend?: string,
         threadCpuMilliseconds?: number,
-        sampleTimeMilliseconds?: number,
-        timing?: NativeCameraFrameTiming
+        sampleTimeMilliseconds?: number
       ): void => {
         CameraFrameOutput.handleNativeFrame(
           statistics,
@@ -73,12 +71,8 @@ export class CameraFrameOutput {
           timestampUs,
           error,
           processingMilliseconds,
-          droppedFrames,
-          skippedFrames,
-          conversionBackend,
           threadCpuMilliseconds,
-          sampleTimeMilliseconds,
-          timing
+          sampleTimeMilliseconds
         );
       }
     );
@@ -105,7 +99,7 @@ export class CameraFrameOutput {
     captureFrameRate: number
   ): void {
     const rotation: VideoRotation = this.currentRotation();
-    this.statistics.configure(videoFormat, captureFrameRate, rotation);
+    this.statistics.restart();
     this.receiver.configure(
       videoFormat.width,
       videoFormat.height,
@@ -139,12 +133,8 @@ export class CameraFrameOutput {
     timestampUs: number,
     error?: string,
     processingMilliseconds?: number,
-    droppedFrames?: number,
-    skippedFrames?: number,
-    conversionBackend?: string,
     threadCpuMilliseconds?: number,
-    sampleTimeMilliseconds?: number,
-    timing?: NativeCameraFrameTiming
+    sampleTimeMilliseconds?: number
   ): void {
     if (error !== undefined) {
       XmaxLogger.error(
@@ -172,12 +162,8 @@ export class CameraFrameOutput {
 
     statistics.record(
       processingMilliseconds ?? 0,
-      droppedFrames ?? 0,
-      skippedFrames ?? 0,
-      conversionBackend ?? 'unknown',
       threadCpuMilliseconds,
-      sampleTimeMilliseconds,
-      timing
+      sampleTimeMilliseconds
     );
 
     const lumaLength: number = width * height;

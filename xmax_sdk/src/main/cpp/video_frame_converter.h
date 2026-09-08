@@ -31,6 +31,8 @@ class VideoFrameTransformer {
   VideoFrameTransformer(const VideoFrameTransformer&) = delete;
   VideoFrameTransformer& operator=(const VideoFrameTransformer&) = delete;
 
+  // Requires even dimensions in [2, 32768], valid strides and a quarter-turn
+  // rotation. Invalid input or a libyuv failure throws before delivery.
   void TransformNv21ToNv12(
       const uint8_t* sourceLuma,
       const uint8_t* sourceChroma,

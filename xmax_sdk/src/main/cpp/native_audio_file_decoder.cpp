@@ -13,7 +13,6 @@
 #include <utility>
 #include <vector>
 
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include "audio_pcm_converter.h"
@@ -67,15 +66,17 @@ class NativeAudioFileDecoder {
       return false;
     }
 
+    int32_t sampleRate = 0;
+    int32_t channelCount = 0;
     const char* mime = nullptr;
     if (!OH_AVFormat_GetStringValue(
             trackFormat_, OH_MD_KEY_CODEC_MIME, &mime) ||
         mime == nullptr ||
         !OH_AVFormat_GetIntValue(
-            trackFormat_, OH_MD_KEY_AUD_SAMPLE_RATE, &sampleRate_) ||
+            trackFormat_, OH_MD_KEY_AUD_SAMPLE_RATE, &sampleRate) ||
         !OH_AVFormat_GetIntValue(
-            trackFormat_, OH_MD_KEY_AUD_CHANNEL_COUNT, &channelCount_) ||
-        sampleRate_ <= 0 || channelCount_ <= 0) {
+            trackFormat_, OH_MD_KEY_AUD_CHANNEL_COUNT, &channelCount) ||
+        sampleRate <= 0 || channelCount <= 0) {
       *error = "读取音频轨道格式失败";
       return false;
     }
@@ -85,8 +86,8 @@ class NativeAudioFileDecoder {
         SAMPLE_S16LE);
 
     converter_ = std::make_unique<xmax::AudioPcmConverter>(
-        sampleRate_,
-        channelCount_,
+        sampleRate,
+        channelCount,
         mediaStartUs_,
         cycleDurationUs);
     demuxer_ = OH_AVDemuxer_CreateWithSource(source_);
@@ -517,8 +518,6 @@ class NativeAudioFileDecoder {
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
 
-  int32_t sampleRate_ = 0;
-  int32_t channelCount_ = 0;
   int64_t playbackAnchorUs_ = 0;
   int64_t mediaStartUs_ = 0;
   std::unique_ptr<xmax::AudioPcmConverter> converter_;

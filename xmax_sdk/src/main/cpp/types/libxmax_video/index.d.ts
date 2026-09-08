@@ -25,7 +25,7 @@ export interface NativeAudioFileDecoder {
   release(): void;
 }
 
-/** Per-frame wall-clock durations in milliseconds; conversion stages are absent on scalar fallback. */
+/** Per-frame wall-clock durations in milliseconds. */
 export interface NativeCameraFrameTiming {
   allocationMilliseconds: number;
   uvSplitMilliseconds?: number;

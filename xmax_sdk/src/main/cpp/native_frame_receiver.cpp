@@ -404,7 +404,7 @@ class NativeFrameReceiver {
             image, componentType, &bufferSize) != IMAGE_SUCCESS ||
         OH_ImageNative_GetRowStride(
             image, componentType, &rowStride) != IMAGE_SUCCESS ||
-        rowStride < sourceSize.width) {
+        rowStride <= 0 || static_cast<uint32_t>(rowStride) < sourceSize.width) {
       ReportError("访问 Native 相机帧缓冲区失败");
       return;
     }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,7 @@ void CheckScalingAndReconfiguration() {
     libyuv::MaskCpuFlags(1);
     VideoFrameTransformer reference;
     auto scalarLibyuv = Convert(reference, input, c);
+    assert(std::string(reference.backend()) == "libyuv (C)");
     for (size_t i = 0; i < accelerated.size(); ++i) {
       assert(std::abs(int(accelerated[i]) - int(scalarLibyuv[i])) <= 2);
     }
@@ -187,9 +189,47 @@ void CheckScalingAndReconfiguration() {
   }
 }
 
+void CheckInvalidConfiguration() {
+  const VideoFrameTransformConfiguration valid{4, 4, 4, 4, 0, 4, 4};
+  const Input input(valid);
+  VideoFrameTransformer converter;
+  Convert(converter, input, valid);
+  std::vector<uint8_t> output(24, 0xcd);
+  const auto expectInvalid = [&](const VideoFrameTransformConfiguration& c,
+                                 const uint8_t* y, const uint8_t* vu, uint8_t* destination) {
+    bool rejected = false;
+    try {
+      converter.TransformNv21ToNv12(y, vu, destination, c);
+    } catch (const std::invalid_argument&) {
+      rejected = true;
+    }
+    assert(rejected && !converter.timing().valid);
+    assert(std::all_of(output.begin(), output.end(), [](uint8_t value) { return value == 0xcd; }));
+  };
+  expectInvalid(valid, nullptr, input.vu.data(), output.data());
+  expectInvalid(valid, input.y.data(), nullptr, output.data());
+  expectInvalid(valid, input.y.data(), input.vu.data(), nullptr);
+  for (int field = 0; field < 7; ++field) {
+    auto c = valid;
+    switch (field) {
+      case 0: c.sourceWidth = 0; break;
+      case 1: c.sourceHeight = -2; break;
+      case 2: c.sourceStride = -1; break;
+      case 3: c.sourceChromaStride = 2; break;
+      case 4: c.rotation = 45; break;
+      case 5: c.targetWidth = 3; break;
+      case 6: c.targetHeight = 32770; break;
+    }
+    expectInvalid(c, input.y.data(), input.vu.data(), output.data());
+  }
+  // A rejected frame must not poison the cached transform plan.
+  Convert(converter, input, valid);
+}
+
 int main() {
   assert(libyuv::TestCpuFlag(libyuv::kCpuHasNEON));
   CheckExactRotationAndCrop();
   CheckScalingAndReconfiguration();
+  CheckInvalidConfiguration();
   std::cout << "NEON conversion: byte-exact copy-pipeline equivalence, crop, rotations, UV order, strides, scaling and reconfiguration passed\n";
 }
