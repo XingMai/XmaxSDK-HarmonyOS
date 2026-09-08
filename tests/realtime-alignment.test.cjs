@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { loadEts } = require('./ets-loader.cjs');
+const { createCameraKitFixture } = require('./camera-kit-fixture.cjs');
 
 const platform = {
     '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
@@ -610,28 +611,55 @@ test('composite view resets on replacement/nil and ignores a removed remote view
   assert.equal(view.remoteReady, false);
 });
 
-test('camera controller preserves native capture format and track when switching; SLA dimensions stay unchanged', async () => {
+test('camera controller uses CameraKit external frames and preserves its track when switching', async () => {
   const calls = [];
+  const cameraKit = createCameraKitFixture(calls);
   const load = loadEts({ ...platform,
+    '@kit.CameraKit': cameraKit.kit,
+    CameraFrameOutput: cameraKit.frameOutput,
     PermissionManager: { PermissionManager: class { async ensureCameraPermission() {} } }
   });
   const { CameraController } = load('media/camera/CameraController.ets');
   const { RealtimeVideoFormat } = load('service/realtime/RealtimeVideoFormat.ets');
   const { CameraPosition } = load('foundation/media/camera/CameraPosition.ets');
+  const { VideoRenderRegistry } = load('rendering/video/VideoRenderRegistry.ets');
+  const pushedFrames = [];
   const camera = new CameraController({}, {
-    switchCamera(position) { calls.push(['switch', position]); },
-    startVideoCapture(...format) { calls.push(['capture', ...format]); },
+    useExternalVideoSource() { calls.push(['external-video']); },
+    configureLocalVideoMirror(position) { calls.push(['mirror', position]); },
     renderLibraryName() { return 'rtc'; },
-    stopVideoCapture() {}, unbindLocalVideo() {}
-  }, { setVideoEncoderConfig() {} }, new (load('service/media/MediaService.ets').MediaService)(
+    bindLocalVideo(viewId) { calls.push(['bind', viewId]); },
+    unbindLocalVideo() {}
+  }, {
+    setVideoEncoderConfig() {}, pushLocalVideoFrame(frame) { pushedFrames.push(frame); }
+  }, new (load('service/media/MediaService.ets').MediaService)(
     load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+  let readyCount = 0;
+  camera.setPreviewReadyListener(() => readyCount++);
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
-  assert.deepEqual(calls[1], ['capture', 1024, 1920, 30]);
+  assert.ok(calls.some(call => call[0] === 'external-video'));
+  assert.deepEqual(calls.find(call => call[0] === 'camera'), ['camera', 1024, 1920, 30]);
+  const frame = { timestampUs: 123 };
+  cameraKit.emit(frame);
+  assert.deepEqual(pushedFrames, [frame]);
+  assert.equal(readyCount, 0);
+  VideoRenderRegistry.attach(local.videoTrack, 'local-view', 'fill', () => {}, () => {});
+  assert.equal(readyCount, 1);
   const switched = await camera.switchCamera();
   assert.equal(switched.videoTrack, local.videoTrack);
   assert.equal(switched.videoTrack.position, CameraPosition.BACK);
-  assert.equal(calls.filter(call => call[0] === 'capture').length, 1);
+  assert.equal(calls.filter(call => call[0] === 'camera').length, 2);
+  assert.ok(calls.some(call => call[0] === 'camera-close' && call[1] === 'front'));
+  cameraKit.emit({ timestampUs: 456 }, 0);
+  assert.deepEqual(pushedFrames, [frame]);
+  const switchedFrame = { timestampUs: 789 };
+  cameraKit.emit(switchedFrame, 1);
+  assert.deepEqual(pushedFrames, [frame, switchedFrame]);
+  assert.equal(readyCount, 2);
   await camera.stopLocalCameraStream();
+  assert.ok(calls.some(call => call[0] === 'camera-close' && call[1] === 'back'));
+  cameraKit.emit({ timestampUs: 999 }, 1);
+  assert.deepEqual(pushedFrames, [frame, switchedFrame]);
 });
 
 test('RTC first-frame cache ignores other rooms/engines and resets on unpublish and leaving', async () => {

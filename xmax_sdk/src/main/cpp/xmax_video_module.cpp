@@ -1,5 +1,6 @@
 #include "napi/native_api.h"
 #include "native_audio_file_decoder.h"
+#include "native_frame_receiver.h"
 #include "native_video_file_decoder.h"
 
 namespace {
@@ -7,6 +8,7 @@ napi_value Initialize(
     napi_env env,
     napi_value exports) {
   xmax::DefineNativeAudioFileDecoder(env, exports);
+  xmax::DefineNativeFrameReceiver(env, exports);
   xmax::DefineNativeVideoFileDecoder(env, exports);
   return exports;
 }

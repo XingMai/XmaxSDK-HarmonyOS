@@ -2,11 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { loadEts } = require('./ets-loader.cjs');
+const { createCameraKitFixture } = require('./camera-kit-fixture.cjs');
 
 function fixture(stubs = {}, globals = {}) {
   const load = loadEts({
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
-    XmaxLogger: { XmaxLogger: { configure() {}, error() {} } },
+    XmaxLogger: { XmaxLogger: { configure() {}, debug() {}, error() {} } },
     ...stubs
   }, globals);
   const { RealtimeModel: Model, RealtimeModels: Models } = load('core/realtime/RealtimeModel.ets');
@@ -77,7 +78,10 @@ test('the public media-service factory accepts a model and defaults to x2.0', ()
 
 function mediaFixture() {
   const calls = [], intervals = new Map();
+  const cameraKit = createCameraKitFixture(calls);
   const f = fixture({
+    '@kit.CameraKit': cameraKit.kit,
+    CameraFrameOutput: cameraKit.frameOutput,
     '@kit.CoreFileKit': { fileIo: {
       OpenMode: { READ_ONLY: 0 }, openSync: () => ({ fd: 1 }),
       statSync: () => ({ size: 100 }), closeSync() {}
@@ -106,9 +110,8 @@ function mediaFixture() {
   });
   const { MediaController } = f.load('media/MediaController.ets');
   const rtc = {
-    async initialize() {}, async destroy() {}, switchCamera() {}, stopVideoCapture() {},
-    startVideoCapture(...args) { calls.push(['camera', ...args]); },
-    useExternalVideoSource() {}, renderLibraryName: () => 'rtc', unbindLocalVideo() {}
+    async initialize() {}, async destroy() {}, useExternalVideoSource() {},
+    configureLocalVideoMirror() {}, renderLibraryName: () => 'rtc', unbindLocalVideo() {}
   };
   return { ...f, calls, intervals, createMedia(model) {
     return new MediaController({}, rtc, { setVideoEncoderConfig() {}, pushLocalVideoFrame() {} },

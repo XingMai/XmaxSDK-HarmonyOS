@@ -6,8 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(xmax_video SHARED
     audio_pcm_converter.cpp
+    native_frame_receiver.cpp
     native_audio_file_decoder.cpp
     native_video_file_decoder.cpp
+    video_frame_converter.cpp
+    video_frame_geometry.cpp
     xmax_video_module.cpp
 )
 
@@ -18,6 +21,7 @@ target_compile_options(xmax_video PRIVATE
 target_link_libraries(xmax_video PUBLIC
     ace_napi.z
     hilog_ndk.z
+    libimage_receiver.so
     libnative_buffer.so
     libnative_image.so
     libnative_media_avdemuxer.so
@@ -27,5 +31,6 @@ target_link_libraries(xmax_video PUBLIC
     libnative_media_core.so
     libnative_media_vdec.so
     libnative_window.so
+    libohimage.so
     libvideo_processing.so
 )

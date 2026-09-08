@@ -25,7 +25,42 @@ export interface NativeAudioFileDecoder {
   release(): void;
 }
 
+type NativeCameraFrameListener = (
+  data: ArrayBuffer | undefined,
+  width: number,
+  height: number,
+  timestampUs: number,
+  error?: string,
+  processingMilliseconds?: number,
+  droppedFrames?: number,
+  skippedFrames?: number
+) => void;
+
+export interface NativeFrameReceiver {
+  /** 返回可绑定到 CameraKit 输出的 Native 接收 Surface。 */
+  getSurfaceId(): string;
+
+  /** 配置目标尺寸、旋转角度和帧率。 */
+  configure(
+    width: number,
+    height: number,
+    rotation: number,
+    frameRate: number,
+    captureFrameRate: number
+  ): void;
+
+  /** 停止帧回调并释放 Native 图像接收资源。 */
+  release(): void;
+}
+
 interface XmaxVideoNative {
+  /** 创建 CameraKit 原始帧接收器。 */
+  createFrameReceiver(
+    sourceWidth: number,
+    sourceHeight: number,
+    listener: NativeCameraFrameListener
+  ): NativeFrameReceiver;
+
   /** 使用系统视频解码器按媒体时间戳连续输出已转正的 NV12 帧。 */
   createVideoFileDecoder(
     fd: number,

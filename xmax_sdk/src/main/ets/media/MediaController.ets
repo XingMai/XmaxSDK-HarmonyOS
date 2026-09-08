@@ -85,7 +85,8 @@ export class MediaController implements MediaControlling {
       context,
       rtcManager,
       streamController,
-      mediaService
+      mediaService,
+      errorListener
     );
     this.imageController = new ImageController(
       rtcManager,
