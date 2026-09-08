@@ -440,6 +440,7 @@ configuration is required. Runtime metadata is added to API headers, without
 changing API request bodies.
 
 Generation task IDs use `task-harmonyos-` followed by the full 16 UUID bytes encoded
-as 22 unpadded Base64URL characters. The room event's `uid` and video-frame SEI use
-the same complete task ID; SEI contains its UTF-8 bytes. The encoding matches iOS,
-with a HarmonyOS platform prefix.
+as 22 unpadded Base64URL characters. Room events use that complete task ID as their
+`uid`. During image and video generation, each outgoing video frame carries UTF-8
+SEI in the form `<task-id>?index=<frame-index>`, with the zero-based frame index
+reset for each generation task. Incoming SEI without an index remains supported.

@@ -29,11 +29,11 @@ const GENERATION_START_TIMEOUT_MS: number = 30000;
 const DEFAULT_REMOTE_AUDIO_VOLUME: number = 100;
 type RemoteStreamListener = (stream: RemoteStream | null) => void;
 
-/** 保存当前实时生成任务标识及对应的 SEI 数据。 */
+/** 保存当前实时生成任务标识，并为外部视频帧生成连续的 SEI 帧序号。 */
 class GenerationTask {
 
   readonly id: string;
-  readonly seiData: Uint8Array;
+  private frameIndex: number = 0;
 
   /**
    * 创建生成任务上下文。
@@ -42,7 +42,13 @@ class GenerationTask {
    */
   constructor(id: string) {
     this.id = id;
-    this.seiData = new util.TextEncoder().encodeInto(id);
+  }
+
+  /** @returns 当前帧的任务标识和帧序号，并将序号推进到下一帧。 */
+  nextSeiData(): Uint8Array {
+    const message: string = `${this.id}?index=${this.frameIndex}`;
+    this.frameIndex += 1;
+    return new util.TextEncoder().encodeInto(message);
   }
 }
 
@@ -171,9 +177,10 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
   /** @inheritdoc */
   pushLocalVideoFrame(frame: VideoFrame): void {
+    const task: GenerationTask | null = this.currentTask;
     this.rtcManager.pushExternalVideoFrame(
       frame,
-      this.currentTask?.seiData
+      task?.nextSeiData()
     );
   }
 
@@ -311,7 +318,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     message: string
   ): void {
     const taskId: string = this.currentTask?.id ?? '';
-    if (taskId.length === 0 || message.trim() !== taskId ||
+    if (taskId.length === 0 || !this.matchesTaskSei(message, taskId) ||
       stream.roomId !== this.roomId ||
       (this.botName.length > 0 && stream.userId !== this.botName)) {
       return;
@@ -334,6 +341,22 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     this.resolveGenerationStart(taskId);
+  }
+
+  /** 判断 SEI 是否属于当前任务；兼容不带帧序号的旧格式。 */
+  private matchesTaskSei(message: string, taskId: string): boolean {
+    const value: string = message.trim();
+    if (value === taskId) {
+      return true;
+    }
+
+    const prefix: string = `${taskId}?index=`;
+    if (!value.startsWith(prefix)) {
+      return false;
+    }
+
+    const index: string = value.slice(prefix.length);
+    return index.length > 0 && /^\d+$/.test(index);
   }
 
   /** 启动中的致命错误交给原 Promise 上报，其余异步错误走监听器。 */

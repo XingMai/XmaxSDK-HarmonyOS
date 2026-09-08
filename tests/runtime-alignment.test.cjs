@@ -159,7 +159,7 @@ test('task IDs encode all 16 UUID bytes using unpadded Base64URL and the runtime
   assert.deepEqual(starts, mediaStarts);
 });
 
-test('signaling uid, outgoing SEI and incoming confirmation share the full HarmonyOS task ID', async () => {
+test('signaling uses the task ID while outgoing frame SEI appends a consecutive frame index', async () => {
   const timers = new Map();
   let timerId = 0;
   const f = fixture({
@@ -194,14 +194,17 @@ test('signaling uid, outgoing SEI and incoming confirmation share the full Harmo
     assert.match(task, /^task-harmonyos-[A-Za-z0-9_-]{22}$/);
     assert.deepEqual(messages[0].runtime, expectedRuntime);
     stream.pushLocalVideoFrame(frame);
-    assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), task);
+    stream.pushLocalVideoFrame(frame);
+    assert.equal(Buffer.from(frames.at(-2).sei).toString('utf8'), `${task}?index=0`);
+    assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), `${task}?index=1`);
     const remote = { roomId: 'room', userId: 'bot' };
     stream.onSeiMessageReceived(remote, task.replace('harmonyos', 'ios'));
+    stream.onSeiMessageReceived(remote, `${task}?index=invalid`);
     stream.onSeiMessageReceived({ roomId: 'other-room', userId: 'bot' }, task);
     stream.onSeiMessageReceived({ roomId: 'room', userId: 'other-bot' }, task);
     assert.deepEqual(remoteStreams, []);
     assert.deepEqual([...timers.values()].map(t => t.ms), [30000]);
-    stream.onSeiMessageReceived(remote, task);
+    stream.onSeiMessageReceived(remote, `${task}?index=0`);
     assert.deepEqual(remoteStreams, [remote]);
     assert.equal(timers.size, 0); // SEI confirmation has no artificial delay.
     assert.equal(await starting, task);
