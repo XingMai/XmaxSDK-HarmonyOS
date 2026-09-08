@@ -1,5 +1,4 @@
 import {
-  CameraID,
   MirrorType,
   RenderMode,
   VideoBufferType,
@@ -53,11 +52,6 @@ export class RtcVideoConverter {
       rotation: RtcVideoConverter.convertRotation(frame.rotation),
       timestamp_us: frame.timestampUs
     };
-  }
-
-  static convertCameraId(position: CameraPosition): CameraID {
-    return position === CameraPosition.FRONT ?
-      CameraID.kCameraIDFront : CameraID.kCameraIDBack;
   }
 
   static convertMirrorType(position: CameraPosition): MirrorType {
