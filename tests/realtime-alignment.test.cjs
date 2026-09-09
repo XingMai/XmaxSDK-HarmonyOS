@@ -669,11 +669,11 @@ test('camera controller uses CameraKit external frames and preserves its track w
   assert.deepEqual(pushedFrames, [frame, switchedFrame]);
 });
 
-test('camera capture selects the largest 4:3 profile up to 1920x1440 that supports 30 fps', async () => {
+test('camera capture falls back to the largest compatible 4:3 profile when 16:9 cannot run at 30 fps', async () => {
   const calls = [];
   const cameraKit = createCameraKitFixture(calls, { profiles: [
     { format: 'yuv420sp', size: { width: 2560, height: 1920 }, frameRates: [{ min: 30, max: 30 }] },
-    { format: 'yuv420sp', size: { width: 1920, height: 1080 }, frameRates: [{ min: 30, max: 30 }] },
+    { format: 'yuv420sp', size: { width: 1920, height: 1080 }, frameRates: [{ min: 24, max: 24 }] },
     { format: 'yuv420sp', size: { width: 1440, height: 1920 }, frameRates: [{ min: 24, max: 24 }] },
     { format: 'yuv420sp', size: { width: 1200, height: 1600 }, frameRates: [{ min: 15, max: 30 }] },
     { format: 'yuv420sp', size: { width: 1440, height: 1080 }, frameRates: [{ min: 30, max: 30 }] }
@@ -700,14 +700,47 @@ test('camera capture selects the largest 4:3 profile up to 1920x1440 that suppor
   );
 
   assert.deepEqual(calls.filter(call => call[0] === 'camera-frame-output'), [
+    ['camera-frame-output', 1920, 1080],
     ['camera-frame-output', 1440, 1920],
     ['camera-frame-output', 1200, 1600]
   ]);
-  assert.equal(calls.filter(call => call[0] === 'camera-output-release').length, 1);
+  assert.equal(calls.filter(call => call[0] === 'camera-output-release').length, 2);
   assert.deepEqual(calls.find(call => call[0] === 'camera-frame-rate'),
     ['camera-frame-rate', 30, 30]);
   assert.ok(calls.filter(call => call[0] === 'camera-query-frame-rates').every(call => call[1]));
   await camera.stopLocalCameraStream();
+});
+
+test('camera capture prefers 1080p YUV at 30 fps over larger 4:3 and rejects oversized or other-format profiles', async () => {
+  const f = cameraFailureFixture({ profiles: [
+    { format: 'yuv420sp', size: { width: 1920, height: 1440 } },
+    { format: 'yuv420sp', size: { width: 3840, height: 2160 } },
+    { format: 'jpeg', size: { width: 1920, height: 1080 } },
+    { format: 'yuv420sp', size: { width: 1600, height: 1600 } },
+    { format: 'yuv420sp', size: { width: 1280, height: 720 } },
+    { format: 'yuv420sp', size: { width: 1920, height: 1080 } }
+  ] });
+  await f.start();
+  assert.deepEqual(f.calls.filter(call => call[0] === 'camera-frame-output'), [
+    ['camera-frame-output', 1920, 1080]
+  ]);
+  assert.deepEqual(f.calls.find(call => call[0] === 'camera-frame-rate'), ['camera-frame-rate', 30, 30]);
+  await f.camera.stopLocalCameraStream();
+});
+
+test('camera capture tries smaller portrait 9:16 profiles before falling back to 4:3', async () => {
+  const f = cameraFailureFixture({ profiles: [
+    { format: 'yuv420sp', size: { width: 1920, height: 1440 } },
+    { format: 'yuv420sp', size: { width: 720, height: 1280 } },
+    { format: 'yuv420sp', size: { width: 1080, height: 1920 }, frameRates: [{ min: 24, max: 24 }] }
+  ] });
+  await f.start();
+  assert.deepEqual(f.calls.filter(call => call[0] === 'camera-frame-output'), [
+    ['camera-frame-output', 1080, 1920],
+    ['camera-frame-output', 720, 1280]
+  ]);
+  assert.equal(f.calls.filter(call => call[0] === 'camera-output-release').length, 1);
+  await f.camera.stopLocalCameraStream();
 });
 
 function cameraFailureFixture(options = {}, rtcError) {

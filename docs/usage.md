@@ -252,8 +252,10 @@ Both methods accept finite values from `0` (mute) to `1` (original volume) and r
 Camera output follows the current display orientation: the short side is the
 width in portrait, and the long side is the width in landscape. For example,
 `1024 × 1920` becomes `1920 × 1024`, with the frame rate unchanged. CameraKit
-continues using the selected 4:3 capture profile; Native rotation and cropping
-produce the oriented model input.
+prefers 16:9 YUV capture profiles, starting at `1920 × 1080` and trying smaller
+profiles until one supports 30 fps. If none does, it falls back to 4:3 profiles
+starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
+Native rotation and cropping still produce the model's required input dimensions.
 
 When the output dimensions change, the SDK updates RTC encoding, local/remote
 track metadata, and interaction coordinates. An active or starting generation

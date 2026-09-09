@@ -258,7 +258,7 @@ export class CameraController {
         return;
       }
 
-      throw this.cameraError('Camera does not support a compatible 4:3 YUV output at 30 fps');
+      throw this.cameraError('Camera does not support a compatible 16:9 or 4:3 YUV output at 30 fps');
     } catch (error) {
       await this.releaseCamera();
       if (error instanceof XmaxError) {
@@ -420,7 +420,7 @@ export class CameraController {
     return device;
   }
 
-  /** 按面积从 1920×1440 向下排列设备支持的 4:3 YUV 采集规格。 */
+  /** 优先从 1920×1080 向下尝试 16:9；不支持 30 fps 时回退到 4:3。 */
   private captureProfiles(device: camera.CameraDevice): Array<camera.Profile> {
     const capability: camera.CameraOutputCapability = this.platformManager
       .getSupportedOutputCapability(device, camera.SceneMode.NORMAL_VIDEO);
@@ -429,15 +429,27 @@ export class CameraController {
         const width: number = Math.max(profile.size.width, profile.size.height);
         const height: number = Math.min(profile.size.width, profile.size.height);
         return profile.format === camera.CameraFormat.CAMERA_FORMAT_YUV_420_SP &&
-          width * 3 === height * 4 &&
+          (this.isWideCaptureProfile(profile) || width * 3 === height * 4) &&
           width <= MAXIMUM_CAPTURE_WIDTH && height <= MAXIMUM_CAPTURE_HEIGHT;
       });
-    profiles.sort((left: camera.Profile, right: camera.Profile): number =>
-      right.size.width * right.size.height - left.size.width * left.size.height);
+    profiles.sort((left: camera.Profile, right: camera.Profile): number => {
+      const leftWide: boolean = this.isWideCaptureProfile(left);
+      const rightWide: boolean = this.isWideCaptureProfile(right);
+      if (leftWide !== rightWide) {
+        return leftWide ? -1 : 1;
+      }
+      return right.size.width * right.size.height - left.size.width * left.size.height;
+    });
     if (profiles.length === 0) {
-      throw this.cameraError('Camera does not support a compatible 4:3 YUV preview output');
+      throw this.cameraError('Camera does not support a compatible 16:9 or 4:3 YUV preview output');
     }
     return profiles;
+  }
+
+  private isWideCaptureProfile(profile: camera.Profile): boolean {
+    const width: number = Math.max(profile.size.width, profile.size.height);
+    const height: number = Math.min(profile.size.width, profile.size.height);
+    return width * 9 === height * 16;
   }
 
   /** 校验视频格式并将尺寸调整为模型支持的输入规格。 */
