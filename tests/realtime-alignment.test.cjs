@@ -101,11 +101,19 @@ function managerFixture(modelName = 'x2.0-sla') {
   ({ XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets'));
   ({ CameraPosition } = load('foundation/media/camera/CameraPosition.ets'));
   const { RealtimeContext: Context } = load('service/realtime/RealtimeContext.ets');
-  const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
+  const { RealtimeConnectionState: State, RealtimeDisconnectionReason: Reason } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
   const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime(modelName) }, {});
-  return { load, manager, media, stream, api, calls, timers, State, Context, Format, Track, MediaStream, XmaxError, Code,
+  return { load, manager, media, stream, api, calls, timers, State, Reason, Context, Format, Track, MediaStream, XmaxError, Code,
+    rotateCamera(format) {
+      const track = media.currentTrack;
+      const previous = track.videoFormat;
+      const next = format ?? new Format(previous.height, previous.width, previous.fps);
+      media.formatListener(next);
+      load('service/realtime/RealtimeVideoTrack.ets').updateRealtimeVideoTrackFormat(track, next);
+      return next;
+    },
     create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
@@ -875,6 +883,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
     '@xmax/sdk': {
       CameraPosition: { FRONT: 'front' }, RealtimeConnectionState: f.State,
+      RealtimeDisconnectionReason: f.Reason,
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
       XmaxEnvironment: { CHINA: 'china', GLOBAL: 'global' },
@@ -1037,6 +1046,75 @@ test('XLab replaces input during connection by closing the old session and gener
   assert.equal(f.viewModel.state.errorMessage, '');
 });
 
+test('XLab orientation changes leave idle local preview and a stopped session alone', async () => {
+  const f = exampleFixture(), messages = [];
+  f.viewModel.onMessage = message => messages.push(message);
+  await f.viewModel.connect({});
+  await settle();
+  const local = f.viewModel.state.localVideoTrack;
+  f.rotateCamera();
+  assert.equal(f.calls.sessions.length, 0);
+  f.viewModel.state.selectedCategoryId = 'free';
+  f.viewModel.submitPrompt('test');
+  await settle();
+  f.viewModel.cancelGeneration();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.viewModel.state.localVideoTrack, local);
+  assert.deepEqual(f.calls.closed, []);
+  assert.deepEqual(messages, []);
+  await f.viewModel.disconnect();
+});
+
+for (const phase of ['connecting', 'starting', 'generating']) {
+  test(`XLab orientation change disconnects while ${phase}, retains preview and requires manual restart`, async () => {
+    const f = exampleFixture(), messages = [];
+    f.viewModel.onMessage = message => messages.push(message);
+    await f.viewModel.connect({});
+    await settle();
+    const local = f.viewModel.state.localVideoTrack;
+    const gate = phase === 'connecting' ? f.holdSession() : null;
+    if (phase === 'starting') f.holdGeneration();
+    f.viewModel.state.selectedCategoryId = 'free';
+    f.viewModel.submitPrompt('before rotation');
+    await settle();
+    assert.equal(f.manager.currentState.connectionState,
+      phase === 'connecting' ? f.State.CONNECTING : phase === 'starting' ? f.State.CONNECTED : f.State.GENERATING);
+    f.rotateCamera();
+    const disconnecting = f.manager.disconnect();
+    f.rotateCamera(); // Rapid rotations must not duplicate cleanup or toast.
+    gate?.resolve();
+    await disconnecting;
+    await settle();
+    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+    assert.deepEqual(f.calls.closed, ['session-1']);
+    assert.equal(f.calls.sessions.length, 1);
+    assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
+    assert.equal(f.viewModel.state.localVideoTrack, local);
+    assert.equal(f.media.currentTrack, local);
+    assert.equal(f.viewModel.state.remoteVideoTrack, null);
+    assert.equal(f.viewModel.state.isGenerationStarting, false);
+    assert.equal(f.viewModel.state.isMoxGenerationActive, false);
+    assert.equal(f.viewModel.state.errorMessage, '');
+    assert.deepEqual(messages, ['屏幕方向已切换，生成已断开，请重新开始']);
+    f.rotateCamera();
+    assert.equal(messages.length, 1);
+
+    f.viewModel.submitPrompt('after rotation');
+    await settle();
+    f.stream.confirmation?.resolve();
+    await settle();
+    assert.equal(f.calls.sessions.length, 2);
+    assert.equal(f.calls.starts.at(-1).context.prompt, 'after rotation');
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+    assert.equal(f.viewModel.state.localVideoTrack, local);
+    assert.ok(f.viewModel.state.remoteVideoTrack);
+    await f.viewModel.disconnect();
+  });
+}
+
 test('XLab cancellation after connecting retains the session and local preview', async () => {
   const f = exampleFixture();
   await f.viewModel.connect({});
@@ -1058,47 +1136,70 @@ test('XLab cancellation after connecting retains the session and local preview',
 });
 
 
-test('camera format changes reach generation, remote metadata and interactions during connect/start/active generation', async () => {
+for (const phase of ['connecting', 'starting', 'generating']) {
+  test(`SDK camera rotation disconnects while ${phase} without an app orientation listener`, async () => {
+    const f = managerFixture(), states = [], errors = [];
+    f.manager.setStateListener(state => states.push(state));
+    f.manager.setErrorListener(error => errors.push(error));
+    const local = await f.create();
+    const gate = phase === 'connecting' ? f.holdSession() : null;
+    if (phase === 'starting') f.holdGeneration();
+    const operation = phase === 'connecting' ? f.manager.connect(local) :
+      f.manager.startGeneration(local, new f.Context('before rotation'));
+    const result = operation.then(value => ({ value }), error => ({ error }));
+    await settle();
+    if (phase === 'generating') assert.ok((await result).value);
+    const landscape = f.rotateCamera();
+    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.CAMERA_ORIENTATION_CHANGED);
+    assert.equal(f.stream.currentGenerationTaskId, '');
+    f.rotateCamera(); // No duplicate termination when the direction changes again during cleanup.
+    gate?.resolve();
+    if (phase !== 'generating') assert.equal((await result).error.code, f.Code.CANCELLED);
+    await settle();
+    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.CAMERA_ORIENTATION_CHANGED);
+    assert.deepEqual(f.calls.closed, ['session-1']);
+    assert.equal(f.calls.sessions.length, 1);
+    assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
+    assert.deepEqual(f.calls.updates, []);
+    assert.equal(f.media.currentTrack, local.videoTrack);
+    assert.equal(f.media.interactionTask, null);
+    assert.deepEqual(errors, []);
+    assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, 1);
+    assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTED).length, 1);
+
+    f.rotateCamera(landscape);
+    const restart = f.manager.startGeneration(local, new f.Context('after rotation'));
+    await settle();
+    f.stream.confirmation?.resolve();
+    await restart;
+    assert.deepEqual(f.calls.starts.at(-1).format, landscape);
+    assert.equal(f.manager.currentState.disconnectionReason, undefined);
+    await f.manager.disconnect();
+    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.NORMAL);
+    await f.manager.close();
+  });
+}
+
+test('SDK camera rotation keeps preview and stopped connections, and unchanged orientation keeps generation', async () => {
   const f = managerFixture();
-  const { updateRealtimeVideoTrackFormat } = f.load('service/realtime/RealtimeVideoTrack.ets');
   const local = await f.create();
-  const portrait = local.videoTrack.videoFormat;
-  const landscape = new f.Format(portrait.height, portrait.width, portrait.fps);
-  const rotate = format => {
-    f.media.formatListener(format);
-    updateRealtimeVideoTrackFormat(local.videoTrack, format);
-  };
-  const gate = f.holdSession();
-  const connecting = f.manager.connect(local);
-  await settle();
-  rotate(landscape);
-  gate.resolve();
-  const remote = await connecting;
-  assert.deepEqual(remote.videoTrack.videoFormat, landscape);
-  assert.equal(f.calls.updates.length, 0);
-  f.holdGeneration();
-  const starting = f.manager.startGeneration(new f.Context('first'));
-  await settle();
-  const task = f.calls.starts[0].task;
-  rotate(portrait);
-  assert.deepEqual(f.calls.updates.at(-1), { task, format: portrait, context: f.calls.starts[0].context });
-  assert.equal(f.media.interactionTask, null);
-  f.stream.confirmation.resolve();
-  await starting;
-  assert.equal(f.media.interactionTask, task);
-  assert.deepEqual(f.media.interactionFormat, portrait);
-  await f.manager.startGeneration(new f.Context('latest'));
-  rotate(landscape);
-  assert.equal(f.calls.updates.at(-1).context.prompt, 'latest');
-  assert.equal(f.calls.updates.at(-1).task, task);
-  assert.deepEqual(f.media.interactionFormat, landscape);
-  assert.deepEqual(remote.videoTrack.videoFormat, landscape);
-  assert.equal(f.calls.sessions.length, 1);
-  assert.equal(f.calls.starts.length, 1);
+  f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  const remote = await f.manager.connect(local);
+  const portrait = f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.deepEqual(remote.videoTrack.videoFormat, portrait);
+  await f.manager.startGeneration(new f.Context('test'));
+  f.rotateCamera(portrait);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
   await f.manager.stopGeneration();
   const count = f.calls.updates.length;
-  rotate(portrait);
+  f.rotateCamera();
   assert.equal(f.calls.updates.length, count);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.deepEqual(f.calls.closed, []);
   await f.manager.close();
 });
 

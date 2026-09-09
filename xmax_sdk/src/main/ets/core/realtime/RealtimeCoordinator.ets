@@ -1,6 +1,6 @@
 import { XmaxError, XmaxErrorCode, XmaxErrorSeverity } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RealtimeConnectionState, RealtimeState, RealtimeStateListener } from '../../service/realtime/RealtimeState';
+import { RealtimeConnectionState, RealtimeDisconnectionReason, RealtimeState, RealtimeStateListener } from '../../service/realtime/RealtimeState';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
 
 export enum RealtimeOperationKind {
@@ -118,6 +118,7 @@ class RealtimeOperation {
 }
 
 class RealtimeTermination {
+  disconnectionReason: RealtimeDisconnectionReason | undefined;
   target: RealtimeTerminationScope;
   finalState: RealtimeConnectionState | undefined;
   error: XmaxError | undefined;
@@ -194,8 +195,9 @@ export class RealtimeCoordinator {
     token.ensureCurrent();
   }
 
-  terminate(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState): Promise<void> {
-    return this.requestTermination(target, finalState).promise;
+  terminate(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState,
+    reason?: RealtimeDisconnectionReason): Promise<void> {
+    return this.requestTermination(target, finalState, undefined, reason).promise;
   }
 
   terminateWithError(error: XmaxError, target: RealtimeTerminationScope): Promise<void> {
@@ -234,7 +236,7 @@ export class RealtimeCoordinator {
   }
 
   private requestTermination(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState,
-    error?: XmaxError): RealtimeTermination {
+    error?: XmaxError, reason?: RealtimeDisconnectionReason): RealtimeTermination {
     const beginsDisconnection: boolean = target >= RealtimeTerminationScope.CONNECTION &&
       (this.termination === null || this.termination.target < RealtimeTerminationScope.CONNECTION);
     let pending: RealtimeTermination;
@@ -258,6 +260,13 @@ export class RealtimeCoordinator {
       // 先登记共享任务，再运行清理及同步状态回调。
       pending.promise = Promise.resolve().then((): Promise<void> => this.performTermination(pending));
     }
+    const resolvedReason: RealtimeDisconnectionReason | undefined = reason ??
+      (target >= RealtimeTerminationScope.CONNECTION && error === undefined ?
+        RealtimeDisconnectionReason.NORMAL : undefined);
+    if (pending.disconnectionReason === undefined && resolvedReason !== undefined) {
+      pending.disconnectionReason = resolvedReason;
+      pending.revision++;
+    }
     const active: RealtimeOperation | null = this.activeOperation;
     if (active !== null && this.affects(pending.target, active.kind)) {
       if (active.termination !== pending) {
@@ -267,7 +276,8 @@ export class RealtimeCoordinator {
       active.token.invalidate(pending.error);
     }
     if (beginsDisconnection) {
-      this.setState(new RealtimeState(RealtimeConnectionState.DISCONNECTING, this.state.sessionId));
+      this.setState(new RealtimeState(RealtimeConnectionState.DISCONNECTING, this.state.sessionId,
+        undefined, pending.disconnectionReason));
     }
     return pending;
   }
@@ -320,7 +330,8 @@ export class RealtimeCoordinator {
       connectionState = RealtimeConnectionState.CONNECTED;
     }
     return new RealtimeState(connectionState, pending.sessionId ?? this.state.sessionId,
-      connectionState === RealtimeConnectionState.GENERATING ? this.state.taskId : undefined);
+      connectionState === RealtimeConnectionState.GENERATING ? this.state.taskId : undefined,
+      connectionState === RealtimeConnectionState.DISCONNECTED ? pending.disconnectionReason : undefined);
   }
 
   private affects(scope: RealtimeTerminationScope, kind: RealtimeOperationKind): boolean {
@@ -342,7 +353,7 @@ export class RealtimeCoordinator {
 
   private setState(next: RealtimeState): void {
     if (this.state.connectionState === next.connectionState && this.state.sessionId === next.sessionId &&
-      this.state.taskId === next.taskId) {
+      this.state.taskId === next.taskId && this.state.disconnectionReason === next.disconnectionReason) {
       return;
     }
     this.state = next;

@@ -26,6 +26,7 @@ export {
 } from './src/main/ets/service/realtime/RealtimeError';
 export {
   RealtimeConnectionState,
+  RealtimeDisconnectionReason,
   RealtimeState,
   RealtimeStateListener
 } from './src/main/ets/service/realtime/RealtimeState';

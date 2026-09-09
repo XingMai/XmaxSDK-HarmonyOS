@@ -22,6 +22,7 @@ import { RealtimeNetworkQualityListener } from '../../service/realtime/RealtimeN
 import { RealtimePerformanceAlarmListener } from '../../service/realtime/RealtimePerformanceAlarm';
 import {
   RealtimeConnectionState,
+  RealtimeDisconnectionReason,
   RealtimeState,
   RealtimeStateListener
 } from '../../service/realtime/RealtimeState';
@@ -126,8 +127,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       },
       new MediaService(options.model),
       (format: RealtimeVideoFormat): void => {
-        this.generationManager.updateVideoFormat(format);
-        this.connectionManager.updateVideoFormat(format);
+        this.handleCameraVideoFormatChange(format);
       }
     );
 
@@ -366,6 +366,33 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
     this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED, sessionId), token);
     return remoteStream;
+  }
+
+  private handleCameraVideoFormatChange(format: RealtimeVideoFormat): void {
+    const current: RealtimeConnectionState = this.currentState.connectionState;
+    if (current === RealtimeConnectionState.DISCONNECTING) {
+      return;
+    }
+    const previous: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
+    const orientationChanged: boolean = previous !== undefined &&
+      (previous.width > previous.height) !== (format.width > format.height);
+    if (orientationChanged && (current === RealtimeConnectionState.GENERATING ||
+      current === RealtimeConnectionState.CONNECTING ||
+      this.coordinator.hasOperation(RealtimeOperationKind.GENERATION) ||
+      this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH))) {
+      // 在新方向的帧进入生成链路前取消操作，不向旧任务发送尺寸更新。
+      void this.coordinator.terminate(RealtimeTerminationScope.CONNECTION,
+        RealtimeConnectionState.DISCONNECTED, RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED)
+        .catch((error: Object): void => this.logCleanupFailure('相机转屏后断开实时连接失败', error));
+      try {
+        this.generationManager.reset();
+      } catch (error) {
+        this.logCleanupFailure('相机转屏后停止生成失败', error);
+      }
+      return;
+    }
+    this.generationManager.updateVideoFormat(format);
+    this.connectionManager.updateVideoFormat(format);
   }
 
   /** 取消连接/生成，等待回滚和清理完成，保留本地媒体与预览。 */

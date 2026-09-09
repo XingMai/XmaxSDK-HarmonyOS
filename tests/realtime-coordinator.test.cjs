@@ -13,7 +13,7 @@ function fixture(cleanup) {
   const events = [], states = [], errors = [], logs = [];
   const load = loadEts({ XmaxLogger: { XmaxLogger: { error: (...args) => logs.push(args) } } });
   const { XmaxError, XmaxErrorCode: Code, XmaxErrorSeverity: Severity } = load('foundation/errors/XmaxError.ets');
-  const { RealtimeState, RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
+  const { RealtimeState, RealtimeConnectionState: State, RealtimeDisconnectionReason: Reason } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeErrorManager } = load('core/realtime/XmaxRealtimeErrorManager.ets');
   const { RealtimeCoordinator, RealtimeOperationKind: Kind, RealtimeTerminationScope: Scope } =
     load('core/realtime/RealtimeCoordinator.ets');
@@ -24,9 +24,58 @@ function fixture(cleanup) {
     return cleanup?.(scope, task);
   });
   coordinator.setStateListener(state => { states.push(state); events.push(`state:${state.connectionState}`); });
-  return { coordinator, handler, Kind, Scope, State, RealtimeState, XmaxError, Code, Severity,
+  return { coordinator, handler, Kind, Scope, State, Reason, RealtimeState, XmaxError, Code, Severity,
     events, states, errors, logs };
 }
+
+test('orientation disconnection reason survives a synchronous close escalation and clears on reconnect', async () => {
+  const f = fixture();
+  await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
+    f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'session'), token);
+  });
+  const states = [];
+  f.coordinator.setStateListener(state => {
+    states.push(state);
+    if (state.connectionState === f.State.DISCONNECTING) {
+      void f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
+    }
+  });
+  await f.coordinator.terminate(f.Scope.CONNECTION, f.State.DISCONNECTED, f.Reason.CAMERA_ORIENTATION_CHANGED);
+  assert.ok(f.events.includes(`cleanup:${f.Scope.ALL}:`));
+  assert.deepEqual(states.slice(-2).map(state => [state.connectionState, state.disconnectionReason]), [
+    [f.State.DISCONNECTING, f.Reason.CAMERA_ORIENTATION_CHANGED],
+    [f.State.DISCONNECTED, f.Reason.CAMERA_ORIENTATION_CHANGED]
+  ]);
+  await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
+    f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'next'), token);
+  });
+  assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+});
+
+test('normal disconnect and close report NORMAL, while stopped generation and ERROR have no reason', async () => {
+  for (const scope of ['CONNECTION', 'ALL']) {
+    const f = fixture();
+    await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
+      f.coordinator.commit(new f.RealtimeState(f.State.GENERATING, 'session', 'task'), token);
+    });
+    await f.coordinator.terminate(f.Scope.GENERATION);
+    assert.equal(f.coordinator.currentState.connectionState, f.State.CONNECTED);
+    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+    await f.coordinator.terminate(f.Scope[scope], f.State.DISCONNECTED);
+    assert.deepEqual(f.states.slice(-2).map(state => [state.connectionState, state.disconnectionReason]), [
+      [f.State.DISCONNECTING, f.Reason.NORMAL],
+      [f.State.DISCONNECTED, f.Reason.NORMAL]
+    ]);
+    await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
+      f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'next'), token);
+    });
+    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+    await f.coordinator.terminateWithError(new f.XmaxError(f.Code.TIMEOUT, 'connection failed'), f.Scope.CONNECTION);
+    assert.equal(f.coordinator.currentState.connectionState, f.State.ERROR);
+    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+    assert.equal(f.states.at(-2).disconnectionReason, undefined);
+  }
+});
 
 test('one operation owns the lifecycle and overlapping calls are rejected before executing', async () => {
   const f = fixture(), blocked = gate();

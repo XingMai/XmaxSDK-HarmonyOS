@@ -257,11 +257,36 @@ profiles until one supports 30 fps. If none does, it falls back to 4:3 profiles
 starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
 Native rotation and cropping still produce the model's required input dimensions.
 
-When the output dimensions change, the SDK updates RTC encoding, local/remote
-track metadata, and interaction coordinates. An active or starting generation
-receives the new size through `change_condition`, retaining its task ID, prompt,
-reference image, and SEI frame-index sequence. Frames queued with the previous
-dimensions are discarded before pushing to RTC.
+When the camera output switches between portrait and landscape during connection
+or generation startup, or during active generation, the SDK automatically
+disconnects and retains the local preview. It cancels pending operations with
+`CANCELLED`, stops the old task, and does not automatically reconnect or send the
+new orientation to the old task through `change_condition`. Frames queued with
+the previous dimensions are discarded before pushing to RTC.
+
+Both `DISCONNECTING` and `DISCONNECTED` states carry
+`RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED`. Applications can use
+the existing state listener to clear pending generation intent and display a
+message; no app-level rotation listener or disconnect call is required. XLab
+shows “屏幕方向已切换，生成已断开，请重新开始” after disconnection.
+
+Normal disconnection, including explicit `disconnect()` and `close()` calls,
+uses `RealtimeDisconnectionReason.NORMAL`. A concurrent cleanup call preserves
+the original disconnection reason. Other connection states do not carry a
+disconnection reason; failures continue to use `ERROR` and the error listener.
+
+```ts
+realtime.setStateListener((state: RealtimeState): void => {
+  if (state.connectionState === RealtimeConnectionState.DISCONNECTED &&
+    state.disconnectionReason === RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED) {
+    // Show an app-specific message asking the user to start again.
+  }
+});
+```
+
+Rotation during local preview or while connected without a generation keeps the
+session and updates the output dimensions. This policy follows camera output
+orientation; rotating the UI alone does not disconnect image or video-file input.
 
 `switchCamera()` changes front/back position while preserving the local track and
 its frame rate and orientation-dependent dimensions. During generation, the SDK stops the current task,

@@ -4,6 +4,7 @@ import {
   CameraPosition,
   RealtimeConfiguration,
   RealtimeConnectionState,
+  RealtimeDisconnectionReason,
   RealtimeContext,
   RealtimeMediaStream,
   RealtimeModels,
@@ -170,6 +171,17 @@ export class RealtimeViewModel {
       manager.setStateListener((state: RealtimeState): void => {
         if (this.realtimeManager !== manager) {
           return;
+        }
+        if (state.disconnectionReason === RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED) {
+          if (state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+            this.generationRevision++;
+            this.clearGenerationSelection();
+            this.remoteStream = null;
+          } else if (state.connectionState === RealtimeConnectionState.DISCONNECTED &&
+            this.state.connectionState !== RealtimeConnectionState.DISCONNECTED) {
+            this.state.errorMessage = '';
+            this.onMessage?.('屏幕方向已切换，生成已断开，请重新开始');
+          }
         }
         if (state.connectionState !== RealtimeConnectionState.GENERATING) {
           this.state.remoteVideoTrack = null;
@@ -503,6 +515,11 @@ export class RealtimeViewModel {
   }
 
   cancelGeneration(): void {
+    this.clearGenerationSelection();
+    this.scheduleGenerationUpdate();
+  }
+
+  private clearGenerationSelection(): void {
     if (this.selectedReferenceItem !== null) {
       this.selectedReferenceItem.isSelected = false;
       this.selectedReferenceItem = null;
@@ -512,7 +529,6 @@ export class RealtimeViewModel {
     this.generationInputMode = GenerationInputMode.REFERENCE;
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
-    this.scheduleGenerationUpdate();
   }
 
   private startReferenceUpload(item: RealtimeReferenceItemState): void {
