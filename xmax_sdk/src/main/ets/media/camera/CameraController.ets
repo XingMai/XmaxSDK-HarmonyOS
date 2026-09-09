@@ -27,6 +27,7 @@ import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream'
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import {
   RealtimeVideoTrack,
+  updateRealtimeVideoTrackFormat,
   updateRealtimeVideoTrackPosition
 } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamControlling } from '../../stream/StreamControlling';
@@ -46,6 +47,7 @@ export class CameraController {
   private readonly mediaService: MediaServicing;
   private readonly streamController: StreamControlling;
   private readonly errorListener: XmaxErrorListener;
+  private readonly formatListener: (format: RealtimeVideoFormat) => void;
 
   private cameraInput: camera.CameraInput | null = null;
   private frameOutput: CameraFrameOutput | null = null;
@@ -65,7 +67,8 @@ export class CameraController {
     rtcManager: RtcManaging,
     streamController: StreamControlling,
     mediaService: MediaServicing = new MediaService(),
-    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => {},
+    formatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {}
   ) {
     this.rtcManager = rtcManager;
     this.permissionManager = new PermissionManager(context);
@@ -73,6 +76,7 @@ export class CameraController {
     this.mediaService = mediaService;
     this.streamController = streamController;
     this.errorListener = errorListener;
+    this.formatListener = formatListener;
   }
 
   /** @returns 当前活动的本地相机视频轨道；尚未创建时返回空值。 */
@@ -147,6 +151,7 @@ export class CameraController {
       this.rtcManager.configureLocalVideoMirror(nextPosition);
       this.acceptsFrames = true;
       await this.startCamera(videoFormat, nextPosition);
+      this.synchronizeVideoFormat(currentTrack, this.frameOutput?.currentVideoFormat ?? videoFormat);
       updateRealtimeVideoTrackPosition(currentTrack, nextPosition);
       return new RealtimeMediaStream(StreamId.LOCAL, currentTrack);
     } catch (error) {
@@ -172,6 +177,7 @@ export class CameraController {
       this.rtcManager.configureLocalVideoMirror(position);
       this.acceptsFrames = true;
       await this.startCamera(resolvedFormat, position);
+      this.synchronizeVideoFormat(track, this.frameOutput?.currentVideoFormat ?? resolvedFormat);
 
       VideoRenderRegistry.register(track, new VideoRenderBinding(
         this.rtcManager.renderLibraryName(),
@@ -241,11 +247,12 @@ export class CameraController {
         operation = `Start CameraKit capture (${dimensions})`;
         await this.captureSession!.start();
         output.configure(videoFormat, CAMERA_CAPTURE_FRAME_RATE);
+        const outputFormat: RealtimeVideoFormat = output.currentVideoFormat ?? videoFormat;
 
         XmaxLogger.debug(
           `CameraKit 相机采集已启动\n` +
           `├─ 采集：${dimensions} @ ${CAMERA_CAPTURE_FRAME_RATE} fps\n` +
-          `└─ 输出：${videoFormat.width} × ${videoFormat.height} @ ${videoFormat.fps} fps`,
+          `└─ 输出：${outputFormat.width} × ${outputFormat.height} @ ${outputFormat.fps} fps`,
           'Camera'
         );
         return;
@@ -311,12 +318,33 @@ export class CameraController {
     }
 
     try {
+      const format: RealtimeVideoFormat | null | undefined = this.frameOutput?.currentVideoFormat;
+      if (format !== undefined && format !== null) {
+        // 转屏前已经排队的帧不能重新覆盖新规格，也不能用新编码尺寸推送。
+        if (frame.format.width !== format.width || frame.format.height !== format.height) {
+          return;
+        }
+        if (this.activeTrack !== null) {
+          this.synchronizeVideoFormat(this.activeTrack, format);
+        }
+      }
       this.streamController.pushLocalVideoFrame(frame);
       this.hasCapturedFrame = true;
       this.notifyPreviewReadyIfNeeded();
     } catch (error) {
       this.errorListener(XmaxError.from(error));
     }
+  }
+
+  private synchronizeVideoFormat(track: RealtimeVideoTrack, format: RealtimeVideoFormat): void {
+    const previous: RealtimeVideoFormat | undefined = track.videoFormat;
+    if (previous?.width === format.width && previous.height === format.height && previous.fps === format.fps) {
+      return;
+    }
+    this.streamController.setVideoEncoderConfig(format);
+    this.formatListener(format);
+    updateRealtimeVideoTrackFormat(track, format);
+    VideoRenderRegistry.notifyVideoFormatChanged(track);
   }
 
   /** 尝试在切换失败后恢复原摄像头。 */

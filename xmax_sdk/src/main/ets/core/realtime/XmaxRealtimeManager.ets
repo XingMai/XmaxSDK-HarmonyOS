@@ -124,7 +124,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         this.errorManager.handle(error);
       },
-      new MediaService(options.model)
+      new MediaService(options.model),
+      (format: RealtimeVideoFormat): void => {
+        this.generationManager.updateVideoFormat(format);
+        this.connectionManager.updateVideoFormat(format);
+      }
     );
 
     // 实时管理组件

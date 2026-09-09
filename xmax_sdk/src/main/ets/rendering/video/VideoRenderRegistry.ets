@@ -7,12 +7,14 @@ type CameraPreviewRatioListener = (ratio: CameraPreviewRatio) => void;
 export type VideoReadyListener = (ready: boolean) => void;
 
 type PreviewFrameListener = (frame: image.PixelMap | undefined) => void;
+type VideoFormatListener = () => void;
 
 interface AttachedVideoView {
   contentMode: VideoContentMode;
   previewRatioListener: CameraPreviewRatioListener;
   previewFrameListener: PreviewFrameListener;
   videoReadyListener?: VideoReadyListener;
+  videoFormatListener?: VideoFormatListener;
 }
 
 export class VideoRenderBinding {
@@ -47,13 +49,15 @@ export class VideoRenderBinding {
     contentMode: VideoContentMode,
     previewRatioListener: CameraPreviewRatioListener,
     previewFrameListener: PreviewFrameListener,
-    videoReadyListener?: VideoReadyListener
+    videoReadyListener?: VideoReadyListener,
+    videoFormatListener?: VideoFormatListener
   ): void {
     this.attachedViews.set(viewId, {
       contentMode: contentMode,
       previewRatioListener: previewRatioListener,
       previewFrameListener: previewFrameListener,
-      videoReadyListener: videoReadyListener
+      videoReadyListener: videoReadyListener,
+      videoFormatListener: videoFormatListener
     });
 
     const previewRatio: CameraPreviewRatio | undefined = this.previewRatio;
@@ -62,6 +66,7 @@ export class VideoRenderBinding {
     }
     previewFrameListener(this.previewFrame);
     videoReadyListener?.(this.videoReady);
+    videoFormatListener?.();
 
     this.attachHandler(viewId, contentMode);
   }
@@ -97,6 +102,10 @@ export class VideoRenderBinding {
     this.attachedViews.forEach((view: AttachedVideoView): void => {
       view.videoReadyListener?.(ready);
     });
+  }
+
+  notifyVideoFormatChanged(): void {
+    this.attachedViews.forEach((view: AttachedVideoView): void => view.videoFormatListener?.());
   }
 
   dispose(): void {
@@ -156,15 +165,21 @@ export class VideoRenderRegistry {
     contentMode: VideoContentMode,
     previewRatioListener: CameraPreviewRatioListener,
     previewFrameListener: PreviewFrameListener,
-    videoReadyListener?: VideoReadyListener
+    videoReadyListener?: VideoReadyListener,
+    videoFormatListener?: VideoFormatListener
   ): void {
     VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.attach(
       viewId,
       contentMode,
       previewRatioListener,
       previewFrameListener,
-      videoReadyListener
+      videoReadyListener,
+      videoFormatListener
     );
+  }
+
+  static notifyVideoFormatChanged(track: RealtimeVideoTrack): void {
+    VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.notifyVideoFormatChanged();
   }
 
   static setContentMode(

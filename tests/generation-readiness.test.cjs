@@ -373,7 +373,7 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
       VideoSinkMirrorType: { kVideoSinkMirrorTypeOFF: 2 }
     },
     RtcEngineManager: { RtcEngineManager: { async acquire() { return { engine }; }, async release() {} } },
-    RtcStatsLogger: { RtcStatsLogger: {} }, XmaxLogger: { XmaxLogger: {} }
+    RtcStatsLogger: { RtcStatsLogger: {} }, XmaxLogger: { XmaxLogger: { info() {} } }
   });
   const { RtcManager } = load('foundation/rtc/RtcManager.ets');
   const { RemoteStream } = load('foundation/rtc/RemoteStream.ets');

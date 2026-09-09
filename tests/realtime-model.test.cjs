@@ -41,7 +41,7 @@ test('model capabilities match iOS and returned source sets cannot change SDK ad
 
 test('each model resolves aligned input sizes within pixel bounds, including rounding and extreme aspect ratios', () => {
   const f = fixture();
-  const sizes = [[799, 751], [1130, 1130], [1445, 1445], [1024, 1920], [832, 1472],
+  const sizes = [[799, 751], [1130, 1130], [1445, 1445], [1024, 1920], [1920, 1024], [832, 1472], [1472, 832],
     [3840, 2160], [1, 100000], [100000, 1], [1, 1], [32, 32], [640, 480]];
   for (const name of Object.values(f.Model)) {
     const service = new f.MediaService(f.Models.realtime(name)), model = service.model;

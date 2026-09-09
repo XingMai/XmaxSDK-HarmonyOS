@@ -1,5 +1,5 @@
 function createCameraKitFixture(calls = [], options = {}) {
-  const listeners = [];
+  const listeners = [], outputs = [];
   const front = { id: 'front', cameraPosition: 'front' };
   const back = { id: 'back', cameraPosition: 'back' };
   const profiles = options.profiles ?? [
@@ -48,7 +48,8 @@ function createCameraKitFixture(calls = [], options = {}) {
     static create(_manager, selectedProfile, _position, listener) {
       calls.push(['camera-frame-output', selectedProfile.size.width, selectedProfile.size.height]);
       listeners.push(listener);
-      return {
+      const frameOutput = {
+        currentVideoFormat: null,
         output: {
           committed: false,
           getSupportedFrameRates() {
@@ -64,10 +65,14 @@ function createCameraKitFixture(calls = [], options = {}) {
           }
         },
         configure(format, fps) {
-          calls.push(['camera', format.width, format.height, fps]);
+          this.currentVideoFormat = options.landscape ?
+            { width: Math.max(format.width, format.height), height: Math.min(format.width, format.height), fps: format.fps } : format;
+          calls.push(['camera', this.currentVideoFormat.width, this.currentVideoFormat.height, fps]);
         },
         async release() { calls.push(['camera-output-release']); }
       };
+      outputs.push(frameOutput);
+      return frameOutput;
     }
   }
 
@@ -79,7 +84,11 @@ function createCameraKitFixture(calls = [], options = {}) {
       getCameraManager() { return cameraManager; }
     } },
     frameOutput: { CameraFrameOutput },
-    emit(frame, outputIndex = listeners.length - 1) { listeners[outputIndex](frame); },
+    emit(frame, outputIndex = listeners.length - 1) {
+      if (!frame.format) frame.format = outputs[outputIndex].currentVideoFormat;
+      listeners[outputIndex](frame);
+    },
+    outputs,
     listeners
   };
 }

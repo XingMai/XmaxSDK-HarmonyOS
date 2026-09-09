@@ -173,7 +173,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
       clearTimeout: id => timers.delete(id)
     }
   });
-  const messages = [], frames = [], remoteStreams = [], mediaStarts = [];
+  const messages = [], frames = [], remoteStreams = [], mediaStarts = [], mediaFormats = [];
   const rtc = {
     setEventListener() {}, async joinRoom() {}, async leaveRoom() {},
     publishLocalVideo() {}, unpublishLocalVideo() {}, unpublishLocalAudio() {},
@@ -183,7 +183,9 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
   const { StreamController } = f.load('stream/StreamController.ets');
   const { XmaxRealtimeGenerationManager } = f.load('core/realtime/XmaxRealtimeGenerationManager.ets');
   const stream = new StreamController(rtc, remote => remoteStreams.push(remote));
-  const manager = new XmaxRealtimeGenerationManager({ start: id => mediaStarts.push(id), stop() {} }, stream);
+  const manager = new XmaxRealtimeGenerationManager({
+    start: (id, format) => { mediaStarts.push(id); mediaFormats.push(format); }, stop() {}
+  }, stream);
   await stream.connect({ roomId: 'room', userId: 'user', token: 'test', botName: 'bot' }, false, () => {});
   const frame = { id: 'frame' };
   stream.pushLocalVideoFrame(frame);
@@ -198,25 +200,35 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     assert.equal(Buffer.from(frames.at(-2).sei).toString('utf8'), `${task}&index=0`);
     assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), `${task}&index=1`);
     const remote = { roomId: 'room', userId: 'bot' };
-    stream.onSeiMessageReceived(remote, task.replace('harmonyos', 'ios'));
-    for (const suffix of ['&index=invalid', '&index=', '&index=-1', '&index=1.5',
-      '&index=0&extra=1', '?index=0']) {
-      stream.onSeiMessageReceived(remote, `${task}${suffix}`);
+    const baseTask = task.split('?')[0];
+    for (const message of ['', '?os=harmonyos', `${baseTask}-other?os=harmonyos&index=0`,
+      `${baseTask.slice(0, -1)}?os=harmonyos&index=0`, `task-other?os=harmonyos&index=0`]) {
+      stream.onSeiMessageReceived(remote, message);
     }
-    stream.onSeiMessageReceived(remote, `${task.split('?')[0]}?os=ios&index=0`);
     stream.onSeiMessageReceived({ roomId: 'other-room', userId: 'bot' }, task);
     stream.onSeiMessageReceived({ roomId: 'room', userId: 'other-bot' }, task);
     assert.deepEqual(remoteStreams, []);
     assert.deepEqual([...timers.values()].map(t => t.ms), [30000]);
-    stream.onSeiMessageReceived(remote, `${task}&index=0`);
+    const landscape = { width: f.format.height, height: f.format.width, fps: f.format.fps };
+    manager.updateVideoFormat(landscape);
+    assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
+    assert.equal(messages.at(-1).params.prompt, 'prompt');
+    assert.deepEqual(mediaStarts, []);
+    stream.onSeiMessageReceived(remote, `${baseTask}?index=12&os=ios`);
     assert.deepEqual(remoteStreams, [remote]);
     assert.equal(timers.size, 0); // SEI confirmation has no artificial delay.
     assert.equal(await starting, task);
     assert.deepEqual(mediaStarts, [task]);
+    assert.deepEqual(mediaFormats.at(-1), landscape);
     manager.update(task, f.format, new f.Context('changed'));
+    manager.updateVideoFormat(landscape);
+    assert.equal(messages.at(-1).params.prompt, 'changed');
+    assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
+    stream.pushLocalVideoFrame(frame);
+    assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), `${task}&index=2`);
     stream.sendTracks(task, [{ x: 10, y: 20 }]);
     manager.stop(task);
-    assert.deepEqual(messages.map(message => message.event), ['start', 'change_condition', 'tracks', 'stop']);
+    assert.deepEqual(messages.map(message => message.event), ['start', 'change_condition', 'change_condition', 'change_condition', 'tracks', 'stop']);
     for (const message of messages) {
       assert.equal(message.uid, task);
       assert.deepEqual(message.runtime, expectedRuntime);
@@ -233,7 +245,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), `${nextTask}&index=0`);
     stream.onSeiMessageReceived(remote, `${task}&index=2`);
     assert.equal(remoteStreams.filter(Boolean).length, 1); // Previous task cannot confirm this generation.
-    stream.onSeiMessageReceived(remote, nextTask); // Full task ID without index is also accepted.
+    stream.onSeiMessageReceived(remote, nextTask.split('?')[0]); // Bare task identity is also accepted.
     assert.equal(await restarting, nextTask);
     assert.equal(remoteStreams.filter(Boolean).length, 2);
     assert.equal(timers.size, 0);

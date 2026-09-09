@@ -28,7 +28,9 @@ function managerFixture(modelName = 'x2.0-sla') {
   let sessionGate = null, autoConfirm = true, media, stream, api;
   let Track, Format, MediaStream, XmaxError, Code, CameraPosition, updatePosition;
   class FakeMedia {
-    constructor() { media = this; this.currentTrack = null; this.hasAudio = true; }
+    constructor(_context, _rtc, _stream, _error, _service, formatListener) {
+      media = this; this.currentTrack = null; this.hasAudio = true; this.formatListener = formatListener;
+    }
     get currentVideoFormat() { return this.currentTrack?.videoFormat; }
     async createLocalCameraStream(format, position) {
       if (this.currentTrack) throw new XmaxError(Code.INVALID_CONFIGURATION, 'Already started');
@@ -40,7 +42,7 @@ function managerFixture(modelName = 'x2.0-sla') {
     owns(local) { return local.videoTrack !== undefined && Track.resolve(local.videoTrack) === this.currentTrack; }
     setLocalAudioPreviewEnabled(value) { calls.audio.push(value); }
     async setLocalAudioVolume(value) { this.volume = value; }
-    start(task) { this.interactionTask = task; }
+    start(task, format) { this.interactionTask = task; this.interactionFormat = format; }
     stop() { this.interactionTask = null; }
     prepareForClose() {}
     setCameraPreviewReadyListener() {}
@@ -1020,4 +1022,89 @@ test('XLab cancellation after connecting retains the session and local preview',
   assert.equal(f.viewModel.state.remoteVideoTrack, null);
   assert.ok(f.viewModel.state.localVideoTrack);
   assert.equal(f.viewModel.state.errorMessage, '');
+});
+
+
+test('camera format changes reach generation, remote metadata and interactions during connect/start/active generation', async () => {
+  const f = managerFixture();
+  const { updateRealtimeVideoTrackFormat } = f.load('service/realtime/RealtimeVideoTrack.ets');
+  const local = await f.create();
+  const portrait = local.videoTrack.videoFormat;
+  const landscape = new f.Format(portrait.height, portrait.width, portrait.fps);
+  const rotate = format => {
+    f.media.formatListener(format);
+    updateRealtimeVideoTrackFormat(local.videoTrack, format);
+  };
+  const gate = f.holdSession();
+  const connecting = f.manager.connect(local);
+  await settle();
+  rotate(landscape);
+  gate.resolve();
+  const remote = await connecting;
+  assert.deepEqual(remote.videoTrack.videoFormat, landscape);
+  assert.equal(f.calls.updates.length, 0);
+  f.holdGeneration();
+  const starting = f.manager.startGeneration(new f.Context('first'));
+  await settle();
+  const task = f.calls.starts[0].task;
+  rotate(portrait);
+  assert.deepEqual(f.calls.updates.at(-1), { task, format: portrait, context: f.calls.starts[0].context });
+  assert.equal(f.media.interactionTask, null);
+  f.stream.confirmation.resolve();
+  await starting;
+  assert.equal(f.media.interactionTask, task);
+  assert.deepEqual(f.media.interactionFormat, portrait);
+  await f.manager.startGeneration(new f.Context('latest'));
+  rotate(landscape);
+  assert.equal(f.calls.updates.at(-1).context.prompt, 'latest');
+  assert.equal(f.calls.updates.at(-1).task, task);
+  assert.deepEqual(f.media.interactionFormat, landscape);
+  assert.deepEqual(remote.videoTrack.videoFormat, landscape);
+  assert.equal(f.calls.sessions.length, 1);
+  assert.equal(f.calls.starts.length, 1);
+  await f.manager.stopGeneration();
+  const count = f.calls.updates.length;
+  rotate(portrait);
+  assert.equal(f.calls.updates.length, count);
+  await f.manager.close();
+});
+
+test('camera applies oriented output before connect and rejects queued frames from the old dimensions', async () => {
+  const calls = [], events = [], errors = [];
+  const kit = createCameraKitFixture(calls, { landscape: true });
+  const load = loadEts({ ...platform, '@kit.CameraKit': kit.kit, CameraFrameOutput: kit.frameOutput,
+    PermissionManager: { PermissionManager: class { async ensureCameraPermission() {} } } });
+  const { CameraController } = load('media/camera/CameraController.ets');
+  const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
+  const { MediaService } = load('service/media/MediaService.ets');
+  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const { VideoRenderRegistry: Registry } = load('rendering/video/VideoRenderRegistry.ets');
+  const camera = new CameraController({}, {
+    useExternalVideoSource() {}, configureLocalVideoMirror() {}, renderLibraryName: () => 'rtc',
+    bindLocalVideo() {}, unbindLocalVideo() {}
+  }, {
+    setVideoEncoderConfig: format => events.push(['encode', format.width, format.height]),
+    pushLocalVideoFrame: frame => events.push(['push', frame.format.width, frame.format.height])
+  }, new MediaService(RealtimeModels.realtime('x2.0-sla')), error => errors.push(error),
+  format => events.push(['signal', format.width, format.height]));
+  const local = await camera.createLocalCameraStream(new Format(1024, 1920, 30), 'front');
+  try {
+    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1024, fps: 30 });
+    const observed = [];
+    Registry.attach(local.videoTrack, 'view', 'fit', () => {}, () => {}, undefined,
+      () => observed.push(local.videoTrack.videoFormat));
+    events.length = 0;
+    kit.outputs[0].currentVideoFormat = new Format(1024, 1920, 30);
+    kit.emit({ format: { width: 1920, height: 1024 } });
+    assert.deepEqual(events, []);
+    kit.emit({ format: { width: 1024, height: 1920 } });
+    assert.deepEqual(events, [['encode', 1024, 1920], ['signal', 1024, 1920], ['push', 1024, 1920]]);
+    assert.equal(observed.length, 2);
+    assert.equal(observed[1].width, 1024);
+    kit.emit({ format: { width: 1024, height: 1920 } });
+    assert.equal(events.length, 4); // No duplicate encoding/signaling for subsequent frames.
+    assert.deepEqual(errors, []);
+  } finally {
+    await camera.stopLocalCameraStream();
+  }
 });

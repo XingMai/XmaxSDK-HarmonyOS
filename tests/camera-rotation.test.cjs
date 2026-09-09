@@ -13,7 +13,8 @@ function fixture(position = 'back') {
       ROTATION_90: 90, ROTATION_180: 180, ROTATION_270: 270
     } } },
     '@kit.ArkUI': { display: {
-      getDefaultDisplaySync: () => ({ id: 1, rotation: displayRotation }),
+      getDefaultDisplaySync: () => ({ id: 1, rotation: displayRotation,
+        width: displayRotation % 2 ? 1920 : 1080, height: displayRotation % 2 ? 1080 : 1920 }),
       on(event, callback) { assert.equal(event, 'change'); calls.push('on'); listener = callback; },
       off(event, callback) {
         assert.equal(event, 'change'); assert.equal(callback, listener); calls.push('off');
@@ -48,7 +49,7 @@ function fixture(position = 'back') {
   };
 }
 
-test('display rotation updates native pixels in both camera orientations without changing output size or fps', async () => {
+test('display rotation updates native pixels in both camera orientations and swaps output dimensions while preserving fps', async () => {
   for (const position of ['back', 'front']) {
     const f = fixture(position);
     const expectedAngles = position === 'front' ? [270, 0, 90, 180] : [90, 180, 270, 0];
@@ -56,7 +57,7 @@ test('display rotation updates native pixels in both camera orientations without
       f.output.configure(f.format, 30);
       for (const rotation of [1, 2, 3, 0]) f.rotate(rotation);
       assert.deepEqual(f.configurations, [0, 1, 2, 3, 0].map(rotation =>
-        [1024, 1920, expectedAngles[rotation], 30, 30]));
+        [rotation % 2 ? 1920 : 1024, rotation % 2 ? 1024 : 1920, expectedAngles[rotation], 30, 30]));
       f.rotate(0); // A display change without a new angle must not reset the pipeline.
       f.rotate(1, 2); // Another display must not reconfigure this camera.
       assert.equal(f.configurations.length, 5);
@@ -92,7 +93,7 @@ test('a failed rotation update is logged and the same angle can be retried', asy
     assert.match(f.errors[0], /更新相机帧旋转角度失败/);
     f.failConfigure(false);
     f.rotate(1);
-    assert.deepEqual(f.configurations.at(-1), [1024, 1920, 180, 30, 30]);
+    assert.deepEqual(f.configurations.at(-1), [1920, 1024, 180, 30, 30]);
   } finally {
     await f.output.release();
   }
@@ -116,7 +117,7 @@ test('front camera landscape correction applies on startup in either landscape d
     try {
       f.rotate(displayRotation);
       f.output.configure(f.format, 30);
-      assert.deepEqual(f.configurations[0], [1024, 1920, expected, 30, 30]);
+      assert.deepEqual(f.configurations[0], [1920, 1024, expected, 30, 30]);
     } finally {
       await f.output.release();
     }

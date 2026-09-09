@@ -46,6 +46,7 @@ export struct XmaxVideoView {
   // 预览配置
   @State private cameraPreviewRatio: CameraPreviewRatio = CameraPreviewRatio.FILL;
   @State private previewFrame: image.PixelMap | undefined = undefined;
+  @State private videoFormat: RealtimeVideoFormat | undefined = undefined;
 
   aboutToAppear(): void {
     this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
@@ -71,6 +72,7 @@ export struct XmaxVideoView {
   }
 
   private updatePreviewRatio(): void {
+    this.videoFormat = this.track?.videoFormat;
     this.cameraPreviewRatio = this.track === undefined ? CameraPreviewRatio.FILL :
       VideoRenderRegistry.cameraPreviewRatio(this.track) ?? CameraPreviewRatio.FILL;
   }
@@ -97,6 +99,11 @@ export struct XmaxVideoView {
       (ready: boolean): void => {
         if (this.attachedViewId === viewId) {
           this.onVideoReadyChanged?.(ready);
+        }
+      },
+      (): void => {
+        if (this.attachedViewId === viewId) {
+          this.videoFormat = track.videoFormat;
         }
       });
   }
@@ -198,7 +205,7 @@ export struct XmaxVideoView {
   }
 
   private trackAspectRatio(): number | undefined {
-    const videoFormat: RealtimeVideoFormat | undefined = this.track?.videoFormat;
+    const videoFormat: RealtimeVideoFormat | undefined = this.videoFormat;
     if (videoFormat === undefined || videoFormat.width <= 0 || videoFormat.height <= 0) {
       return undefined;
     }

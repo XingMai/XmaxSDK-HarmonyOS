@@ -118,10 +118,21 @@ export class CameraFrameOutput {
       display.on('change', this.displayChangeListener);
       this.isListeningForDisplayChanges = true;
     }
-    const rotation: VideoRotation = this.rotationForDisplay(
-      display.getDefaultDisplaySync().rotation * 90
-    );
-    this.configureNative(videoFormat, captureFrameRate, rotation);
+    const currentDisplay: display.Display = display.getDefaultDisplaySync();
+    const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
+    this.configureNative(this.formatForDisplay(videoFormat, currentDisplay), captureFrameRate, rotation);
+  }
+
+  get currentVideoFormat(): RealtimeVideoFormat | null {
+    return this.videoFormat;
+  }
+
+  private formatForDisplay(format: RealtimeVideoFormat, currentDisplay: display.Display): RealtimeVideoFormat {
+    const shortSide: number = Math.min(format.width, format.height);
+    const longSide: number = Math.max(format.width, format.height);
+    return currentDisplay.width > currentDisplay.height ?
+      new RealtimeVideoFormat(longSide, shortSide, format.fps) :
+      new RealtimeVideoFormat(shortSide, longSide, format.fps);
   }
 
   private configureNative(
@@ -153,8 +164,10 @@ export class CameraFrameOutput {
         return;
       }
       const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
-      if (rotation !== this.rotation) {
-        this.configureNative(videoFormat, this.captureFrameRate, rotation);
+      const outputFormat: RealtimeVideoFormat = this.formatForDisplay(videoFormat, currentDisplay);
+      if (rotation !== this.rotation || outputFormat.width !== videoFormat.width ||
+        outputFormat.height !== videoFormat.height) {
+        this.configureNative(outputFormat, this.captureFrameRate, rotation);
       }
     } catch (error) {
       this.logError('更新相机帧旋转角度', error);

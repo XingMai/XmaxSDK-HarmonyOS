@@ -24,6 +24,8 @@ export class XmaxRealtimeGenerationManager {
 
   // 生成资源
   private currentContext: RealtimeContext | null = null;
+  private startingContext: RealtimeContext | null = null;
+  private startingVideoFormat: RealtimeVideoFormat | null = null;
 
   /**
    * 创建生成流程 Manager。
@@ -63,16 +65,14 @@ export class XmaxRealtimeGenerationManager {
     }
 
     const taskId: string = XmaxRealtimeGenerationManager.createTaskId();
-    const confirmation: Promise<void> = this.streamController.beginGeneration(
-      taskId,
-      videoFormat,
-      resolvedContext
-    );
+    this.startingContext = resolvedContext;
+    this.startingVideoFormat = videoFormat;
     try {
+      const confirmation: Promise<void> = this.streamController.beginGeneration(taskId, videoFormat, resolvedContext);
       await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
-      this.mediaController.start(taskId, videoFormat);
+      this.mediaController.start(taskId, this.startingVideoFormat ?? videoFormat);
       this.currentContext = resolvedContext;
       return taskId;
     } catch (error) {
@@ -82,6 +82,24 @@ export class XmaxRealtimeGenerationManager {
         XmaxLogger.error(`取消生成等待失败\n└─ 原因：${XmaxError.from(cleanupError).message}`, 'Realtime');
       }
       throw XmaxError.from(error);
+    } finally {
+      this.startingContext = null;
+      this.startingVideoFormat = null;
+    }
+  }
+
+  /** 在同一任务中同步转屏后的尺寸和交互坐标，保留当前生成条件。 */
+  updateVideoFormat(format: RealtimeVideoFormat): void {
+    const taskId: string = this.streamController.currentGenerationTaskId;
+    const context: RealtimeContext | null = this.startingContext ?? this.currentContext;
+    if (taskId.length === 0 || context === null) {
+      return;
+    }
+    this.streamController.updateGeneration(taskId, format, context);
+    if (this.startingContext !== null) {
+      this.startingVideoFormat = format;
+    } else {
+      this.mediaController.start(taskId, format);
     }
   }
 

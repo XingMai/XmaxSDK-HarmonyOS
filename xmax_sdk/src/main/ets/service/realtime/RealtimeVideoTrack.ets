@@ -3,7 +3,7 @@ import { resolveStateTarget } from '../../foundation/state/StateTargetResolver';
 import { RealtimeVideoFormat } from './RealtimeVideoFormat';
 
 class RealtimeVideoTrackMetadata {
-  readonly videoFormat?: RealtimeVideoFormat;
+  videoFormat?: RealtimeVideoFormat;
   position?: CameraPosition;
 
   constructor(
@@ -61,5 +61,13 @@ export function updateRealtimeVideoTrackPosition(
     metadataByTrack.get(RealtimeVideoTrack.resolve(track));
   if (metadata !== undefined) {
     metadata.position = position;
+  }
+}
+
+/** 仅供 SDK 内部同步相机转屏后的实际视频规格。 */
+export function updateRealtimeVideoTrackFormat(track: RealtimeVideoTrack, format: RealtimeVideoFormat): void {
+  const metadata: RealtimeVideoTrackMetadata | undefined = metadataByTrack.get(RealtimeVideoTrack.resolve(track));
+  if (metadata !== undefined) {
+    metadata.videoFormat = format;
   }
 }

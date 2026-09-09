@@ -75,7 +75,8 @@ export class MediaController implements MediaControlling {
     rtcManager: RtcManaging,
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void,
-    mediaService: MediaServicing = new MediaService()
+    mediaService: MediaServicing = new MediaService(),
+    cameraFormatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {}
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -86,7 +87,8 @@ export class MediaController implements MediaControlling {
       rtcManager,
       streamController,
       mediaService,
-      errorListener
+      errorListener,
+      cameraFormatListener
     );
     this.imageController = new ImageController(
       rtcManager,

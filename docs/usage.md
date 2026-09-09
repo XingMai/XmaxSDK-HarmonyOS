@@ -249,8 +249,20 @@ Both methods accept finite values from `0` (mute) to `1` (original volume) and r
 
 ## Switch cameras or change capture specifications
 
+Camera output follows the current display orientation: the short side is the
+width in portrait, and the long side is the width in landscape. For example,
+`1024 × 1920` becomes `1920 × 1024`, with the frame rate unchanged. CameraKit
+continues using the selected 4:3 capture profile; Native rotation and cropping
+produce the oriented model input.
+
+When the output dimensions change, the SDK updates RTC encoding, local/remote
+track metadata, and interaction coordinates. An active or starting generation
+receives the new size through `change_condition`, retaining its task ID, prompt,
+reference image, and SEI frame-index sequence. Frames queued with the previous
+dimensions are discarded before pushing to RTC.
+
 `switchCamera()` changes front/back position while preserving the local track and
-its dimensions/frame rate. During generation, the SDK stops the current task,
+its frame rate and orientation-dependent dimensions. During generation, the SDK stops the current task,
 switches cameras, waits 500 ms for capture to settle, then starts a new task with
 the latest successful context. The connection and remote track are retained.
 Do not switch while a connection or generation start is pending. Calling
@@ -444,5 +456,5 @@ Generation task IDs use `task-<id>?os=harmonyos`, where `<id>` contains the full
 complete task ID as their `uid`. During camera, image, and video generation, each
 outgoing video frame carries UTF-8 SEI in the form
 `task-<id>?os=harmonyos&index=<frame-index>`, with the zero-based frame index reset
-for each generation task. Incoming SEI containing the complete task ID without
-an index remains supported.
+for each generation task. Incoming SEI is matched by the task identity before `?`; query parameters such
+as `os` and `index` do not affect matching. The bare task identity is also accepted.

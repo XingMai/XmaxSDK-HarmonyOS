@@ -13,7 +13,8 @@ import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessio
 import { RealtimeSessionService } from '../../service/realtime/RealtimeSessionService';
 import { RealtimeSessionServicing } from '../../service/realtime/RealtimeSessionServicing';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
+import { RealtimeVideoTrack, updateRealtimeVideoTrackFormat } from '../../service/realtime/RealtimeVideoTrack';
+import { VideoRenderRegistry } from '../../rendering/video/VideoRenderRegistry';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 
@@ -79,6 +80,13 @@ export class XmaxRealtimeConnectionManager {
   get currentRemoteStream(): RealtimeMediaStream | null {
     return this.activeRemoteTrack === null ? null :
       new RealtimeMediaStream(StreamId.REMOTE, this.activeRemoteTrack);
+  }
+
+  updateVideoFormat(format: RealtimeVideoFormat): void {
+    if (this.activeRemoteTrack !== null) {
+      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, format);
+      VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
+    }
   }
 
   /**
@@ -149,7 +157,7 @@ export class XmaxRealtimeConnectionManager {
 
       const remoteTrack = new RealtimeVideoTrack(
         connection.botName ?? 'video-remote',
-        videoFormat
+        this.mediaController.currentVideoFormat ?? videoFormat
       );
       this.renderController.registerRemoteTrack(
         remoteTrack,

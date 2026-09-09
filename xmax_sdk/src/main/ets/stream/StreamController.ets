@@ -343,20 +343,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.resolveGenerationStart(taskId);
   }
 
-  /** 判断 SEI 是否属于当前任务；同时接受完整任务 ID 和追加帧序号的格式。 */
+  /** 仅用查询参数前的任务标识匹配；os、index 等附加信息不参与任务身份判断。 */
   private matchesTaskSei(message: string, taskId: string): boolean {
-    const value: string = message.trim();
-    if (value === taskId) {
-      return true;
-    }
-
-    const prefix: string = `${taskId}&index=`;
-    if (!value.startsWith(prefix)) {
-      return false;
-    }
-
-    const index: string = value.slice(prefix.length);
-    return index.length > 0 && /^\d+$/.test(index);
+    const receivedId: string = message.trim().split('?')[0];
+    const currentId: string = taskId.split('?')[0];
+    return receivedId.length > 0 && receivedId === currentId;
   }
 
   /** 启动中的致命错误交给原 Promise 上报，其余异步错误走监听器。 */

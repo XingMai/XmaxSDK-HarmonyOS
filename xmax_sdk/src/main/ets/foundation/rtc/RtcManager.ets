@@ -39,6 +39,7 @@ import {
   XmaxErrorCode
 } from '../errors/XmaxError';
 import { XmaxLogger } from '../logging/XmaxLogger';
+import { XmaxLoggerOption } from '../logging/XmaxLoggerOption';
 import { CameraPosition } from '../media/camera/CameraPosition';
 import { VideoFrame } from '../media/video/VideoFrame';
 import { VideoContentMode } from '../media/video/VideoContentMode';
@@ -122,6 +123,11 @@ export class RtcManager implements RtcManaging {
 
       const stream = new RemoteStream(key.room_id, key.user_id);
       const decodedMessage: string = util.TextDecoder.create().decodeToString(new Uint8Array(message));
+      XmaxLogger.info(
+        (): string => `接收 SEI (Receive SEI)：${decodedMessage}`,
+        'SEI',
+        XmaxLoggerOption.PERFORMANCE
+      );
       this.remoteStreamKeys.set(stream.key(), key);
       this.listener?.onSeiMessageReceived(stream, decodedMessage);
     });
@@ -315,6 +321,15 @@ export class RtcManager implements RtcManaging {
       frame,
       seiData
     );
+
+    if (seiData !== undefined && seiData.length > 0) {
+      XmaxLogger.info(
+        (): string => `发送 SEI (Send SEI)：${util.TextDecoder.create().decodeToString(seiData)}`,
+        'SEI',
+        XmaxLoggerOption.PERFORMANCE
+      );
+    }
+
     const result: number = this.requireEngine().pushExternalVideoFrame(rtcFrame);
     if (result < 0) {
       XmaxLogger.error(
