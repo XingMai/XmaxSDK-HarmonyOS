@@ -45,7 +45,7 @@ function createCameraKitFixture(calls = [], options = {}) {
   };
 
   class CameraFrameOutput {
-    static create(_manager, selectedProfile, listener) {
+    static create(_manager, selectedProfile, _position, listener) {
       calls.push(['camera-frame-output', selectedProfile.size.width, selectedProfile.size.height]);
       listeners.push(listener);
       return {

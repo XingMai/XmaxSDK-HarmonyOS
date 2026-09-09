@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { promptAction } from '@kit.ArkUI';
+import { mediaquery, promptAction } from '@kit.ArkUI';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
@@ -76,6 +76,11 @@ export struct RealtimePage {
   @State private cameraSwitchBlurRadius: number = 0;
   @State private cameraSwitchRotation: number = 0;
   @State private isPickingLocalMedia: boolean = false;
+  @State private isLandscape: boolean = false;
+  private orientationQuery: mediaquery.MediaQueryListener | null = null;
+  private readonly orientationListener = (result: mediaquery.MediaQueryResult): void => {
+    this.isLandscape = result.matches;
+  };
   @StorageLink(XLabApplicationLifecycle.FOREGROUND_STORAGE_KEY)
   @Watch('onApplicationForegroundChanged')
   private isApplicationForeground: boolean = true;
@@ -86,7 +91,7 @@ export struct RealtimePage {
   private realtimeCleanup: Promise<void> | null = null;
 
   private localContentMode(): VideoContentMode {
-    return this.hasLocalFile() ?
+    return this.hasLocalFile() || this.isLandscape ?
       VideoContentMode.FIT : VideoContentMode.FILL;
   }
 
@@ -182,6 +187,9 @@ export struct RealtimePage {
   }
 
   aboutToAppear(): void {
+    this.orientationQuery = this.getUIContext().getMediaQuery().matchMediaSync('(orientation: landscape)');
+    this.orientationQuery.on('change', this.orientationListener);
+    this.isLandscape = this.orientationQuery.matches;
     if (this.hasLocalImage()) {
       this.viewModel.selectCategory('mox');
     }
@@ -195,6 +203,8 @@ export struct RealtimePage {
   }
 
   aboutToDisappear(): void {
+    this.orientationQuery?.off('change', this.orientationListener);
+    this.orientationQuery = null;
     this.viewModel.onMessage = null;
     this.suspendRealtime(false);
   }

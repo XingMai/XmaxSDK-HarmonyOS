@@ -84,8 +84,8 @@ test('logging and camera reconfiguration restart the measurement baseline', () =
 test('CameraFrameOutput forwards native CPU snapshots and processing time into performance logs', () => {
   let callback;
   const f = fixture({
-    '@kit.CameraKit': { camera: { ImageRotation: { ROTATION_90: 90, ROTATION_180: 180, ROTATION_270: 270 } } },
-    '@kit.ArkUI': { display: { getDefaultDisplaySync: () => ({ rotation: 0 }) } },
+    '@kit.CameraKit': { camera: { CameraPosition: { CAMERA_POSITION_FRONT: 'front', CAMERA_POSITION_BACK: 'back' }, ImageRotation: { ROTATION_90: 90, ROTATION_180: 180, ROTATION_270: 270 } } },
+    '@kit.ArkUI': { display: { getDefaultDisplaySync: () => ({ rotation: 0 }), on() {}, off() {} } },
     'libxmax_video.so': { default: {
       createFrameReceiver(_width, _height, listener) {
         callback = listener;
@@ -97,7 +97,7 @@ test('CameraFrameOutput forwards native CPU snapshots and processing time into p
   let delivered = 0;
   const output = CameraFrameOutput.create({
     createPreviewOutput: () => ({ getPreviewRotation: () => 90 })
-  }, { size: { width: 1920, height: 1440 } }, () => delivered++);
+  }, { size: { width: 1920, height: 1440 } }, 'back', () => delivered++);
   output.configure(f.format, 30);
   callback(new ArrayBuffer(6), 2, 2, 1000, undefined, 5, 0, 0, 'libyuv (NEON enabled)', 100, 1000);
   f.time(2000);

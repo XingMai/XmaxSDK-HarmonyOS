@@ -277,6 +277,7 @@ export class CameraController {
     const output: CameraFrameOutput = CameraFrameOutput.create(
       this.platformManager,
       profile,
+      device.cameraPosition,
       (frame: VideoFrame): void => this.handleFrame(frame, generation),
       (error: XmaxError): void => this.errorListener(error)
     );

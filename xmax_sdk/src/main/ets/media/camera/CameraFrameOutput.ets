@@ -27,20 +27,32 @@ export class CameraFrameOutput {
   readonly output: camera.PreviewOutput;
   private readonly receiver: NativeFrameReceiver;
   private readonly statistics: CameraFrameStatistics;
+  private readonly position: camera.CameraPosition;
+  private videoFormat: RealtimeVideoFormat | null = null;
+  private captureFrameRate: number = 0;
+  private rotation: VideoRotation = VideoRotation.ROTATION_0;
+  private isListeningForDisplayChanges: boolean = false;
+  private isReleased: boolean = false;
+  private readonly displayChangeListener = (displayId: number): void => {
+    this.handleDisplayChange(displayId);
+  };
 
   private constructor(
     output: camera.PreviewOutput,
     receiver: NativeFrameReceiver,
-    statistics: CameraFrameStatistics
+    statistics: CameraFrameStatistics,
+    position: camera.CameraPosition
   ) {
     this.output = output;
     this.receiver = receiver;
     this.statistics = statistics;
+    this.position = position;
   }
 
   static create(
     manager: camera.CameraManager,
     profile: camera.Profile,
+    position: camera.CameraPosition,
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
   ): CameraFrameOutput {
@@ -85,7 +97,8 @@ export class CameraFrameOutput {
       return new CameraFrameOutput(
         output,
         receiver,
-        statistics
+        statistics,
+        position
       );
     } catch (error) {
       receiver.release();
@@ -98,8 +111,24 @@ export class CameraFrameOutput {
     videoFormat: RealtimeVideoFormat,
     captureFrameRate: number
   ): void {
-    const rotation: VideoRotation = this.currentRotation();
-    this.statistics.restart();
+    if (this.isReleased) {
+      return;
+    }
+    if (!this.isListeningForDisplayChanges) {
+      display.on('change', this.displayChangeListener);
+      this.isListeningForDisplayChanges = true;
+    }
+    const rotation: VideoRotation = this.rotationForDisplay(
+      display.getDefaultDisplaySync().rotation * 90
+    );
+    this.configureNative(videoFormat, captureFrameRate, rotation);
+  }
+
+  private configureNative(
+    videoFormat: RealtimeVideoFormat,
+    captureFrameRate: number,
+    rotation: VideoRotation
+  ): void {
     this.receiver.configure(
       videoFormat.width,
       videoFormat.height,
@@ -107,9 +136,45 @@ export class CameraFrameOutput {
       videoFormat.fps,
       captureFrameRate
     );
+    this.videoFormat = videoFormat;
+    this.captureFrameRate = captureFrameRate;
+    this.rotation = rotation;
+    this.statistics.restart();
+  }
+
+  private handleDisplayChange(displayId: number): void {
+    const videoFormat: RealtimeVideoFormat | null = this.videoFormat;
+    if (this.isReleased || videoFormat === null) {
+      return;
+    }
+    try {
+      const currentDisplay: display.Display = display.getDefaultDisplaySync();
+      if (currentDisplay.id !== displayId) {
+        return;
+      }
+      const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
+      if (rotation !== this.rotation) {
+        this.configureNative(videoFormat, this.captureFrameRate, rotation);
+      }
+    } catch (error) {
+      this.logError('更新相机帧旋转角度', error);
+    }
   }
 
   async release(): Promise<void> {
+    if (this.isReleased) {
+      return;
+    }
+    this.isReleased = true;
+    this.videoFormat = null;
+    if (this.isListeningForDisplayChanges) {
+      this.isListeningForDisplayChanges = false;
+      try {
+        display.off('change', this.displayChangeListener);
+      } catch (error) {
+        this.logError('移除相机屏幕变化监听', error);
+      }
+    }
     try {
       await this.output.release();
     } catch (error) {
@@ -193,11 +258,15 @@ export class CameraFrameOutput {
     }
   }
 
-  private currentRotation(): VideoRotation {
-    const displayRotation: number = display.getDefaultDisplaySync().rotation * 90;
-    const rotation: camera.ImageRotation = this.output.getPreviewRotation(
+  private rotationForDisplay(displayRotation: number): VideoRotation {
+    let rotation: number = this.output.getPreviewRotation(
       displayRotation
     );
+    // 原始前置帧在横屏时需补偿 180°，使后续 RTC 水平镜像保持正确方向。
+    if (this.position === camera.CameraPosition.CAMERA_POSITION_FRONT &&
+      (displayRotation === 90 || displayRotation === 270)) {
+      rotation = (rotation + 180) % 360;
+    }
 
     switch (rotation) {
       case camera.ImageRotation.ROTATION_90:
