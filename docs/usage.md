@@ -439,8 +439,10 @@ Unavailable OS or device information is reported as `unknown`. No application
 configuration is required. Runtime metadata is added to API headers, without
 changing API request bodies.
 
-Generation task IDs use `task-harmonyos-` followed by the full 16 UUID bytes encoded
-as 22 unpadded Base64URL characters. Room events use that complete task ID as their
-`uid`. During image and video generation, each outgoing video frame carries UTF-8
-SEI in the form `<task-id>?index=<frame-index>`, with the zero-based frame index
-reset for each generation task. Incoming SEI without an index remains supported.
+Generation task IDs use `task-<id>?os=harmonyos`, where `<id>` contains the full
+16 UUID bytes encoded as 22 unpadded Base64URL characters. Room events use that
+complete task ID as their `uid`. During camera, image, and video generation, each
+outgoing video frame carries UTF-8 SEI in the form
+`task-<id>?os=harmonyos&index=<frame-index>`, with the zero-based frame index reset
+for each generation task. Incoming SEI containing the complete task ID without
+an index remains supported.

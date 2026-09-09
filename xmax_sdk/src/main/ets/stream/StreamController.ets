@@ -46,7 +46,7 @@ class GenerationTask {
 
   /** @returns 当前帧的任务标识和帧序号，并将序号推进到下一帧。 */
   nextSeiData(): Uint8Array {
-    const message: string = `${this.id}?index=${this.frameIndex}`;
+    const message: string = `${this.id}&index=${this.frameIndex}`;
     this.frameIndex += 1;
     return new util.TextEncoder().encodeInto(message);
   }
@@ -343,14 +343,14 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.resolveGenerationStart(taskId);
   }
 
-  /** 判断 SEI 是否属于当前任务；兼容不带帧序号的旧格式。 */
+  /** 判断 SEI 是否属于当前任务；同时接受完整任务 ID 和追加帧序号的格式。 */
   private matchesTaskSei(message: string, taskId: string): boolean {
     const value: string = message.trim();
     if (value === taskId) {
       return true;
     }
 
-    const prefix: string = `${taskId}?index=`;
+    const prefix: string = `${taskId}&index=`;
     if (!value.startsWith(prefix)) {
       return false;
     }

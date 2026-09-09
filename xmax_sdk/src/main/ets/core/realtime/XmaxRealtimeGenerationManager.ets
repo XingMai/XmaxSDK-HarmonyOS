@@ -13,7 +13,7 @@ import { StreamControlling } from '../../stream/StreamControlling';
 type GenerationValidity = () => void;
 type GenerationConfirmationWait = (confirmation: Promise<void>) => Promise<void>;
 
-const TASK_ID_PREFIX: string = `task-${RUNTIME_PLATFORM}-`;
+const TASK_ID_PREFIX: string = 'task-';
 
 /** 协调生成信令、远端结果确认、条件更新和交互任务。 */
 export class XmaxRealtimeGenerationManager {
@@ -138,7 +138,7 @@ export class XmaxRealtimeGenerationManager {
     this.stop(taskId);
   }
 
-  /** @returns 平台前缀加完整 UUID 字节的无填充 Base64URL，与 iOS 编码规则一致。 */
+  /** @returns task- 前缀加完整 UUID 字节的无填充 Base64URL，并以 os 查询参数标识平台。 */
   private static createTaskId(): string {
     const uuid: string = util.generateRandomUUID(true).replace(/-/g, '');
     const bytes: Uint8Array = new Uint8Array(16);
@@ -148,7 +148,7 @@ export class XmaxRealtimeGenerationManager {
 
     const encoded: string = new util.Base64Helper().encodeToStringSync(bytes)
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    return TASK_ID_PREFIX + encoded;
+    return `${TASK_ID_PREFIX}${encoded}?os=${RUNTIME_PLATFORM}`;
   }
 
 }
