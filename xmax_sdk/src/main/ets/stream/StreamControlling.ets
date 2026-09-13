@@ -10,6 +10,9 @@ import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 /** 定义流层向 Core 和其他业务层暴露的统一能力。 */
 export interface StreamControlling {
 
+  /** 当前远端播放音量（0～1），按 RTC 百分比精度返回。 */
+  readonly remoteAudioVolume: number;
+
   /** 设置远端播放音量（0～1），未订阅时缓存到后续订阅。 */
   setRemoteAudioVolume(volume: number): void;
 

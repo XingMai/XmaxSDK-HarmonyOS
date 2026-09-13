@@ -183,6 +183,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /** @inheritdoc */
+  get localAudioVolume(): number {
+    return this.mediaController.localAudioVolume;
+  }
+
+  /** @inheritdoc */
   async setLocalAudioVolume(volume: number): Promise<void> {
     try {
       this.validateAudioVolume(volume);
@@ -190,6 +195,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     } catch (error) {
       throw this.reportError(XmaxError.from(error));
     }
+  }
+
+  /** @inheritdoc */
+  get remoteAudioVolume(): number {
+    return this.streamController.remoteAudioVolume;
   }
 
   /** @inheritdoc */
@@ -228,6 +238,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalCameraStream(videoFormat, position);
         token.ensureCurrent();
+        this.streamController.setRemoteAudioVolume(0);
         this.mediaController.setCameraPreviewReadyHandler((): void => {
           this.coordinator.localPreviewDidBecomeReady((): boolean =>
             stream.videoTrack !== undefined && this.mediaController.currentTrack === stream.videoTrack);
@@ -289,6 +300,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
+        token.ensureCurrent();
+        this.streamController.setRemoteAudioVolume(1);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;
       });
@@ -321,6 +334,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalImageStream(source, videoFormat);
+        token.ensureCurrent();
+        this.streamController.setRemoteAudioVolume(0);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;
       });

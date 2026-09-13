@@ -206,6 +206,13 @@ export class RealtimeViewModel {
       if (this.realtimeManager !== manager) {
         return;
       }
+      // SDK 创建视频流后会恢复远端默认音量，再应用用户的音量和静音设置。
+      if (localVideoPath.length > 0 && localImagePath.length === 0) {
+        await this.applyRemoteAudioVolume();
+        if (this.realtimeManager !== manager) {
+          return;
+        }
+      }
       this.localStream = localStream;
       this.state.localVideoTrack = localStream.videoTrack ?? null;
       if (localVideoPath.length > 0 || localImagePath.length > 0) {
@@ -693,6 +700,12 @@ export class RealtimeViewModel {
       stream = await creation(manager, resolvedPath);
       if (this.realtimeManager !== manager) {
         return;
+      }
+      if (!isImage) {
+        await this.applyRemoteAudioVolume();
+        if (this.realtimeManager !== manager) {
+          return;
+        }
       }
 
       this.localStream = stream;

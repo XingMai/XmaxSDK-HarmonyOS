@@ -9,6 +9,9 @@ import { InteractionControlling } from './interaction/InteractionControlling';
 /** 定义媒体层向 Core 暴露的统一能力。 */
 export interface MediaControlling extends InteractionControlling {
 
+  /** 当前本地视频预览音量（0～1），默认 0.45。 */
+  readonly localAudioVolume: number;
+
   /** @returns 当前活动的本地视频轨道；没有媒体来源时返回空值。 */
   readonly currentTrack: RealtimeVideoTrack | null;
 

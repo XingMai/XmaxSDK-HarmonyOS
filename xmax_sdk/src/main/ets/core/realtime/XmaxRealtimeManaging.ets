@@ -15,6 +15,12 @@ import { RealtimeConfiguration } from './RealtimeConfiguration';
 /** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
 export interface XmaxRealtimeManaging {
 
+  /** 当前配置的本地视频预览音量（0～1），默认 0.45；不受生成期间自动静音影响。 */
+  readonly localAudioVolume: number;
+
+  /** 当前远端播放音量（0～1），按 RTC 百分比精度返回；新建相机/图片流后为 0，视频流后为 1。 */
+  readonly remoteAudioVolume: number;
+
   /** 实时能力配置。 */
   readonly options: RealtimeConfiguration;
 
@@ -58,14 +64,15 @@ export interface XmaxRealtimeManaging {
    * 设置本地视频文件的预览音量，不影响上传的音频和生成期间的自动静音。
    * 可在创建本地流前设置，停止或替换视频后保留。
    * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
-   * @returns 设置完成后的 Promise；无效参数或设置失败时返回可恢复错误。
+   * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
    */
   setLocalAudioVolume(volume: number): Promise<void>;
 
   /**
-   * 设置远端生成结果的播放音量。可在连接前设置，后续音频订阅沿用该值。
-   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 1。
-   * @returns 设置完成后的 Promise；无效参数或设置失败时返回可恢复错误。
+   * 设置远端生成结果的播放音量，后续订阅和重连沿用该值。
+   * 新建相机/图片流成功后重置为 0，新建视频流成功后重置为 1；自定义音量请在创建流后设置。
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量；尚未创建本地流时为 1。
+   * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
    */
   setRemoteAudioVolume(volume: number): Promise<void>;
 

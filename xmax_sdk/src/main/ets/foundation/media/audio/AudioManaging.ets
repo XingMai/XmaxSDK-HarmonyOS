@@ -3,6 +3,9 @@ import { AudioFrame } from './AudioFrame';
 /** 定义本地 PCM 音频播放能力。 */
 export interface AudioManaging {
 
+  /** 当前配置的本地播放音量（0～1），默认 0.45。 */
+  readonly volume: number;
+
   /**
    * 创建并启动本地 PCM 音频播放器。
    *

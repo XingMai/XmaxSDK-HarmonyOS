@@ -11,7 +11,7 @@ export class AudioManager implements AudioManaging {
 
   // 平台资源
   private renderer: audio.AudioRenderer | null = null;
-  private volume: number = AudioManager.DEFAULT_VOLUME;
+  private configuredVolume: number = AudioManager.DEFAULT_VOLUME;
   private pendingOperation: Promise<void> = Promise.resolve();
 
   // 音频缓冲
@@ -54,7 +54,7 @@ export class AudioManager implements AudioManaging {
     );
 
     try {
-      await renderer.setVolume(this.volume);
+      await renderer.setVolume(this.configuredVolume);
       await renderer.start();
       this.renderer = renderer;
     } catch (error) {
@@ -109,12 +109,17 @@ export class AudioManager implements AudioManaging {
   }
 
   /** @inheritdoc */
+  get volume(): number {
+    return this.configuredVolume;
+  }
+
+  /** @inheritdoc */
   setVolume(volume: number): Promise<void> {
     return this.enqueueOperation(async (): Promise<void> => {
       if (this.renderer !== null) {
         await this.renderer.setVolume(volume);
       }
-      this.volume = volume;
+      this.configuredVolume = volume;
     });
   }
 

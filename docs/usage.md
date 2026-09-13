@@ -287,10 +287,12 @@ Control local video preview and generated audio separately, including before cre
 
 ```ts
 await realtime.setLocalAudioVolume(0.45); // Local video preview; default 45%.
-await realtime.setRemoteAudioVolume(1);   // Generated audio; default 100%.
+await realtime.setRemoteAudioVolume(1);   // Set after creating the local stream.
+const localVolume: number = realtime.localAudioVolume;
+const remoteVolume: number = realtime.remoteAudioVolume;
 ```
 
-Both methods accept finite values from `0` (mute) to `1` (original volume) and reject invalid values with `INVALID_CONFIGURATION`. Settings persist across stream replacement and reconnection on the same manager. Local volume does not affect uploaded audio or override automatic preview muting during generation. XLab's video input page exposes both sliders and a shared mute switch in its top bar.
+Both methods accept finite values from `0` (mute) to `1` (original volume) and reject invalid values with `INVALID_CONFIGURATION`. Local volume persists across stream replacement and reconnection on the same manager. Remote volume starts at `1`; successfully creating a camera or image stream resets it to `0`, while creating a video stream resets it to `1`. Set custom remote volume after creating the local stream; it persists through camera switching and reconnection. The remote getter returns the applied RTC percentage normalized to `0`–`1` (for example, `0.356` becomes `0.36`). Local volume does not affect uploaded audio or override automatic preview muting during generation. XLab's video input page exposes both sliders and a shared mute switch in its top bar.
 
 ## Switch cameras or change capture specifications
 

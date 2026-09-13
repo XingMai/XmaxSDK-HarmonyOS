@@ -46,8 +46,10 @@ test('local volume defaults to 45%, caches before playback and survives replacem
   const f = audioFixture();
   await f.audio.start();
   assert.equal(f.renderers[0].volume, 0.45);
+  assert.equal(f.audio.volume, 0.45);
   await f.audio.stop();
   await f.audio.setVolume(0.27);
+  assert.equal(f.audio.volume, 0.27);
   await f.audio.start();
   assert.deepEqual(f.events.at(-1), ['start', 0.27]);
   await f.audio.stop();
@@ -84,6 +86,7 @@ test('failed volume changes preserve the previous value and do not poison later 
   await f.audio.setVolume(0.3);
   f.renderers[0].failure = new Error('renderer volume failed');
   await assert.rejects(f.audio.setVolume(0.7), { message: 'renderer volume failed' });
+  assert.equal(f.audio.volume, 0.3);
   await f.audio.stop();
   await f.audio.start();
   assert.equal(f.renderers[1].volume, 0.3);
@@ -98,10 +101,12 @@ test('adjusting volume does not override generation preview mute or modify PCM f
   const frame = { data: new Uint8Array([1, 2, 3, 4]) }, output = new Uint8Array(4);
   f.audio.setPlaybackEnabled(false);
   await f.audio.setVolume(0.8);
+  assert.equal(f.audio.volume, 0.8);
   f.audio.write(frame);
   f.renderers[0].writeData(output.buffer);
   assert.deepEqual([...output], [0, 0, 0, 0]);
   f.audio.setPlaybackEnabled(true);
+  assert.equal(f.audio.volume, 0.8);
   f.audio.write(frame);
   f.renderers[0].writeData(output.buffer);
   assert.deepEqual([...output], [1, 2, 3, 4]);
@@ -128,7 +133,9 @@ test('local volume propagates through media controllers even before a video sour
   const { MediaController } = load('media/MediaController.ets');
   const media = new MediaController({}, {}, { pushLocalAudioFrame: frame => uploaded.push(frame) }, () => {});
   assert.equal(media.currentTrack, null);
+  assert.equal(media.localAudioVolume, 0.45);
   await media.setLocalAudioVolume(0.12);
+  assert.equal(media.localAudioVolume, 0.12);
   const audio = media.videoController.audioManager;
   await audio.start();
   assert.equal(f.renderers[0].volume, 0.12);
@@ -180,7 +187,9 @@ function streamFixture() {
 
 test('remote volume is cached before subscribing, rounded and retained after stop and reconnect', async () => {
   const f = streamFixture();
+  assert.equal(f.stream.remoteAudioVolume, 1);
   f.stream.setRemoteAudioVolume(0.356);
+  assert.equal(f.stream.remoteAudioVolume, 0.36);
   assert.deepEqual(f.events, []);
   await f.connect();
   await f.activate();
@@ -206,6 +215,7 @@ test('failed remote adjustment keeps the last successful volume for the next sub
   f.stream.setRemoteAudioVolume(0.4);
   f.rtc.failure = new Error('RTC volume failed');
   assert.throws(() => f.stream.setRemoteAudioVolume(0.8), { message: 'RTC volume failed' });
+  assert.equal(f.stream.remoteAudioVolume, 0.4);
   f.rtc.failure = null;
   f.stream.onRemoteAudioPublished('bot', false);
   f.stream.onRemoteAudioPublished('bot', true);

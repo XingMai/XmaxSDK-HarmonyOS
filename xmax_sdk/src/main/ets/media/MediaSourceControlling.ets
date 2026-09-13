@@ -4,6 +4,9 @@ import { MediaSourceConfiguration } from './MediaSourceConfiguration';
 /** 定义本地媒体文件的音视频输入能力。 */
 export interface MediaSourceControlling {
 
+  /** 当前本地视频预览音量（0～1），默认 0.45。 */
+  readonly localAudioVolume: number;
+
   /** 当前媒体文件是否包含可用音轨。 */
   readonly hasAudio: boolean;
 

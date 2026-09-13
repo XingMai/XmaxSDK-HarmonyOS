@@ -41,6 +41,7 @@ function managerFixture(modelName = 'x2.0-pro') {
     async stopLocalStream() { this.currentTrack = null; }
     owns(local) { return local.videoTrack !== undefined && Track.resolve(local.videoTrack) === this.currentTrack; }
     setLocalAudioPreviewEnabled(value) { calls.audio.push(value); }
+    get localAudioVolume() { return this.volume ?? 0.45; }
     async setLocalAudioVolume(value) { this.volume = value; }
     start(task, format) { this.interactionTask = task; this.interactionFormat = format; }
     stop() { this.interactionTask = null; }
@@ -54,6 +55,7 @@ function managerFixture(modelName = 'x2.0-pro') {
   }
   class FakeStream {
     constructor() { stream = this; this.currentGenerationTaskId = ''; }
+    get remoteAudioVolume() { return this.volume ?? 1; }
     setRemoteAudioVolume(value) { this.volume = value; }
     async connect(_connection, _audio, ensure) { ensure(); }
     async disconnect() { this.stopGeneration(''); }
@@ -1384,4 +1386,74 @@ test('local runtime failures use media cleanup scope even for former validation-
   assert.equal(f.media.currentTrack, null);
   assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
   assert.equal(f.manager.currentState.reason.error, original);
+});
+
+
+test('volume getters expose saved values and source creation selects the remote default before ready', async () => {
+  const f = managerFixture();
+  assert.equal(f.manager.localAudioVolume, 0.45);
+  assert.equal(f.manager.remoteAudioVolume, 1);
+  await f.manager.setLocalAudioVolume(0.23);
+  for (const [method, args, expected] of [
+    ['createLocalCameraStream', [], 0],
+    ['createLocalImageStream', ['image.png'], 0],
+    ['createLocalVideoStream', ['video.mp4'], 1]
+  ]) {
+    if (method !== 'createLocalCameraStream') {
+      f.media[method] = async () => new f.MediaStream('local');
+    }
+    await f.manager.setRemoteAudioVolume(0.67);
+    const readyVolumes = [];
+    f.manager.setStateListener(state => {
+      if (state.connectionState === f.State.READY) readyVolumes.push(f.manager.remoteAudioVolume);
+    });
+    await f.manager[method](...args);
+    assert.equal(f.manager.remoteAudioVolume, expected);
+    assert.deepEqual(readyVolumes, [expected]);
+    assert.equal(f.manager.localAudioVolume, 0.23);
+    if (method === 'createLocalCameraStream') {
+      await f.manager.setRemoteAudioVolume(0.4);
+      await f.manager.switchCamera();
+      assert.equal(f.manager.remoteAudioVolume, 0.4);
+    }
+    await f.manager.close();
+  }
+});
+
+for (const method of ['createLocalCameraStream', 'createLocalImageStream', 'createLocalVideoStream']) {
+  test(`${method} does not reset remote volume when preparation fails or is cancelled`, async () => {
+    for (const cancelled of [false, true]) {
+      const f = managerFixture(), gate = deferred();
+      await f.manager.setRemoteAudioVolume(0.6);
+      f.media[method] = async () => { await gate.promise; return new f.MediaStream('local'); };
+      const preparing = outcome(f.manager[method]());
+      await settle();
+      if (cancelled) {
+        const closing = f.manager.close();
+        gate.resolve();
+        await closing;
+      } else {
+        gate.reject(new f.XmaxError(f.Code.MEDIA_ERROR, 'prepare failed'));
+      }
+      assert.ok((await preparing).error);
+      assert.equal(f.manager.remoteAudioVolume, 0.6);
+    }
+  });
+}
+
+test('XLab restores video volume after SDK creation defaults, including mute and file replacement', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  f.media.createLocalVideoStream = async () => new f.MediaStream('local');
+  f.media.stopLocalVideoStream = async () => {};
+  await vm.setRemoteAudioVolume(0.7);
+  await vm.connect({}, 'video.mp4');
+  assert.equal(f.manager.remoteAudioVolume, 0.7);
+  await vm.setAudioMuted(true);
+  await vm.changeLocalVideo('next.mp4');
+  assert.equal(f.manager.remoteAudioVolume, 0);
+  await vm.setAudioMuted(false);
+  assert.equal(f.manager.remoteAudioVolume, 0.7);
+  await vm.suspend();
+  await vm.resume({});
+  assert.equal(f.manager.remoteAudioVolume, 0.7);
 });

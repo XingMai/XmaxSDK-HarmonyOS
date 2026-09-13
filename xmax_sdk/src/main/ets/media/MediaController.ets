@@ -278,6 +278,11 @@ export class MediaController implements MediaControlling {
   }
 
   /** @inheritdoc */
+  get localAudioVolume(): number {
+    return this.videoController.localAudioVolume;
+  }
+
+  /** @inheritdoc */
   async setLocalAudioVolume(volume: number): Promise<void> {
     await this.videoController.setLocalAudioVolume(volume);
   }

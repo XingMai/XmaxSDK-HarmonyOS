@@ -205,6 +205,11 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /** @inheritdoc */
+  get localAudioVolume(): number {
+    return this.audioManager.volume;
+  }
+
+  /** @inheritdoc */
   async setLocalAudioVolume(volume: number): Promise<void> {
     await this.audioManager.setVolume(volume);
   }
