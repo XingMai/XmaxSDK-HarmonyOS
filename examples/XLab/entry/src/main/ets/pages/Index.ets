@@ -172,45 +172,49 @@ struct ModelRegistryCard {
       .border({ width: 1, color: '#12FFFFFF' })
 
       Divider()
+        .strokeWidth(1)
         .margin({ top: 12, bottom: 4 })
         .color('#18FFFFFF')
 
-      ForEach(XLabModelSelection.OPTIONS, (option: XLabModelOption) => {
-        Row() {
-          Text('◆')
-            .fontSize(7 * FEED_FONT_SCALE)
-            .fontColor('#8EF0C8')
+      Column({ space: 4 }) {
+        ForEach(XLabModelSelection.OPTIONS, (option: XLabModelOption) => {
+          Row({ space: 10 }) {
+            Text('◆')
+              .fontSize(7 * FEED_FONT_SCALE)
+              .fontColor('#8EF0C8')
 
-          Column() {
-            Text(option.title.toUpperCase())
-              .fontSize(13 * FEED_FONT_SCALE)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#F0F2F5')
+            Column() {
+              Text(option.title.toUpperCase())
+                .fontSize(13 * FEED_FONT_SCALE)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#F0F2F5')
 
-            Text(option.symbol)
-              .margin({ top: 3 })
-              .fontSize(8 * FEED_FONT_SCALE)
-              .fontColor('#70FFFFFF')
+              Text(option.symbol)
+                .margin({ top: 3 })
+                .fontSize(8 * FEED_FONT_SCALE)
+                .fontColor('#70FFFFFF')
+            }
+            .alignItems(HorizontalAlign.Start)
+
+            Blank()
+
+            if (this.selectedModel === option.model) {
+              ConsoleTag({ label: this.text('active') })
+            }
           }
-          .margin({ left: 10 })
-          .alignItems(HorizontalAlign.Start)
-
-          Blank()
-
-          if (this.selectedModel === option.model) {
-            ConsoleTag({ label: this.text('active') })
-          }
-        }
-        .width('100%')
-        .height(56)
-        .padding({ left: 10, right: 8 })
-        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : Color.Transparent)
-        .border({ width: this.selectedModel === option.model ? 1 : 0, color: '#298EF0C8' })
-        .borderRadius(10)
-        .onClick((): void => {
-          this.onSelect(option.model);
-        })
-      }, (option: XLabModelOption): string => option.model)
+          .width('100%')
+          .height(56)
+          .padding({ left: 10, right: 8 })
+          .backgroundColor(this.selectedModel === option.model ?
+            'rgba(142, 240, 200, 0.063)' : 'rgba(255, 255, 255, 0.025)')
+          .border({ width: this.selectedModel === option.model ? 1 : 0, color: '#298EF0C8' })
+          .borderRadius(10)
+          .onClick((): void => {
+            this.onSelect(option.model);
+          })
+        }, (option: XLabModelOption): string => option.model)
+      }
+      .width('100%')
     }
     .width('100%')
     .padding(18)
