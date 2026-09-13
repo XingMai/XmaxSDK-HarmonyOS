@@ -21,7 +21,6 @@ function fixture(position = 'back') {
         if (offFailure) throw new Error('off failed');
       }
     } },
-    CameraFrameStatistics: { CameraFrameStatistics: class { restart() {} } },
     XmaxLogger: { XmaxLogger: { error: message => errors.push(message) } },
     'libxmax_video.so': { default: {
       createFrameReceiver: () => ({

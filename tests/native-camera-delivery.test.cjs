@@ -26,14 +26,12 @@ test('native direct delivery keeps retained output frames independent', () => {
     const executable = path.join(directory, 'delivery');
     fs.writeFileSync(harness, `
 #include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
-#include <time.h>
 #include <vector>
 #include "video_frame_converter.h"
 ${definition(source, 'struct FramePacket {')};
@@ -46,8 +44,6 @@ struct TestTransformer {
     std::fill_n(output, c.targetWidth * c.targetHeight * 3 / 2, y[0]);
   }
   xmax::VideoFrameTransformConfiguration lastConfiguration{};
-  const char* backend() const { return "test"; }
-  xmax::VideoFrameConversionTiming timing() const { return {}; }
 };
 class ReceiverHarness {
  public:
@@ -55,7 +51,6 @@ class ReceiverHarness {
   void ReportError(const std::string&) { assert(false); }
   void Dispatch(FramePacket* packet) { retained.emplace_back(packet); }
   TestTransformer transformer_;
-  std::atomic<int32_t> droppedFrameCount_{0}, skippedFrameCount_{0};
   std::vector<std::unique_ptr<FramePacket>> retained;
 };
 int main() {
@@ -75,8 +70,6 @@ int main() {
     assert(receiver.transformer_.lastConfiguration.targetWidth == packet->width);
     assert(receiver.transformer_.lastConfiguration.targetHeight == packet->height);
     assert(packet->dataLength == 72);
-    assert(packet->processingMilliseconds + 0.000001 >=
-           packet->allocationMilliseconds);
   }
   for (int i = 0; i < 61; ++i) {
     const auto& packet = receiver.retained[i];

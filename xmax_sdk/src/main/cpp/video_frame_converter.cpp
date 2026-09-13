@@ -3,14 +3,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <vector>
 
-#include "libyuv/cpu_id.h"
 #include "libyuv/planar_functions.h"
 #include "libyuv/rotate.h"
 #include "libyuv/scale.h"
@@ -264,8 +262,6 @@ namespace xmax {
 class VideoFrameTransformer::Impl {
  public:
   std::unique_ptr<LibyuvTransformPlan> plan;
-  VideoFrameConversionTiming timing;
-  const char* backend = "uninitialized";
 };
 
 VideoFrameTransformer::VideoFrameTransformer()
@@ -273,20 +269,11 @@ VideoFrameTransformer::VideoFrameTransformer()
 
 VideoFrameTransformer::~VideoFrameTransformer() = default;
 
-const char* VideoFrameTransformer::backend() const {
-  return impl_->backend;
-}
-
-const VideoFrameConversionTiming& VideoFrameTransformer::timing() const {
-  return impl_->timing;
-}
-
 void VideoFrameTransformer::TransformNv21ToNv12(
     const uint8_t* sourceLuma,
     const uint8_t* sourceChroma,
     uint8_t* destination,
     const VideoFrameTransformConfiguration& configuration) {
-  impl_->timing = {};
   const auto validLength = [](int32_t length) {
     return length >= 2 && length <= 32768 && length % 2 == 0;
   };
@@ -306,30 +293,13 @@ void VideoFrameTransformer::TransformNv21ToNv12(
         internal::MakeVideoFrameTransformGeometry(configuration));
   }
 
-  const auto splitStartedAt = std::chrono::steady_clock::now();
   SplitSourceChroma(sourceChroma, impl_->plan.get());
-  const auto scaleStartedAt = std::chrono::steady_clock::now();
   if (!ScaleFrame(sourceLuma, destination, impl_->plan.get())) {
     throw std::runtime_error("libyuv frame scaling failed");
   }
-  const auto rotationStartedAt = std::chrono::steady_clock::now();
   if (!RotateFrame(destination, impl_->plan.get())) {
     throw std::runtime_error("libyuv frame rotation failed");
   }
-  const auto mergeStartedAt = std::chrono::steady_clock::now();
   WriteNv12Chroma(destination, *impl_->plan);
-  const auto finishedAt = std::chrono::steady_clock::now();
-  impl_->timing.uvSplitMilliseconds = std::chrono::duration<double, std::milli>(
-      scaleStartedAt - splitStartedAt).count();
-  impl_->timing.scaleMilliseconds = std::chrono::duration<double, std::milli>(
-      rotationStartedAt - scaleStartedAt).count();
-  impl_->timing.rotationMilliseconds = rotation == 0 ? 0.0 :
-      std::chrono::duration<double, std::milli>(mergeStartedAt - rotationStartedAt).count();
-  impl_->timing.uvMergeMilliseconds = std::chrono::duration<double, std::milli>(
-      finishedAt - mergeStartedAt).count();
-  impl_->timing.valid = true;
-  // libyuv supplies its own C implementation when NEON is unavailable.
-  impl_->backend = libyuv::TestCpuFlag(libyuv::kCpuHasNEON) ?
-      "libyuv (NEON enabled)" : "libyuv (C)";
 }
 }  // namespace xmax

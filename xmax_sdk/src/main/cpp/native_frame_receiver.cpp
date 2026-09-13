@@ -10,7 +10,6 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <time.h>
 #include <unordered_map>
 
 #include "multimedia/image_framework/image/image_native.h"
@@ -27,15 +26,7 @@ struct FramePacket {
   int32_t width = 0;
   int32_t height = 0;
   int64_t timestampUs = 0;
-  double processingMilliseconds = 0.0;
-  double allocationMilliseconds = 0.0;
-  xmax::VideoFrameConversionTiming conversionTiming;
-  int32_t droppedFrames = 0;
-  int32_t skippedFrames = 0;
   std::string error;
-  const char* conversionBackend = "unknown";
-  double threadCpuMilliseconds = -1.0;
-  double sampleTimeMilliseconds = 0.0;
 };
 
 struct OutputConfiguration {
@@ -216,16 +207,8 @@ class NativeFrameReceiver {
       return;
     }
 
-    if (frameReceiver->frameAvailable_.exchange(true)) {
-      frameReceiver->droppedFrameCount_.fetch_add(1);
-    }
+    frameReceiver->frameAvailable_.store(true);
     frameReceiver->frameCondition_.notify_one();
-  }
-
-  static void SetTimingValue(napi_env env, napi_value object, const char* name, double milliseconds) {
-    napi_value value = nullptr;
-    napi_create_double(env, milliseconds, &value);
-    napi_set_named_property(env, object, name, value);
   }
 
   static void CallListener(
@@ -244,7 +227,7 @@ class NativeFrameReceiver {
 
     napi_value undefined = nullptr;
     napi_get_undefined(env, &undefined);
-    napi_value arguments[12];
+    napi_value arguments[5];
     for (auto& argument : arguments) {
       argument = undefined;
     }
@@ -269,33 +252,6 @@ class NativeFrameReceiver {
         env,
         static_cast<double>(packet->timestampUs),
         &arguments[3]);
-    if (!hasError) {
-      napi_create_double(
-          env,
-          packet->processingMilliseconds,
-          &arguments[5]);
-      napi_create_int32(
-          env,
-          packet->droppedFrames,
-          &arguments[6]);
-      napi_create_int32(
-          env,
-          packet->skippedFrames,
-          &arguments[7]);
-      napi_create_string_utf8(env, packet->conversionBackend, NAPI_AUTO_LENGTH, &arguments[8]);
-      if (packet->threadCpuMilliseconds >= 0.0) {
-        napi_create_double(env, packet->threadCpuMilliseconds, &arguments[9]);
-      }
-      napi_create_double(env, packet->sampleTimeMilliseconds, &arguments[10]);
-      napi_create_object(env, &arguments[11]);
-      SetTimingValue(env, arguments[11], "allocationMilliseconds", packet->allocationMilliseconds);
-      if (packet->conversionTiming.valid) {
-        SetTimingValue(env, arguments[11], "uvSplitMilliseconds", packet->conversionTiming.uvSplitMilliseconds);
-        SetTimingValue(env, arguments[11], "scaleMilliseconds", packet->conversionTiming.scaleMilliseconds);
-        SetTimingValue(env, arguments[11], "rotationMilliseconds", packet->conversionTiming.rotationMilliseconds);
-        SetTimingValue(env, arguments[11], "uvMergeMilliseconds", packet->conversionTiming.uvMergeMilliseconds);
-      }
-    }
     if (hasError) {
       napi_create_string_utf8(
           env,
@@ -355,7 +311,6 @@ class NativeFrameReceiver {
     }
 
     if (!ShouldProcessFrame(outputConfiguration)) {
-      skippedFrameCount_.fetch_add(1);
       if (OH_ImageNative_Release(image) != IMAGE_SUCCESS) {
         ReportError("释放 Native 相机帧失败");
       }
@@ -451,14 +406,11 @@ class NativeFrameReceiver {
     const size_t targetLumaLength =
         static_cast<size_t>(outputConfiguration.width) *
         static_cast<size_t>(outputConfiguration.height);
-    const auto processingStartedAt = std::chrono::steady_clock::now();
     auto packet = std::make_unique<FramePacket>();
     packet->dataLength = targetLumaLength + targetLumaLength / 2;
     // The converter writes every output byte; avoid a redundant zero fill.
     // Each delivery owns its storage until the external ArrayBuffer is finalized.
     packet->data.reset(new uint8_t[packet->dataLength]);
-    packet->allocationMilliseconds = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - processingStartedAt).count();
     packet->width = outputConfiguration.width;
     packet->height = outputConfiguration.height;
     packet->timestampUs = timestamp > 0 ? timestamp / 1000 :
@@ -480,22 +432,6 @@ class NativeFrameReceiver {
         packet->data.get(),
         configuration);
 
-    packet->processingMilliseconds =
-        std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - processingStartedAt).count();
-    packet->conversionBackend = transformer_.backend();
-    packet->conversionTiming = transformer_.timing();
-    // Read on the capture worker, not on the ArkTS callback thread. Cumulative
-    // samples include work spent on skipped/dropped frames between deliveries.
-    timespec cpuTime{};
-    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuTime) == 0) {
-      packet->threadCpuMilliseconds = static_cast<double>(cpuTime.tv_sec) * 1000.0 +
-          static_cast<double>(cpuTime.tv_nsec) / 1000000.0;
-    }
-    packet->sampleTimeMilliseconds = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
-    packet->droppedFrames = droppedFrameCount_.exchange(0);
-    packet->skippedFrames = skippedFrameCount_.exchange(0);
     Dispatch(packet.release());
   }
 
@@ -546,10 +482,6 @@ class NativeFrameReceiver {
   void Dispatch(FramePacket* packet) {
     if (listener_ == nullptr || napi_call_threadsafe_function(
         listener_, packet, napi_tsfn_nonblocking) != napi_ok) {
-      if (packet->error.empty() && packet->data.get() != nullptr && packet->dataLength > 0) {
-        droppedFrameCount_.fetch_add(packet->droppedFrames + 1);
-        skippedFrameCount_.fetch_add(packet->skippedFrames);
-      }
       delete packet;
     }
   }
@@ -561,8 +493,6 @@ class NativeFrameReceiver {
 
   std::atomic<bool> running_{false};
   std::atomic<bool> frameAvailable_{false};
-  std::atomic<int32_t> droppedFrameCount_{0};
-  std::atomic<int32_t> skippedFrameCount_{0};
   std::thread worker_;
   std::mutex frameMutex_;
   std::condition_variable frameCondition_;

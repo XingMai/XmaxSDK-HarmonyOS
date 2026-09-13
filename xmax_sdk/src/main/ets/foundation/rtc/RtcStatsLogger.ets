@@ -4,8 +4,7 @@ import {
   NetworkQualityStats,
   PerformanceAlarmReason,
   RemoteStreamStats,
-  SourceWantedData,
-  SysStats
+  SourceWantedData
 } from '@bytertc/volcenginertc';
 import { XmaxLogger } from '../logging/XmaxLogger';
 import { XmaxLoggerOption } from '../logging/XmaxLoggerOption';
@@ -90,35 +89,6 @@ export class RtcStatsLogger {
     XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
-  static logSystemStats(stats: SysStats): void {
-    if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
-      return;
-    }
-    const cpuMetrics: string[] = RtcStatsLogger.formatCpuMetrics(stats);
-    const memoryMetrics: string[] = RtcStatsLogger.formatMemoryMetrics(stats);
-    const metrics: string[] = [];
-
-    if (cpuMetrics.length > 0) {
-      metrics.push(`CPU：${cpuMetrics.join('，')}`);
-    }
-
-    if (memoryMetrics.length > 0) {
-      metrics.push(`内存：${memoryMetrics.join('，')}`);
-    }
-
-    if (metrics.length === 0) {
-      return;
-    }
-
-    const lines: string[] = ['性能统计'];
-    metrics.forEach((metric: string, index: number): void => {
-      const branch: string = index === metrics.length - 1 ? '└─' : '├─';
-      lines.push(`${branch} ${metric}`);
-    });
-
-    XmaxLogger.debug(lines.join('\n'), RTC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
-  }
-
   static logPerformanceAlarm(
     reason: PerformanceAlarmReason,
     data: SourceWantedData
@@ -167,42 +137,6 @@ export class RtcStatsLogger {
     metrics.push(`带宽 ${bandwidth}`);
 
     return `指标：${metrics.join('，')}`;
-  }
-
-  private static formatCpuMetrics(stats: SysStats): string[] {
-    const metrics: string[] = [];
-
-    if (RtcStatsLogger.isFiniteNumber(stats.cpu_app_usage)) {
-      metrics.push(`应用 ${(stats.cpu_app_usage * 100).toFixed(2)}%`);
-    }
-
-    if (RtcStatsLogger.isFiniteNumber(stats.cpu_total_usage)) {
-      metrics.push(`系统 ${(stats.cpu_total_usage * 100).toFixed(2)}%`);
-    }
-
-    if (RtcStatsLogger.isFiniteNumber(stats.cpu_cores)) {
-      metrics.push(`${stats.cpu_cores} 核`);
-    }
-
-    return metrics;
-  }
-
-  private static formatMemoryMetrics(stats: SysStats): string[] {
-    const metrics: string[] = [];
-
-    if (RtcStatsLogger.isFiniteNumber(stats.memory_usage)) {
-      metrics.push(`应用 ${stats.memory_usage.toFixed(0)} MB`);
-    }
-
-    if (RtcStatsLogger.isFiniteNumber(stats.memory_ratio)) {
-      metrics.push(`应用占用 ${stats.memory_ratio.toFixed(2)}%`);
-    }
-
-    if (RtcStatsLogger.isFiniteNumber(stats.total_memory_ratio)) {
-      metrics.push(`系统占用 ${stats.total_memory_ratio.toFixed(2)}%`);
-    }
-
-    return metrics;
   }
 
   private static networkQualityName(quality: NetworkQuality): string {

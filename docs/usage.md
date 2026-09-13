@@ -467,7 +467,7 @@ const client = new XmaxClient(
 | --- | --- |
 | `NONE` | No SDK logs (default) |
 | `BUSINESS` | API, Room, Realtime, Storage and other operation logs, including errors |
-| `PERFORMANCE` | Generation startup timing, RTC stream statistics, network quality, CPU/memory and performance alarms |
+| `PERFORMANCE` | Generation startup timing, RTC stream statistics, network quality and performance alarms |
 | `ALL` | Both business and performance logs |
 
 This is an SDK-global setting: the most recently created client's

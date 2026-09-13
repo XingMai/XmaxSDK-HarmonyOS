@@ -15,14 +15,6 @@ struct VideoFrameTransformConfiguration {
   int32_t targetHeight;
 };
 
-struct VideoFrameConversionTiming {
-  bool valid = false;
-  double uvSplitMilliseconds = 0.0;
-  double scaleMilliseconds = 0.0;
-  double rotationMilliseconds = 0.0;
-  double uvMergeMilliseconds = 0.0;
-};
-
 class VideoFrameTransformer {
  public:
   VideoFrameTransformer();
@@ -38,10 +30,6 @@ class VideoFrameTransformer {
       const uint8_t* sourceChroma,
       uint8_t* destination,
       const VideoFrameTransformConfiguration& configuration);
-
-  // Backend used by the most recent frame; for capture performance diagnostics.
-  const char* backend() const;
-  const VideoFrameConversionTiming& timing() const;
 
  private:
   class Impl;

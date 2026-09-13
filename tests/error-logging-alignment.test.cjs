@@ -194,7 +194,6 @@ test('RTC statistics/alarm logging is performance-only and does no formatting wh
     RtcStatsLogger.logLocalStreamStats(inaccessible);
     RtcStatsLogger.logRemoteStreamStats(inaccessible);
     RtcStatsLogger.logNetworkQuality(inaccessible, []);
-    RtcStatsLogger.logSystemStats(inaccessible);
     RtcStatsLogger.logPerformanceAlarm(0, inaccessible);
   });
   f.Logger.configure(f.Option.PERFORMANCE);

@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -87,23 +86,9 @@ std::vector<uint8_t> Convert(VideoFrameTransformer& converter, const Input& inpu
                              const VideoFrameTransformConfiguration& c) {
   const size_t size = c.targetWidth * c.targetHeight * 3 / 2;
   std::vector<uint8_t> guarded(size + 64, 0xdd);
-  const auto startedAt = std::chrono::steady_clock::now();
   converter.TransformNv21ToNv12(input.y.data(), input.vu.data(), guarded.data() + 32, c);
-  const double elapsedMs = std::chrono::duration<double, std::milli>(
-      std::chrono::steady_clock::now() - startedAt).count();
-  const auto& timing = converter.timing();
-  assert(timing.valid);
-  double stageTotal = 0;
-  for (double value : {timing.uvSplitMilliseconds, timing.scaleMilliseconds,
-                       timing.rotationMilliseconds, timing.uvMergeMilliseconds}) {
-    assert(std::isfinite(value) && value >= 0);
-    stageTotal += value;
-  }
-  assert(stageTotal <= elapsedMs + 0.000001);
-  if (c.rotation == 0) assert(timing.rotationMilliseconds == 0);
   assert(std::all_of(guarded.begin(), guarded.begin() + 32, [](uint8_t v) { return v == 0xdd; }));
   assert(std::all_of(guarded.end() - 32, guarded.end(), [](uint8_t v) { return v == 0xdd; }));
-  assert(std::string(converter.backend()).find("libyuv") == 0);
   std::vector<uint8_t> output(guarded.begin() + 32, guarded.end() - 32);
   assert(output == CopyingReference(input, c));
   // Different initial bytes must produce identical output. This detects every
@@ -169,7 +154,7 @@ void CheckScalingAndReconfiguration() {
     libyuv::MaskCpuFlags(1);
     VideoFrameTransformer reference;
     auto scalarLibyuv = Convert(reference, input, c);
-    assert(std::string(reference.backend()) == "libyuv (C)");
+    assert(!libyuv::TestCpuFlag(libyuv::kCpuHasNEON));
     for (size_t i = 0; i < accelerated.size(); ++i) {
       assert(std::abs(int(accelerated[i]) - int(scalarLibyuv[i])) <= 2);
     }
@@ -203,7 +188,7 @@ void CheckInvalidConfiguration() {
     } catch (const std::invalid_argument&) {
       rejected = true;
     }
-    assert(rejected && !converter.timing().valid);
+    assert(rejected);
     assert(std::all_of(output.begin(), output.end(), [](uint8_t value) { return value == 0xcd; }));
   };
   expectInvalid(valid, nullptr, input.vu.data(), output.data());

@@ -21,7 +21,6 @@ import {
   RTCRoomConfig,
   SourceWantedData,
   StreamIndex,
-  SysStats,
   UserInfo,
   VideoCanvas,
   VideoApplyRotation,
@@ -147,13 +146,6 @@ export class RtcManager implements RtcManaging {
           this.remoteVideoFrameListener?.(stream);
         }
       });
-    engine.on('onSysStats', (stats: SysStats): void => {
-      if (this.engine !== engine) {
-        return;
-      }
-
-      RtcStatsLogger.logSystemStats(stats);
-    });
     engine.on(
       'onPerformanceAlarms',
       (
@@ -195,7 +187,6 @@ export class RtcManager implements RtcManaging {
           engine.off('onSEIMessageReceived');
           engine.off('onFirstRemoteVideoFrameRendered');
           engine.off('onRemoteVideoFrame');
-          engine.off('onSysStats');
           engine.off('onPerformanceAlarms');
         } finally {
           await RtcEngineManager.release(lease);

@@ -16,7 +16,6 @@ import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { CameraFrameStatistics } from './CameraFrameStatistics';
 
 export type CameraFrameListener = (frame: VideoFrame) => void;
 
@@ -25,7 +24,6 @@ export class CameraFrameOutput {
   // 平台资源
   readonly output: camera.PreviewOutput;
   private readonly receiver: NativeFrameReceiver;
-  private readonly statistics: CameraFrameStatistics;
   private readonly position: camera.CameraPosition;
   private videoFormat: RealtimeVideoFormat | null = null;
   private captureFrameRate: number = 0;
@@ -39,12 +37,10 @@ export class CameraFrameOutput {
   private constructor(
     output: camera.PreviewOutput,
     receiver: NativeFrameReceiver,
-    statistics: CameraFrameStatistics,
     position: camera.CameraPosition
   ) {
     this.output = output;
     this.receiver = receiver;
-    this.statistics = statistics;
     this.position = position;
   }
 
@@ -55,7 +51,6 @@ export class CameraFrameOutput {
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
   ): CameraFrameOutput {
-    const statistics: CameraFrameStatistics = new CameraFrameStatistics();
     const receiver: NativeFrameReceiver = xmaxVideoNative.createFrameReceiver(
       profile.size.width,
       profile.size.height,
@@ -64,26 +59,16 @@ export class CameraFrameOutput {
         width: number,
         height: number,
         timestampUs: number,
-        error?: string,
-        processingMilliseconds?: number,
-        _droppedFrames?: number,
-        _skippedFrames?: number,
-        _conversionBackend?: string,
-        threadCpuMilliseconds?: number,
-        sampleTimeMilliseconds?: number
+        error?: string
       ): void => {
         CameraFrameOutput.handleNativeFrame(
-          statistics,
           listener,
           errorListener,
           data,
           width,
           height,
           timestampUs,
-          error,
-          processingMilliseconds,
-          threadCpuMilliseconds,
-          sampleTimeMilliseconds
+          error
         );
       }
     );
@@ -96,7 +81,6 @@ export class CameraFrameOutput {
       return new CameraFrameOutput(
         output,
         receiver,
-        statistics,
         position
       );
     } catch (error) {
@@ -149,7 +133,6 @@ export class CameraFrameOutput {
     this.videoFormat = videoFormat;
     this.captureFrameRate = captureFrameRate;
     this.rotation = rotation;
-    this.statistics.restart();
   }
 
   private handleDisplayChange(displayId: number): void {
@@ -201,17 +184,13 @@ export class CameraFrameOutput {
   }
 
   private static handleNativeFrame(
-    statistics: CameraFrameStatistics,
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener,
     data: ArrayBuffer | undefined,
     width: number,
     height: number,
     timestampUs: number,
-    error?: string,
-    processingMilliseconds?: number,
-    threadCpuMilliseconds?: number,
-    sampleTimeMilliseconds?: number
+    error?: string
   ): void {
     if (error !== undefined) {
       XmaxLogger.error(
@@ -233,12 +212,6 @@ export class CameraFrameOutput {
     if (data === undefined || width <= 0 || height <= 0) {
       return;
     }
-
-    statistics.record(
-      processingMilliseconds ?? 0,
-      threadCpuMilliseconds,
-      sampleTimeMilliseconds
-    );
 
     const lumaLength: number = width * height;
     const frame: VideoFrame = new BufferVideoFrame(
