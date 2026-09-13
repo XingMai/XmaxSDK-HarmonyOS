@@ -26,15 +26,15 @@
     },
     {
       "name": "storage_title",
-      "value": "Storage"
+      "value": "Storage Service"
     },
     {
       "name": "read_file_failed",
-      "value": "Unable to read the file. Please try again."
+      "value": "Couldn't read the file. Please try again."
     },
     {
       "name": "upload_failed",
-      "value": "Upload failed. Check your API key and network, then try again."
+      "value": "Upload failed. Check your API Key and network, then try again."
     },
     {
       "name": "url_copied",
@@ -54,19 +54,19 @@
     },
     {
       "name": "storage_heading",
-      "value": "Upload local media with XmaxSDK"
+      "value": "Upload media with XmaxSDK"
     },
     {
       "name": "storage_description",
-      "value": "Choose an image or video and upload it to get a reusable URL."
+      "value": "Choose an image or video and upload it to get a ready-to-use URL."
     },
     {
       "name": "file_preview",
-      "value": "File preview"
+      "value": "File Preview"
     },
     {
       "name": "upload_again",
-      "value": "Replace"
+      "value": "Reselect"
     },
     {
       "name": "select_file",
@@ -74,7 +74,7 @@
     },
     {
       "name": "video_safety_unavailable",
-      "value": "Safety checks are unavailable for video uploads"
+      "value": "Safety checks aren't available for videos."
     },
     {
       "name": "opening_library",
@@ -82,11 +82,11 @@
     },
     {
       "name": "select_image_video",
-      "value": "Select an image or video"
+      "value": "Tap to select an image or video"
     },
     {
       "name": "with_safety_check",
-      "value": "Includes a content safety check"
+      "value": "Includes a safety check"
     },
     {
       "name": "uploading_image",
@@ -98,11 +98,11 @@
     },
     {
       "name": "checking_upload",
-      "value": "Uploading and checking"
+      "value": "Checking…"
     },
     {
       "name": "safety_upload",
-      "value": "Upload with safety check"
+      "value": "Upload & check"
     },
     {
       "name": "uploading",
@@ -118,11 +118,11 @@
     },
     {
       "name": "upload_result",
-      "value": "Upload result"
+      "value": "Upload Result"
     },
     {
       "name": "upload_duration",
-      "value": "Upload duration"
+      "value": "Upload time"
     },
     {
       "name": "url_placeholder",
@@ -142,7 +142,7 @@
     },
     {
       "name": "read_photo_failed",
-      "value": "Unable to read the photo. Please try again."
+      "value": "Couldn't read the photo. Please try again."
     },
     {
       "name": "flip",
@@ -150,7 +150,7 @@
     },
     {
       "name": "flip_camera",
-      "value": "Flip camera"
+      "value": "Switch camera"
     },
     {
       "name": "album",
@@ -162,7 +162,7 @@
     },
     {
       "name": "start_generation",
-      "value": "Start generation"
+      "value": "Tap to generate"
     },
     {
       "name": "category_charx",
@@ -178,11 +178,11 @@
     },
     {
       "name": "category_mox",
-      "value": "Touch Animation"
+      "value": "Animate"
     },
     {
       "name": "category_dimx",
-      "value": "Summon"
+      "value": "Companion"
     },
     {
       "name": "category_free",
@@ -190,7 +190,7 @@
     },
     {
       "name": "touch_instruction",
-      "value": "Drag on the image to guide the character"
+      "value": "Drag on the video to guide the character"
     },
     {
       "name": "add_reference",
@@ -198,11 +198,11 @@
     },
     {
       "name": "orientation_changed",
-      "value": "Screen orientation changed. Generation disconnected. Please start again."
+      "value": "Screen orientation changed. The realtime connection was closed. Please restart generation."
     },
     {
       "name": "media_not_ready",
-      "value": "Local preview is not ready"
+      "value": "Local media isn't ready yet. Please try again shortly."
     },
     {
       "name": "reference_not_ready",
@@ -218,7 +218,7 @@
     },
     {
       "name": "custom_reference",
-      "value": "Custom reference"
+      "value": "Custom reference image"
     },
     {
       "name": "reference_upload_retry",
@@ -230,11 +230,11 @@
     },
     {
       "name": "remove_reference",
-      "value": "Remove reference image"
+      "value": "Remove custom-mode reference image"
     },
     {
       "name": "submit_prompt",
-      "value": "Submit prompt"
+      "value": "Submit custom prompt"
     },
     {
       "name": "local_volume",
@@ -262,11 +262,11 @@
     },
     {
       "name": "unmute",
-      "value": "Unmute"
+      "value": "Unmute audio"
     },
     {
       "name": "mute_action",
-      "value": "Mute"
+      "value": "Mute audio"
     },
     {
       "name": "muted",
@@ -274,7 +274,7 @@
     },
     {
       "name": "sound_on",
-      "value": "Sound on"
+      "value": "On"
     },
     {
       "name": "loading",
@@ -294,15 +294,15 @@
     },
     {
       "name": "api_key_placeholder",
-      "value": "Enter your Xmax API key"
+      "value": "Enter your Xmax API Key"
     },
     {
       "name": "no_api_key",
-      "value": "Need an API key?"
+      "value": "Need an API Key?"
     },
     {
       "name": "apply_api_key",
-      "value": "Get one on the Xmax platform"
+      "value": "Get One At Xmax Open Platform"
     },
     {
       "name": "run",
@@ -314,51 +314,51 @@
     },
     {
       "name": "read_video_failed",
-      "value": "Unable to read the video. Please try again."
+      "value": "Couldn't read the video. Please try again."
     },
     {
       "name": "read_image_failed",
-      "value": "Unable to read the image. Please try again."
+      "value": "Couldn't read the image. Please try again."
     },
     {
       "name": "home_heading",
-      "value": "Real-time interactive video"
+      "value": "Realtime Interactive Video"
     },
     {
       "name": "home_description",
-      "value": "Choose an input to start real-time generation with XmaxSDK"
+      "value": "Experience streaming generation with XmaxSDK."
     },
     {
       "name": "choose_input",
-      "value": "Choose a media input"
+      "value": "Choose an input source"
     },
     {
       "name": "camera_pipeline",
-      "value": "Live camera"
+      "value": "Live Camera"
     },
     {
       "name": "camera_description",
-      "value": "Capture live camera frames to drive continuous video generation."
+      "value": "Generate video in real time from your camera."
     },
     {
       "name": "video_pipeline",
-      "value": "Video generation"
+      "value": "Video Pipeline"
     },
     {
       "name": "video_description",
-      "value": "Choose a local video to generate from its frames."
+      "value": "Transform a local video, frame by frame."
     },
     {
       "name": "image_pipeline",
-      "value": "Image generation"
+      "value": "Image Pipeline"
     },
     {
       "name": "image_description",
-      "value": "Choose an image and bring it to life."
+      "value": "Bring a local image to life with continuous motion."
     },
     {
       "name": "more_features",
-      "value": "More capabilities and integration examples"
+      "value": "More features and integration examples"
     },
     {
       "name": "extension_description",
@@ -366,15 +366,15 @@
     },
     {
       "name": "custom_trajectory",
-      "value": "Custom trajectories"
+      "value": "Custom Rendering"
     },
     {
       "name": "trajectory_description",
-      "value": "Draw interactive trails with a custom renderer."
+      "value": "Draw touch trails with a custom renderer."
     },
     {
       "name": "storage_card_description",
-      "value": "Upload an image or video to get a reusable URL"
+      "value": "Upload images or videos and get reusable URLs."
     },
     {
       "name": "back_playground",
@@ -386,7 +386,7 @@
     },
     {
       "name": "language_system",
-      "value": "System default"
+      "value": "Follow System"
     },
     {
       "name": "upload_progress",
@@ -406,11 +406,11 @@
     },
     {
       "name": "models_count",
-      "value": "{0} MODELS"
+      "value": "MODELS: {0}"
     },
     {
       "name": "active",
-      "value": "ACTIVE"
+      "value": "SELECTED"
     },
     {
       "name": "select",
@@ -438,11 +438,43 @@
     },
     {
       "name": "pipelines",
-      "value": "GENERATION PIPELINES"
+      "value": "REALTIME GENERATION PIPELINES"
     },
     {
       "name": "sdk_features",
       "value": "SDK FEATURES"
+    },
+    {
+      "name": "storage_pipeline",
+      "value": "STORAGE PIPELINE"
+    },
+    {
+      "name": "storage_local_file",
+      "value": "LOCAL FILE"
+    },
+    {
+      "name": "storage_remote_url",
+      "value": "REMOTE URL"
+    },
+    {
+      "name": "storage_type",
+      "value": "type"
+    },
+    {
+      "name": "storage_resolution",
+      "value": "resolution"
+    },
+    {
+      "name": "storage_size",
+      "value": "size"
+    },
+    {
+      "name": "storage_media_types",
+      "value": "IMAGE / VIDEO"
+    },
+    {
+      "name": "storage_success",
+      "value": "SUCCESS"
     }
   ]
 }

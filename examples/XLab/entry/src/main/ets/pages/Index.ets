@@ -13,6 +13,9 @@ import {
   XLabModelSelection
 } from '../modules/xlrealtime/config/XLabModelSelection';
 
+// 与 iOS FeedTypography.visualScale 保持一致；菜单使用原生菜单字号。
+const FEED_FONT_SCALE: number = 1.15;
+
 @Component
 struct ConsoleTag {
   @Prop label: string = '';
@@ -23,7 +26,7 @@ struct ConsoleTag {
     Text(this.label)
       .height(26)
       .padding({ left: 11, right: 11 })
-      .fontSize(9)
+      .fontSize(9 * FEED_FONT_SCALE)
       .fontWeight(FontWeight.Bold)
       .fontColor(this.tagColor)
       .letterSpacing(0.8)
@@ -43,15 +46,18 @@ struct RuntimeMetric {
     Column() {
       Text(this.label)
         .width('100%')
-        .fontSize(8)
+        .fontSize(8 * FEED_FONT_SCALE)
         .fontWeight(FontWeight.Bold)
         .fontColor('#62FFFFFF')
         .letterSpacing(1)
 
       Text(this.value)
         .width('100%')
+        .maxFontSize(12 * FEED_FONT_SCALE)
+        .minFontSize(12 * FEED_FONT_SCALE * 0.72)
+        .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
         .margin({ top: 7 })
-        .fontSize(12)
+        .fontSize(12 * FEED_FONT_SCALE)
         .fontWeight(FontWeight.Bold)
         .fontColor('#E8EDF5')
         .maxLines(1)
@@ -94,14 +100,14 @@ struct ModelRegistryCard {
     Column() {
       Row() {
         Text(this.text('choose_model'))
-          .fontSize(13)
+          .fontSize(13 * FEED_FONT_SCALE)
           .fontWeight(FontWeight.Bold)
           .fontColor('#E9EDF3')
 
         Blank()
 
         Text(XLabLocalization.format('models_count', [XLabModelSelection.OPTIONS.length.toString()], this.languageRevision))
-          .fontSize(8)
+          .fontSize(8 * FEED_FONT_SCALE)
           .fontColor('#70FFFFFF')
           .letterSpacing(0.8)
       }
@@ -110,7 +116,7 @@ struct ModelRegistryCard {
       Column() {
         Row() {
           Text('API KEY')
-            .fontSize(8)
+            .fontSize(8 * FEED_FONT_SCALE)
             .fontWeight(FontWeight.Bold)
             .fontColor('#7E8A9A')
             .letterSpacing(0.9)
@@ -131,9 +137,9 @@ struct ModelRegistryCard {
             onIconSrc: $r('app.media.api_key_hidden'),
             offIconSrc: $r('app.media.api_key_visible')
           })
-          .fontSize(10)
+          .fontSize(10 * FEED_FONT_SCALE)
           .fontColor('#D6DEE9')
-          .placeholderFont({ size: 10 })
+          .placeholderFont({ size: 10 * FEED_FONT_SCALE })
           .placeholderColor('#50607080')
           .backgroundColor('#66080C12')
           .borderRadius(10)
@@ -144,11 +150,11 @@ struct ModelRegistryCard {
 
         Row({ space: 4 }) {
           Text(this.text('no_api_key'))
-            .fontSize(9)
+            .fontSize(9 * FEED_FONT_SCALE)
             .fontColor('#60708090')
 
           Text(this.text('apply_api_key'))
-            .fontSize(9)
+            .fontSize(9 * FEED_FONT_SCALE)
             .fontColor('#A08EF0C8')
             .onClick((): void => {
               void this.openApiKeyApplicationPage();
@@ -172,35 +178,34 @@ struct ModelRegistryCard {
       ForEach(XLabModelSelection.OPTIONS, (option: XLabModelOption) => {
         Row() {
           Text('◆')
-            .fontSize(7)
-            .fontColor(this.selectedModel === option.model ? '#8EF0C8' : '#66FFFFFF')
+            .fontSize(7 * FEED_FONT_SCALE)
+            .fontColor('#8EF0C8')
 
           Column() {
-            Text(option.title)
-              .fontSize(13)
+            Text(option.title.toUpperCase())
+              .fontSize(13 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
-              .fontColor(this.selectedModel === option.model ? '#F0F2F5' : '#A8B0BC')
+              .fontColor('#F0F2F5')
 
             Text(option.symbol)
               .margin({ top: 3 })
-              .fontSize(8)
-              .fontColor(this.selectedModel === option.model ? '#70FFFFFF' : '#4FFFFFFF')
+              .fontSize(8 * FEED_FONT_SCALE)
+              .fontColor('#70FFFFFF')
           }
           .margin({ left: 10 })
           .alignItems(HorizontalAlign.Start)
 
           Blank()
 
-          ConsoleTag({
-            label: this.selectedModel === option.model ? this.text('active') : this.text('select'),
-            tagColor: this.selectedModel === option.model ? '#8EF0C8' : '#80FFFFFF',
-            tagBackground: this.selectedModel === option.model ? '#168EF0C8' : '#0AFFFFFF'
-          })
+          if (this.selectedModel === option.model) {
+            ConsoleTag({ label: this.text('active') })
+          }
         }
         .width('100%')
         .height(56)
         .padding({ left: 10, right: 8 })
-        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : '#00000000')
+        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : '#06FFFFFF')
+        .border({ width: this.selectedModel === option.model ? 1 : 0, color: '#298EF0C8' })
         .borderRadius(10)
         .onClick((): void => {
           this.onSelect(option.model);
@@ -257,7 +262,7 @@ struct PipelineCard {
 
       Text(this.sequence)
         .position({ right: 17, top: 5 })
-        .fontSize(54)
+        .fontSize(54 * FEED_FONT_SCALE)
         .fontWeight(FontWeight.Bold)
         .fontColor('#08FFFFFF')
 
@@ -272,7 +277,7 @@ struct PipelineCard {
               .shadow({ radius: 7, color: this.statusColor })
 
             Text(this.modeId)
-              .fontSize(9)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
               .fontColor('#9AA7B7')
               .letterSpacing(0.8)
@@ -282,11 +287,11 @@ struct PipelineCard {
 
           Row({ space: 6 }) {
             Text('●')
-              .fontSize(7)
+              .fontSize(7 * FEED_FONT_SCALE)
               .fontColor(this.statusColor)
 
             Text(this.status)
-              .fontSize(9)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
               .fontColor(this.statusColor)
               .letterSpacing(0.8)
@@ -302,22 +307,25 @@ struct PipelineCard {
         Text(this.title)
           .width('100%')
           .margin({ top: 17 })
-          .fontSize(21)
+          .fontSize(19 * FEED_FONT_SCALE)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F4F7FB')
 
         Text(this.subtitle)
           .width('100%')
           .margin({ top: 7 })
-          .fontSize(12)
+          .fontSize(11 * FEED_FONT_SCALE)
           .fontColor('#8E9AA9')
           .lineHeight(18)
-          .maxLines(2)
 
         Row() {
           Row() {
             Text(this.capability)
-              .fontSize(9)
+              .width('100%')
+              .maxFontSize(9 * FEED_FONT_SCALE)
+              .minFontSize(9 * FEED_FONT_SCALE * 0.78)
+              .heightAdaptivePolicy(TextHeightAdaptivePolicy.MIN_FONT_SIZE_FIRST)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Medium)
               .fontColor('#B8C3D1')
               .maxLines(1)
@@ -333,7 +341,7 @@ struct PipelineCard {
           if (this.isReady) {
             Row() {
               Text(this.text('run'))
-                .fontSize(11)
+                .fontSize(11 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#08110E')
             }
@@ -406,7 +414,7 @@ struct SdkFeatureCard {
 
       Text(this.watermark)
         .position({ right: 16, bottom: -9 })
-        .fontSize(45)
+        .fontSize(45 * FEED_FONT_SCALE)
         .fontWeight(FontWeight.Bold)
         .fontColor('#08FFFFFF')
         .letterSpacing(-2)
@@ -429,7 +437,7 @@ struct SdkFeatureCard {
               .shadow({ radius: 7, color: this.accentColor })
 
             Text(this.categoryLabel)
-              .fontSize(9)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
               .fontColor('#A99A8A')
               .letterSpacing(0.8)
@@ -440,7 +448,7 @@ struct SdkFeatureCard {
           Text(this.text('available'))
             .height(25)
             .padding({ left: 10, right: 10 })
-            .fontSize(8)
+            .fontSize(8 * FEED_FONT_SCALE)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.accentColor)
             .letterSpacing(0.7)
@@ -471,7 +479,7 @@ struct SdkFeatureCard {
                 .objectFit(ImageFit.Contain)
 
               Text(this.iconLabel)
-                .fontSize(6)
+                .fontSize(6 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.accentColor)
                 .letterSpacing(0.5)
@@ -482,16 +490,15 @@ struct SdkFeatureCard {
 
           Column() {
             Text(this.title)
-              .fontSize(16)
+              .fontSize(17 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
               .fontColor('#F4F7FB')
 
             Text(this.subtitle)
               .width('100%')
               .margin({ top: 5 })
-              .fontSize(10)
+              .fontSize(9.5 * FEED_FONT_SCALE)
               .fontColor('#81786F')
-              .maxLines(2)
           }
           .layoutWeight(1)
           .margin({ left: 13 })
@@ -501,7 +508,7 @@ struct SdkFeatureCard {
             .width(58)
             .height(34)
             .margin({ left: 10 })
-            .fontSize(11)
+            .fontSize(11 * FEED_FONT_SCALE)
             .fontWeight(FontWeight.Bold)
             .fontColor('#08110E')
             .textAlign(TextAlign.Center)
@@ -517,7 +524,7 @@ struct SdkFeatureCard {
             Text(tag)
               .height(24)
               .padding({ left: 9, right: 9 })
-              .fontSize(7)
+              .fontSize(7 * FEED_FONT_SCALE)
               .fontWeight(FontWeight.Bold)
               .fontColor(tag === this.highlightedTag ?
                 this.accentColor : '#A89A8B')
@@ -594,7 +601,7 @@ struct Index {
           MenuItem({ content: this.languageTitle(language) })
             .selected(this.selectedLanguage === language)
             .selectIcon($r('app.media.language_checkmark'))
-            .contentFont({ size: 16 })
+            .contentFont({ size: 17 })
             .contentFontColor('#FFFFFF')
             .backgroundColor(Color.Transparent)
             .onClick((): void => {
@@ -754,7 +761,7 @@ struct Index {
                   .rotate({ angle: 45 })
 
                 Text('X')
-                  .fontSize(12)
+                  .fontSize(12 * FEED_FONT_SCALE)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#07110D')
               }
@@ -763,14 +770,14 @@ struct Index {
 
               Column() {
                 Text('XMAXSDK')
-                  .fontSize(15)
+                  .fontSize(15 * FEED_FONT_SCALE)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#F2F4F7')
                   .letterSpacing(1.8)
 
                 Text('EXAMPLE / HARMONYOS')
                   .margin({ top: 3 })
-                  .fontSize(8)
+                  .fontSize(8 * FEED_FONT_SCALE)
                   .fontColor('#60FFFFFF')
                   .letterSpacing(1)
               }
@@ -818,7 +825,7 @@ struct Index {
                   .borderRadius(1)
 
                 Text('XMAX PLAYGROUND')
-                  .fontSize(9)
+                  .fontSize(9 * FEED_FONT_SCALE)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#8EF0C8')
                   .letterSpacing(1.2)
@@ -827,7 +834,7 @@ struct Index {
               Text(this.text('home_heading'))
                 .width('100%')
                 .margin({ top: 18 })
-                .fontSize(24)
+                .fontSize(22 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#F5F7FB')
                 .letterSpacing(-0.3)
@@ -835,7 +842,7 @@ struct Index {
               Text(this.text('home_description'))
                 .width('100%')
                 .margin({ top: 12 })
-                .fontSize(12)
+                .fontSize(11 * FEED_FONT_SCALE)
                 .fontColor('#91A0B2')
             }
             .width('100%')
@@ -857,7 +864,7 @@ struct Index {
           Row({ space: 8 }) {
             RuntimeMetric({ label: this.text('runtime'), value: 'HarmonyOS' })
             RuntimeMetric({ label: this.text('min_api'), value: '18+' })
-            RuntimeMetric({ label: this.text('latest_model'), value: 'X2.0' })
+            RuntimeMetric({ label: this.text('latest_model'), value: XLabModelSelection.OPTIONS[XLabModelSelection.OPTIONS.length - 1].model.toUpperCase() })
           }
           .width('100%')
           .margin({ top: 12 })
@@ -877,16 +884,17 @@ struct Index {
           Row() {
             Column() {
               Text(this.text('pipelines'))
-                .fontSize(10)
+                .fontSize(13 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#C6D0DD')
                 .letterSpacing(1.1)
 
               Text(this.text('choose_input'))
                 .margin({ top: 5 })
-                .fontSize(11)
+                .fontSize(11 * FEED_FONT_SCALE)
                 .fontColor('#667384')
             }
+            .width('100%')
             .alignItems(HorizontalAlign.Start)
           }
           .width('100%')
@@ -939,16 +947,17 @@ struct Index {
           Row() {
             Column() {
               Text(this.text('sdk_features'))
-                .fontSize(10)
+                .fontSize(13 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#C6D0DD')
                 .letterSpacing(1.1)
 
               Text(this.text('more_features'))
                 .margin({ top: 5 })
-                .fontSize(11)
+                .fontSize(11 * FEED_FONT_SCALE)
                 .fontColor('#667384')
             }
+            .width('100%')
             .alignItems(HorizontalAlign.Start)
           }
           .width('100%')
@@ -1008,13 +1017,13 @@ struct Index {
 
             Text('Copyright © 2026 XMAX.AI PTE. LTD. All rights reserved.')
               .margin({ top: 18 })
-              .fontSize(9)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontColor('#4FFFFFFF')
               .textAlign(TextAlign.Center)
 
             Text('sdk@xmax.ai')
               .margin({ top: 7 })
-              .fontSize(9)
+              .fontSize(9 * FEED_FONT_SCALE)
               .fontColor('#688EF0C8')
               .letterSpacing(0.4)
               .textAlign(TextAlign.Center)

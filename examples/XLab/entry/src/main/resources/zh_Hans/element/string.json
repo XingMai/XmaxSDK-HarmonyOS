@@ -198,11 +198,11 @@
     },
     {
       "name": "orientation_changed",
-      "value": "屏幕方向已切换，生成已断开，请重新开始"
+      "value": "屏幕方向已切换，已断开实时连接，请重新开始生成"
     },
     {
       "name": "media_not_ready",
-      "value": "本地画面尚未就绪"
+      "value": "本地媒体尚未准备好，请稍后重试。"
     },
     {
       "name": "reference_not_ready",
@@ -230,11 +230,11 @@
     },
     {
       "name": "remove_reference",
-      "value": "删除参考图"
+      "value": "删除自定义模式参考图"
     },
     {
       "name": "submit_prompt",
-      "value": "提交指令"
+      "value": "提交自定义模式描述"
     },
     {
       "name": "local_volume",
@@ -326,7 +326,7 @@
     },
     {
       "name": "home_description",
-      "value": "选择输入源，启动 XmaxSDK 流式生成链路"
+      "value": "体验 XmaxSDK 流式生成链路"
     },
     {
       "name": "choose_input",
@@ -406,11 +406,11 @@
     },
     {
       "name": "models_count",
-      "value": "{0} 个模型"
+      "value": "模型：{0}"
     },
     {
       "name": "active",
-      "value": "已选"
+      "value": "已选择"
     },
     {
       "name": "select",
@@ -426,7 +426,7 @@
     },
     {
       "name": "runtime",
-      "value": "运行环境"
+      "value": "运行平台"
     },
     {
       "name": "min_api",
@@ -438,11 +438,43 @@
     },
     {
       "name": "pipelines",
-      "value": "生成管线"
+      "value": "实时生成管线"
     },
     {
       "name": "sdk_features",
-      "value": "SDK 能力"
+      "value": "SDK 功能"
+    },
+    {
+      "name": "storage_pipeline",
+      "value": "存储管线"
+    },
+    {
+      "name": "storage_local_file",
+      "value": "本地文件"
+    },
+    {
+      "name": "storage_remote_url",
+      "value": "远程地址"
+    },
+    {
+      "name": "storage_type",
+      "value": "类型"
+    },
+    {
+      "name": "storage_resolution",
+      "value": "分辨率"
+    },
+    {
+      "name": "storage_size",
+      "value": "文件大小"
+    },
+    {
+      "name": "storage_media_types",
+      "value": "图片 / 视频"
+    },
+    {
+      "name": "storage_success",
+      "value": "成功"
     }
   ]
 }

@@ -407,7 +407,7 @@ struct StoragePage {
                   .backgroundColor('#F5B86C')
                   .borderRadius(3)
 
-                Text('STORAGE PIPELINE')
+                Text(this.text('storage_pipeline'))
                   .fontSize(9)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#F5B86C')
@@ -443,7 +443,7 @@ struct StoragePage {
               .lineHeight(17)
 
             Row() {
-              Text('LOCAL FILE')
+              Text(this.text('storage_local_file'))
                 .fontSize(8)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#9A8B7A')
@@ -463,7 +463,7 @@ struct StoragePage {
                 .fontSize(9)
                 .fontColor('#66513A')
 
-              Text('REMOTE URL')
+              Text(this.text('storage_remote_url'))
                 .fontSize(8)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#9A8B7A')
@@ -555,7 +555,7 @@ struct StoragePage {
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#9D9185')
 
-                Text('IMAGE  /  VIDEO')
+                Text(this.text('storage_media_types'))
                   .margin({ top: 5 })
                   .fontSize(8)
                   .fontColor('#62584E')
@@ -595,7 +595,7 @@ struct StoragePage {
 
             Row({ space: 8 }) {
               Column() {
-                Text('type')
+                Text(this.text('storage_type'))
                   .fontSize(8)
                   .fontColor('#6E6257')
 
@@ -614,7 +614,7 @@ struct StoragePage {
               .borderRadius(10)
 
               Column() {
-                Text('resolution')
+                Text(this.text('storage_resolution'))
                   .fontSize(8)
                   .fontColor('#6E6257')
 
@@ -634,7 +634,7 @@ struct StoragePage {
               .borderRadius(10)
 
               Column() {
-                Text('size')
+                Text(this.text('storage_size'))
                   .fontSize(8)
                   .fontColor('#6E6257')
 
@@ -782,7 +782,7 @@ struct StoragePage {
 
                 Blank()
 
-                Text('SUCCESS')
+                Text(this.text('storage_success'))
                   .width(66)
                   .height(28)
                   .fontSize(9)
@@ -810,7 +810,7 @@ struct StoragePage {
               .width('100%')
               .margin({ top: 15 })
 
-              Text('REMOTE URL')
+              Text(this.text('storage_remote_url'))
                 .width('100%')
                 .margin({ top: 14 })
                 .fontSize(8)

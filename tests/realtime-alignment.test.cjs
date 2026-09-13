@@ -1171,7 +1171,7 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     assert.equal(f.viewModel.state.isGenerationStarting, false);
     assert.equal(f.viewModel.state.isMoxGenerationActive, false);
     assert.equal(f.viewModel.state.errorMessage, '');
-    assert.deepEqual(messages, ['屏幕方向已切换，生成已断开，请重新开始']);
+    assert.deepEqual(messages, ['屏幕方向已切换，已断开实时连接，请重新开始生成']);
     f.rotateCamera();
     assert.equal(messages.length, 1);
 
