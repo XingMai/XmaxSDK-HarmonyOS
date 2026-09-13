@@ -21,7 +21,6 @@ export class EncodingController implements EncodingControlling {
   constructor(rtcManager: RtcManaging) {
     this.rtcManager = rtcManager;
   }
-
   configure(videoFormat: RealtimeVideoFormat): void {
     videoFormat.validate();
     let minimum: number;

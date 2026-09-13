@@ -16,17 +16,17 @@ import { RealtimeConfiguration } from './RealtimeConfiguration';
 /** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
 export interface XmaxRealtimeManaging {
 
-  /** 当前配置的本地视频预览音量（0～1），默认 0.45；不受生成期间自动静音影响。 */
-  readonly localAudioVolume: number;
-
-  /** 当前远端播放音量（0～1），按 RTC 百分比精度返回；新建相机/图片流后为 0，视频流后为 1。 */
-  readonly remoteAudioVolume: number;
-
   /** 实时能力配置。 */
   readonly options: RealtimeConfiguration;
 
   /** 当前实时连接状态。 */
   readonly currentState: RealtimeState;
+
+  /** 当前配置的本地视频预览音量（0～1），默认 0.45；不受生成期间自动静音影响。 */
+  readonly localAudioVolume: number;
+
+  /** 当前远端播放音量（0～1），按 RTC 百分比精度返回；新建相机/图片流后为 0，视频流后为 1。 */
+  readonly remoteAudioVolume: number;
 
   /**
    * 设置实时生命周期状态监听器，包含本地准备、预览就绪及 state.reason 中的结束/失败原因。
