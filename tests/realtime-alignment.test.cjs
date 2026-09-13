@@ -45,6 +45,8 @@ function managerFixture(modelName = 'x2.0-pro') {
     async setLocalAudioVolume(value) { this.volume = value; }
     start(task, format) { this.interactionTask = task; this.interactionFormat = format; }
     stop() { this.interactionTask = null; }
+    startMicrophoneCapture() {}
+    stopMicrophoneCapture() {}
     prepareForClose() {}
     setCameraPreviewReadyHandler(listener) { this.readyHandler = listener; if (!holdPreview) listener?.(); }
     async switchCamera() {
@@ -1597,3 +1599,75 @@ test('a local media failure during explicit disconnect still releases media and 
   assert.equal(f.manager.currentState.reason.error, original);
   assert.equal(f.media.currentTrack, null);
 });
+
+function enableMicrophoneFixture(f) {
+  const events = [];
+  const create = f.media.createLocalCameraStream.bind(f.media);
+  f.media.createLocalCameraStream = async (format, position, useMicrophone) => {
+    f.media.hasAudio = useMicrophone;
+    events.push(['prepare', useMicrophone]);
+    return create(format, position);
+  };
+  f.media.startMicrophoneCapture = () => { events.push(['start']); f.media.capturing = true; };
+  f.media.stopMicrophoneCapture = () => { events.push(['stop']); f.media.capturing = false; };
+  const connect = f.stream.connect.bind(f.stream);
+  f.stream.connect = async (connection, audio, ensure) => {
+    assert.equal(f.media.capturing, true);
+    events.push(['connect', audio]);
+    return connect(connection, audio, ensure);
+  };
+  return events;
+}
+
+test('camera useMicrophone reaches connection audio publication and stops on disconnect/restarts on reconnect', async () => {
+  const f = managerFixture(), events = enableMicrophoneFixture(f);
+  const local = await f.manager.createLocalCameraStream(undefined, undefined, true);
+  assert.deepEqual(events, [['prepare', true]]);
+  await f.manager.startGeneration(local, new f.Context('first'));
+  assert.deepEqual(events, [['prepare', true], ['start'], ['connect', true]]);
+  await f.manager.disconnect();
+  assert.equal(f.media.capturing, false);
+  assert.ok(f.media.currentTrack);
+  await f.manager.startGeneration(local, new f.Context('second'));
+  assert.deepEqual(events.slice(-3), [['stop'], ['start'], ['connect', true]]);
+  await f.manager.close();
+  assert.equal(f.media.capturing, false);
+});
+
+test('microphone start failure rejects connection with the original error and stops partial capture', async () => {
+  const f = managerFixture();
+  enableMicrophoneFixture(f);
+  const local = await f.manager.createLocalCameraStream(undefined, undefined, true);
+  const original = new f.XmaxError(f.Code.RTC_ERROR, 'microphone startup failed');
+  f.media.startMicrophoneCapture = () => { f.media.capturing = true; throw original; };
+  await assert.rejects(f.manager.startGeneration(local, new f.Context('test')), error => error === original);
+  assert.equal(f.media.capturing, false);
+  assert.deepEqual(f.calls.sessions, []);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentState.reason.error, original);
+  await f.manager.close();
+});
+
+for (const action of ['disconnect', 'close', 'failure']) {
+  test(`microphone stops when a pending connection ends with ${action}`, async () => {
+    const f = managerFixture();
+    enableMicrophoneFixture(f);
+    const local = await f.manager.createLocalCameraStream(undefined, undefined, true);
+    const gate = f.holdSession();
+    const running = outcome(f.manager.startGeneration(local, new f.Context('test')));
+    await settle();
+    assert.equal(f.media.capturing, true);
+    let stopping;
+    if (action === 'failure') {
+      gate.reject(new f.XmaxError(f.Code.NETWORK_ERROR, 'session failed'));
+    } else {
+      stopping = f.manager[action]();
+      gate.resolve();
+    }
+    assert.ok((await running).error);
+    await stopping;
+    assert.equal(f.media.capturing, false);
+    assert.equal(f.calls.starts.length, 0);
+    await f.manager.close();
+  });
+}

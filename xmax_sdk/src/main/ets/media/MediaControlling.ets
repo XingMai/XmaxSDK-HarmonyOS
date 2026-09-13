@@ -48,12 +48,20 @@ export interface MediaControlling extends InteractionControlling {
    *
    * @param videoFormat 相机采集与 RTC 编码使用的视频格式。
    * @param position 首次启用的摄像头位置。
+   * @param useMicrophone 是否使用麦克风；默认 false，创建时检查权限，连接时开始采集。
    * @returns 包含本地相机视频轨道的媒体流。
    */
   createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
+    position: CameraPosition,
+    useMicrophone?: boolean
   ): Promise<RealtimeMediaStream>;
+
+  /** 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。 */
+  startMicrophoneCapture(): void;
+
+  /** 停止相机麦克风采集，保留重连所需的配置。 */
+  stopMicrophoneCapture(): void;
 
   /** @returns 当前相机来源停止并释放完成后的 Promise。 */
   stopLocalCameraStream(): Promise<void>;

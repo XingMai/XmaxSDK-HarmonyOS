@@ -225,7 +225,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /** 创建并启动本地相机流。 */
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat = this.options.model.defaultCameraVideoFormat,
-    position: CameraPosition = CameraPosition.FRONT
+    position: CameraPosition = CameraPosition.FRONT,
+    useMicrophone: boolean = false
   ): Promise<RealtimeMediaStream> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
@@ -235,7 +236,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
-        const stream = await this.mediaController.createLocalCameraStream(videoFormat, position);
+        const stream = await this.mediaController.createLocalCameraStream(videoFormat, position, useMicrophone);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
         this.streamController.setRemoteAudioVolume(0);
@@ -376,6 +377,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.generationManager.reset();
     this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTING), token);
+    this.mediaController.startMicrophoneCapture();
+    token.ensureCurrent();
     const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
       this.options.model.name, videoFormat, this.mediaController.hasAudio,
       (): boolean => token.isCurrent,
@@ -567,6 +570,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /** 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。 */
   private async cleanup(scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> {
     this.renderController.stopRemoteVideoFrameDelivery();
+    if (scope >= RealtimeTerminationScope.CONNECTION) {
+      try {
+        this.mediaController.stopMicrophoneCapture();
+      } catch (error) {
+        this.logCleanupFailure('停止麦克风采集失败 (Failed to Stop Microphone Capture)', error);
+      }
+    }
     try {
       if (scope >= RealtimeTerminationScope.CONNECTION) {
         this.generationManager.reset(taskId);

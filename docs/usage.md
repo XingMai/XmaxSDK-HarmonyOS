@@ -33,6 +33,26 @@ const localStream = await realtime.createLocalCameraStream();
 // For explicit capture settings, pass a RealtimeVideoFormat and CameraPosition.
 ```
 
+Camera microphone input is optional and defaults to `false`. To enable it:
+
+```ts
+import { CameraPosition } from '@xmax/sdk';
+
+const localStream = await realtime.createLocalCameraStream(
+  undefined, CameraPosition.FRONT, true
+);
+```
+
+Declare `ohos.permission.MICROPHONE` in the application's permission configuration.
+The SDK checks microphone permission when creating the camera stream and rejects
+with `MICROPHONE_PERMISSION_DENIED` if permission is unavailable. Local preview
+alone does not capture microphone audio. Connecting starts RTC's internal audio
+capture and publishes it alongside CameraKit video; disconnecting, connection
+failure, or closing stops capture. Reconnecting reuses the microphone setting.
+Camera switching preserves it. Microphone audio is not played back locally, and
+`localAudioVolume` continues to control file-video preview audio only.
+
+
 For `x2.0`, still images and local video files can also be used as input sources:
 
 ```ts

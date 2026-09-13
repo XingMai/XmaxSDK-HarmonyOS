@@ -239,38 +239,38 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /**
-   * 将音频输入切换为外部音频源并启动 RTC 音频采集通道。
-   *
-   * @returns 无返回值。
-   */
-  startExternalAudioSource(): void {
-    const engine: RTCEngine = this.requireEngine();
-    this.checkResult(
-      engine.setAudioSourceType(
-        AudioSourceType.kAudioSourceTypeExternal
-      ),
-      'setAudioSourceType'
-    );
-
-    this.checkResult(
-      engine.startAudioCapture(),
-      'startAudioCapture'
-    );
+  /** @inheritdoc */
+  startMicrophoneCapture(): void {
+    this.startAudioSource(AudioSourceType.kAudioSourceTypeInternal);
   }
 
-  /**
-   * 停止 RTC 外部音频采集通道。
-   *
-   * @returns 无返回值。
-   */
+  /** @inheritdoc */
+  stopMicrophoneCapture(): void {
+    this.stopAudioCapture();
+  }
+
+  /** @inheritdoc */
+  startExternalAudioSource(): void {
+    this.startAudioSource(AudioSourceType.kAudioSourceTypeExternal);
+  }
+
+  /** @inheritdoc */
   stopExternalAudioSource(): void {
+    this.stopAudioCapture();
+  }
+
+  /** 显式选择音频来源，避免相机麦克风与文件 PCM 输入互相沿用配置。 */
+  private startAudioSource(source: AudioSourceType): void {
+    const engine: RTCEngine = this.requireEngine();
+    this.checkResult(engine.setAudioSourceType(source), 'setAudioSourceType');
+    this.checkResult(engine.startAudioCapture(), 'startAudioCapture');
+  }
+
+  /** 停止当前音频采集通道；引擎已经销毁时无需操作。 */
+  private stopAudioCapture(): void {
     const engine: RTCEngine | null = this.engine;
     if (engine !== null) {
-      this.checkResult(
-        engine.stopAudioCapture(),
-        'stopAudioCapture'
-      );
+      this.checkResult(engine.stopAudioCapture(), 'stopAudioCapture');
     }
   }
 

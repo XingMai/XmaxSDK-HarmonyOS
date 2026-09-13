@@ -54,6 +54,8 @@ export class CameraController {
 
   private activeTrack: RealtimeVideoTrack | null = null;
   private acceptsFrames: boolean = false;
+  private storedUseMicrophone: boolean = false;
+  private isMicrophoneCapturing: boolean = false;
   private captureGeneration: number = 0;
 
   private previewReadyListener: CameraPreviewReadyHandler | null = null;
@@ -83,6 +85,11 @@ export class CameraController {
     return this.activeTrack;
   }
 
+  /** 当前相机是否配置为在连接时采集麦克风。 */
+  get useMicrophone(): boolean {
+    return this.activeTrack !== null && this.storedUseMicrophone;
+  }
+
   /** 设置摄像头预览就绪监听器。 */
   setPreviewReadyListener(
     listener: CameraPreviewReadyHandler | null
@@ -94,7 +101,8 @@ export class CameraController {
   /** 创建并启动 CameraKit 本地相机流。 */
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
+    position: CameraPosition,
+    useMicrophone: boolean = false
   ): Promise<RealtimeMediaStream> {
     if (this.activeTrack !== null || this.captureSession !== null) {
       throw new XmaxError(
@@ -103,7 +111,26 @@ export class CameraController {
       );
     }
 
-    return this.createStream(videoFormat, position);
+    return this.createStream(videoFormat, position, useMicrophone);
+  }
+
+  /** 在连接时启动 RTC 内部麦克风采集，不开启本地回放。 */
+  startMicrophoneCapture(): void {
+    if (!this.useMicrophone || this.isMicrophoneCapturing) {
+      return;
+    }
+    // 即使启动失败，也由连接清理停止可能已经打开的设备。
+    this.isMicrophoneCapturing = true;
+    this.rtcManager.startMicrophoneCapture();
+  }
+
+  /** 停止采集并保留重连配置；停止失败时保留标记，允许清理重试。 */
+  stopMicrophoneCapture(): void {
+    if (!this.isMicrophoneCapturing) {
+      return;
+    }
+    this.rtcManager.stopMicrophoneCapture();
+    this.isMicrophoneCapturing = false;
   }
 
   /** 停止 CameraKit 采集并释放本地预览绑定。 */
@@ -111,15 +138,22 @@ export class CameraController {
     const track: RealtimeVideoTrack | null = this.activeTrack;
     this.prepareForStop();
     this.activeTrack = null;
+    this.storedUseMicrophone = false;
 
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
     }
     await this.releaseCamera();
+    this.isMicrophoneCapturing = false;
   }
 
-  /** 立即阻断相机帧输出并解除本地预览绑定。 */
+  /** 立即停止麦克风、阻断相机帧输出并解除本地预览绑定。 */
   prepareForStop(): void {
+    try {
+      this.stopMicrophoneCapture();
+    } catch (error) {
+      this.logResourceError('停止麦克风采集 (Stop Microphone Capture)', error);
+    }
     this.acceptsFrames = false;
     this.captureGeneration += 1;
     this.resetPreviewReadiness();
@@ -164,13 +198,17 @@ export class CameraController {
   /** 完成权限检查、外部视频源配置、CameraKit 启动和预览注册。 */
   private async createStream(
     videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
+    position: CameraPosition,
+    useMicrophone: boolean = false
   ): Promise<RealtimeMediaStream> {
     const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(videoFormat);
     const track = new RealtimeVideoTrack('video0', resolvedFormat, position);
 
     try {
       await this.permissionManager.ensureCameraPermission();
+      if (useMicrophone) {
+        await this.permissionManager.ensureMicrophonePermission();
+      }
       this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
       this.rtcManager.configureLocalVideoMirror(position);
@@ -192,6 +230,7 @@ export class CameraController {
         CameraPreviewRatio.FILL
       ));
       this.activeTrack = track;
+      this.storedUseMicrophone = useMicrophone;
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);
     } catch (error) {
@@ -355,7 +394,7 @@ export class CameraController {
       this.acceptsFrames = true;
       await this.startCamera(videoFormat, position);
     } catch (rollbackError) {
-      this.acceptsFrames = false;
+      this.prepareForStop();
       const track: RealtimeVideoTrack | null = this.activeTrack;
       this.activeTrack = null;
       if (track !== null) {

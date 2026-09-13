@@ -286,7 +286,8 @@ uses a different ability name. Define the permission reason in
 }
 ```
 
-If an input source contains audio, also declare `ohos.permission.MICROPHONE` with
+If camera microphone input is enabled (`useMicrophone` set to `true`) or an input source
+contains audio, also declare `ohos.permission.MICROPHONE` with
 an appropriate permission reason and `usedScene` configuration. XmaxSDK checks and
 requests the required runtime permissions when a local media stream is created. If
 permission is unavailable, the SDK reports an `XmaxError`.

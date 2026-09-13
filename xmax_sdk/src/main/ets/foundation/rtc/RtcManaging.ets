@@ -45,6 +45,12 @@ export interface RtcManaging {
    */
   useExternalVideoSource(): void;
 
+  /** 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。 */
+  startMicrophoneCapture(): void;
+
+  /** 停止 RTC 麦克风采集。 */
+  stopMicrophoneCapture(): void;
+
   /**
    * 启动 RTC 外部音频源。
    *

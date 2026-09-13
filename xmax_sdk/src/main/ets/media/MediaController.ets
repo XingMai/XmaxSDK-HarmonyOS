@@ -121,8 +121,11 @@ export class MediaController implements MediaControlling {
     return this.currentTrack?.videoFormat;
   }
 
-  /** @returns 当前活动的视频文件来源是否包含音轨。 */
+  /** @returns 当前来源是否使用相机麦克风或包含文件音轨。 */
   get hasAudio(): boolean {
+    if (this.activeSource?.controller === this.cameraController) {
+      return this.cameraController.useMicrophone;
+    }
     return this.activeSource?.controller === this.videoController &&
       this.videoController.hasAudio;
   }
@@ -188,17 +191,33 @@ export class MediaController implements MediaControlling {
    *
    * @param videoFormat 相机流使用的视频输出格式。
    * @param position 初始摄像头位置。
+   * @param useMicrophone 是否使用麦克风；创建时检查权限，连接时启动采集。
    * @returns 创建完成后的本地相机媒体流。
    */
   createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
-    position: CameraPosition
+    position: CameraPosition,
+    useMicrophone: boolean = false
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
       this.cameraController,
       (): Promise<RealtimeMediaStream> =>
-        this.cameraController.createLocalCameraStream(videoFormat, position)
+        this.cameraController.createLocalCameraStream(videoFormat, position, useMicrophone)
     );
+  }
+
+  /** @inheritdoc */
+  startMicrophoneCapture(): void {
+    if (this.activeSource?.controller === this.cameraController) {
+      this.cameraController.startMicrophoneCapture();
+    }
+  }
+
+  /** @inheritdoc */
+  stopMicrophoneCapture(): void {
+    if (this.activeSource?.controller === this.cameraController) {
+      this.cameraController.stopMicrophoneCapture();
+    }
   }
 
   /** @returns 当前相机来源停止完成后的 Promise。 */
