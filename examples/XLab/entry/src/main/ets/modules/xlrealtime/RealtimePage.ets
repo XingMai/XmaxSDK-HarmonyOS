@@ -1,3 +1,4 @@
+import { XLabLocalization } from '../../localization/XLabLocalization';
 import { common } from '@kit.AbilityKit';
 import { mediaquery, promptAction } from '@kit.ArkUI';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
@@ -32,6 +33,12 @@ const LOG_TAG: string = 'RealtimePage';
 
 @Component
 struct CancelGenerationButton {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop isEnabled: boolean = false;
   onCancel: () => void = (): void => {};
 
@@ -49,13 +56,19 @@ struct CancelGenerationButton {
     .enabled(this.isEnabled)
     .opacity(this.isEnabled ? 1 : 0.32)
     .animation({ duration: 300, curve: Curve.EaseInOut })
-    .accessibilityText('停止生成')
+    .accessibilityText(this.text('stop_generation'))
     .onClick(this.onCancel)
   }
 }
 
 @Component
 export struct RealtimePage {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop localVideoPath: string = '';
   @Prop localImagePath: string = '';
   @Prop usesCustomTrajectoryRenderer: boolean = false;
@@ -298,7 +311,7 @@ export struct RealtimePage {
         this.viewModel.addLocalReference(categoryId, filePath);
       }
     } catch (_error) {
-      promptAction.showToast({ message: '读取照片失败，请重试' });
+      promptAction.showToast({ message: this.text('read_photo_failed') });
     } finally {
       this.isPickingReference = false;
     }
@@ -316,7 +329,7 @@ export struct RealtimePage {
         this.viewModel.addPromptReference(filePath);
       }
     } catch (_error) {
-      promptAction.showToast({ message: '读取照片失败，请重试' });
+      promptAction.showToast({ message: this.text('read_photo_failed') });
     } finally {
       this.isPickingReference = false;
     }
@@ -348,8 +361,8 @@ export struct RealtimePage {
         await this.viewModel.changeLocalVideo(filePath);
       }
     } catch (_error) {
-      const mediaName: string = this.hasLocalImage() ? '图片' : '视频';
-      promptAction.showToast({ message: `读取${mediaName}失败，请重试` });
+      const mediaName: string = this.hasLocalImage() ? this.text('image') : this.text('video');
+      promptAction.showToast({ message: XLabLocalization.format('read_media_failed', [mediaName]) });
     } finally {
       this.isPickingLocalMedia = false;
     }
@@ -428,7 +441,7 @@ export struct RealtimePage {
                 .width(20)
                 .height(20)
 
-              Text('翻转')
+              Text(this.text('flip'))
                 .fontSize(10)
                 .lineHeight(12)
                 .fontWeight(FontWeight.Medium)
@@ -445,7 +458,7 @@ export struct RealtimePage {
           .fontColor('#FFFFFF')
           .backgroundColor(Color.Transparent)
           .enabled(!this.isCameraSwitchTransitionActive)
-          .accessibilityText('翻转摄像头')
+          .accessibilityText(this.text('flip_camera'))
           .onClick((): void => {
             void this.switchCamera();
           })
@@ -481,7 +494,7 @@ export struct RealtimePage {
                 .fontSize(20)
                 .fontColor(['#FFFFFF'])
 
-              Text('相册')
+              Text(this.text('album'))
                 .fontSize(10)
                 .lineHeight(12)
                 .fontWeight(FontWeight.Medium)
@@ -499,7 +512,7 @@ export struct RealtimePage {
           .backgroundColor(Color.Transparent)
           .enabled(!this.isPickingLocalMedia)
           .opacity(this.isPickingLocalMedia ? 0.5 : 1)
-          .accessibilityText('从相册替换本地素材')
+          .accessibilityText(this.text('replace_media'))
           .onClick((): void => {
             void this.presentLocalMediaPicker();
           })
@@ -526,7 +539,7 @@ export struct RealtimePage {
           List({ space: 22 }) {
             ForEach(this.state.categories, (category: ReferenceCategory) => {
               ListItem() {
-                Text(category.name)
+                Text(this.text(category.name))
                   .height(36)
                   .fontSize(12)
                   .fontWeight(this.state.selectedCategoryId === category.id ?
@@ -586,7 +599,7 @@ export struct RealtimePage {
                   HitTestMode.Default : HitTestMode.None)
             } else if (categoryState.category.input === ReferenceCategoryInput.INSTRUCTION) {
               Button(this.state.isMoxGenerationActive ?
-                categoryState.category.instruction : '点击开始生成', { type: ButtonType.Normal })
+                this.text(categoryState.category.instruction) : this.text('start_generation'), { type: ButtonType.Normal })
                 .width('calc(100% - 28vp)')
                 .height(40)
                 .margin({ left: 14, right: 14, top: 10 })

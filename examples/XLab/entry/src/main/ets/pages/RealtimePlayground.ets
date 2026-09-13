@@ -1,3 +1,4 @@
+import { XLabLocalization } from '../localization/XLabLocalization';
 import { router } from '@kit.ArkUI';
 import { RealtimePage } from '../modules/xlrealtime/RealtimePage';
 
@@ -10,6 +11,12 @@ interface RealtimePlaygroundParameters {
 @Entry
 @Component
 struct RealtimePlayground {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   private localVideoPath(): string {
     const parameters = router.getParams() as RealtimePlaygroundParameters;
     return parameters.localVideoPath ?? '';
@@ -43,7 +50,7 @@ struct RealtimePlayground {
       .padding(0)
       .position({ left: 8, top: 18 })
       .backgroundColor(Color.Transparent)
-      .accessibilityText('返回 Playground')
+      .accessibilityText(this.text('back_playground'))
       .onClick((): void => {
         router.back();
       })

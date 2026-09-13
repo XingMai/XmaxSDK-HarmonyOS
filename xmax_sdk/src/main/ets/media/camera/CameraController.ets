@@ -171,7 +171,7 @@ export class CameraController {
     try {
       this.rtcManager.unbindLocalVideo();
     } catch (error) {
-      this.logResourceError('解除相机预览绑定', error);
+      this.logResourceError(XmaxLogger.localized("解除相机预览绑定", "Unbind Camera Preview"), error);
     }
   }
 
@@ -286,7 +286,7 @@ export class CameraController {
         if (!ranges.some((range: camera.FrameRateRange): boolean =>
           range.min <= CAMERA_CAPTURE_FRAME_RATE && range.max >= CAMERA_CAPTURE_FRAME_RATE)) {
           XmaxLogger.debug(
-            `CameraKit 采集规格 ${dimensions} 不支持 30 fps，尝试下一档规格`, 'Camera');
+            `${XmaxLogger.localized("CameraKit 采集规格 ", "CameraKit Capture Profile ")}${dimensions}${XmaxLogger.localized(" 不支持 30 fps，尝试下一档规格", " does not support 30 fps; trying the next profile")}`, 'Camera');
           await this.releaseCamera();
           continue;
         }
@@ -299,9 +299,9 @@ export class CameraController {
         const outputFormat: RealtimeVideoFormat = output.currentVideoFormat ?? videoFormat;
 
         XmaxLogger.debug(
-          `CameraKit 相机采集已启动\n` +
-          `├─ 采集：${dimensions} @ ${CAMERA_CAPTURE_FRAME_RATE} fps\n` +
-          `└─ 输出：${outputFormat.width} × ${outputFormat.height} @ ${outputFormat.fps} fps`,
+          "CameraKit 相机采集已启动 (CameraKit Capture Started)\n" +
+          `${XmaxLogger.localized("├─ 采集：", "├─ Capture: ")}${dimensions} @ ${CAMERA_CAPTURE_FRAME_RATE} fps\n` +
+          `${XmaxLogger.localized("└─ 输出：", "└─ Output: ")}${outputFormat.width} × ${outputFormat.height} @ ${outputFormat.fps} fps`,
           'Camera'
         );
         return;
@@ -413,7 +413,7 @@ export class CameraController {
       }
       await this.releaseCamera();
       XmaxLogger.error(
-        `恢复 CameraKit 相机失败\n└─ 原因：${XmaxError.from(rollbackError).message}`,
+        `${XmaxLogger.localized("恢复 CameraKit 相机失败 (Failed to Restore CameraKit Capture)\n└─ 原因：", "恢复 CameraKit 相机失败 (Failed to Restore CameraKit Capture)\n└─ Reason: ")}${XmaxError.from(rollbackError).message}`,
         'Camera'
       );
     }
@@ -433,12 +433,12 @@ export class CameraController {
       try {
         await session.stop();
       } catch (error) {
-        this.logResourceError('停止 CameraKit 会话', error);
+        this.logResourceError(XmaxLogger.localized("停止 CameraKit 会话", "Stop CameraKit Session"), error);
       }
       try {
         await session.release();
       } catch (error) {
-        this.logResourceError('释放 CameraKit 会话', error);
+        this.logResourceError(XmaxLogger.localized("释放 CameraKit 会话", "Release CameraKit Session"), error);
       }
     }
     if (output !== null) {
@@ -448,7 +448,7 @@ export class CameraController {
       try {
         await input.close();
       } catch (error) {
-        this.logResourceError('关闭 CameraKit 输入', error);
+        this.logResourceError(XmaxLogger.localized("关闭 CameraKit 输入", "Close CameraKit Input"), error);
       }
     }
   }
@@ -524,12 +524,12 @@ export class CameraController {
     try {
       listener();
     } catch (error) {
-      this.logResourceError('执行摄像头预览就绪监听器', error);
+      this.logResourceError(XmaxLogger.localized("执行摄像头预览就绪监听器", "Invoke Camera Preview Ready Listener"), error);
     }
   }
 
   private logResourceError(action: string, error: Object): void {
     const reason: string = error instanceof Error ? error.message : String(error);
-    XmaxLogger.error(`${action}失败\n└─ 原因：${reason}`, 'Camera');
+    XmaxLogger.error(`${action}${XmaxLogger.localized("失败\n└─ 原因：", " Failed\n└─ Reason: ")}${reason}`, 'Camera');
   }
 }

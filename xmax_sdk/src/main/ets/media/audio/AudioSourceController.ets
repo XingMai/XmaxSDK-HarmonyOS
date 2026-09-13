@@ -197,7 +197,7 @@ export class AudioSourceController implements AudioSourceControlling {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `释放本地音频解码器失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("释放本地音频解码器失败 (Failed to Release Local Audio Decoder)\n└─ 原因：", "释放本地音频解码器失败 (Failed to Release Local Audio Decoder)\n└─ Reason: ")}${reason}`,
         'Audio'
       );
     }
@@ -239,7 +239,7 @@ class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
       this.frameHandler(frame);
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
-      this.errorHandler(`处理本地音频帧失败：${reason}`);
+      this.errorHandler(`${XmaxLogger.localized("处理本地音频帧失败：", "Local Audio Frame Processing Failed: ")}${reason}`);
     }
   }
 

@@ -143,7 +143,7 @@ export class MediaController implements MediaControlling {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `静默本地媒体失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("静默本地媒体失败 (Failed to Mute Local Media)\n└─ 原因：", "静默本地媒体失败 (Failed to Mute Local Media)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }
@@ -410,9 +410,9 @@ export class MediaController implements MediaControlling {
         try {
           await this.stopController(source.controller);
         } catch (cleanupError) {
-          XmaxLogger.error(`回滚本地媒体失败\n└─ 原因：${XmaxError.from(cleanupError).message}`, 'Realtime');
+          XmaxLogger.error(`${XmaxLogger.localized("回滚本地媒体失败 (Local Media Rollback Failed)\n└─ 原因：", "回滚本地媒体失败 (Local Media Rollback Failed)\n└─ Reason: ")}${XmaxError.from(cleanupError).message}`, 'Realtime');
         }
-        await this.destroyRtcSafely('本地媒体创建回滚失败');
+        await this.destroyRtcSafely("本地媒体创建回滚失败 (Local Media Creation Rollback Failed)");
 
         if (this.activeSource === source) {
           this.activeSource = null;
@@ -462,7 +462,7 @@ export class MediaController implements MediaControlling {
           const reason: string = error instanceof Error ?
             error.message : String(error);
           XmaxLogger.error(
-            `等待本地媒体创建结束失败\n└─ 原因：${reason}`,
+            `${XmaxLogger.localized("等待本地媒体创建结束失败 (Failed to Wait for Local Media Creation)\n└─ 原因：", "等待本地媒体创建结束失败 (Failed to Wait for Local Media Creation)\n└─ Reason: ")}${reason}`,
             'Realtime'
           );
         }
@@ -472,7 +472,7 @@ export class MediaController implements MediaControlling {
     try {
       await this.stopController(source.controller);
     } finally {
-      await this.destroyRtcSafely('释放本地媒体 RTC 资源失败');
+      await this.destroyRtcSafely("释放本地媒体 RTC 资源失败 (Failed to Release Local Media RTC Resources)");
 
       if (this.activeSource === source) {
         this.activeSource = null;
@@ -547,7 +547,7 @@ export class MediaController implements MediaControlling {
       const reason: string = error instanceof Error ?
         error.message : String(error);
       XmaxLogger.error(
-        `${message}\n└─ 原因：${reason}`,
+        `${message}${XmaxLogger.localized("\n└─ 原因：", "\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }

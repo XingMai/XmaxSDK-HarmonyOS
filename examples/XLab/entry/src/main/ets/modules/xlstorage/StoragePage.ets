@@ -1,3 +1,4 @@
+import { XLabLocalization } from '../../localization/XLabLocalization';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import {
@@ -12,7 +13,6 @@ import { media } from '@kit.MediaKit';
 import {
   XmaxClient,
   XmaxConfiguration,
-  XmaxEnvironment,
   XmaxLoggerOption,
   XmaxStorageManaging,
   XmaxStorageProgress,
@@ -28,6 +28,12 @@ enum StorageMediaKind {
 
 @Component
 struct StorageTopBar {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   onBack: () => void = (): void => {};
 
   build() {
@@ -42,13 +48,13 @@ struct StorageTopBar {
       .height(44)
       .padding(0)
       .backgroundColor(Color.Transparent)
-      .accessibilityText('返回首页')
+      .accessibilityText(this.text('back_home'))
       .onClick((): void => {
         this.onBack();
       })
 
       Column() {
-        Text('存储服务')
+        Text(this.text('storage_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F4F7FB')
@@ -84,6 +90,12 @@ struct StorageTopBar {
 @Entry
 @Component
 struct StoragePage {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   private readonly videoController: VideoController = new VideoController();
   private readonly scroller: Scroller = new Scroller();
   @State private selectedFilePath: string = '';
@@ -130,7 +142,7 @@ struct StoragePage {
       this.uploadedUrl = '';
       this.errorMessage = '';
     } catch (error) {
-      this.errorMessage = this.errorText(error, '读取文件失败，请重试');
+      this.errorMessage = this.errorText(error, this.text('read_file_failed'));
     } finally {
       this.isPicking = false;
     }
@@ -275,7 +287,7 @@ struct StoragePage {
       const client = new XmaxClient(
         new XmaxConfiguration(
           XLabConfiguration.currentApiKey(),
-          XmaxEnvironment.CHINA,
+          XLabLocalization.environment,
           XmaxLoggerOption.ALL
         ),
         context
@@ -302,7 +314,7 @@ struct StoragePage {
         this.scroller.scrollEdge(Edge.Bottom, { velocity: 1200 });
       }, 100);
     } catch (error) {
-      this.errorMessage = this.errorText(error, '上传失败，请检查 API Key 和网络后重试');
+      this.errorMessage = this.errorText(error, this.text('upload_failed'));
     } finally {
       this.isUploading = false;
     }
@@ -319,9 +331,9 @@ struct StoragePage {
         this.uploadedUrl
       );
       await pasteboard.getSystemPasteboard().setData(data);
-      promptAction.showToast({ message: '地址已复制' });
+      promptAction.showToast({ message: this.text('url_copied') });
     } catch (_error) {
-      promptAction.showToast({ message: '复制失败，请重试' });
+      promptAction.showToast({ message: this.text('copy_failed') });
     }
   }
 
@@ -346,7 +358,7 @@ struct StoragePage {
   }
 
   private selectedTypeText(): string {
-    return this.selectedMediaKind === StorageMediaKind.IMAGE ? '图片' : '视频';
+    return this.selectedMediaKind === StorageMediaKind.IMAGE ? this.text('image') : this.text('video');
   }
 
   private formattedUploadElapsed(): string {
@@ -404,7 +416,7 @@ struct StoragePage {
 
               Blank()
 
-              Text('READY')
+              Text(this.text('ready'))
                 .height(23)
                 .padding({ left: 9, right: 9 })
                 .fontSize(8)
@@ -416,14 +428,14 @@ struct StoragePage {
             }
             .width('100%')
 
-            Text('把本地媒体交给 XmaxSDK')
+            Text(this.text('storage_heading'))
               .width('100%')
               .margin({ top: 13 })
               .fontSize(18)
               .fontWeight(FontWeight.Bold)
               .fontColor('#F4EEE6')
 
-            Text('选择图片或视频，上传后获取可直接使用的远程地址。')
+            Text(this.text('storage_description'))
               .width('100%')
               .margin({ top: 7 })
               .fontSize(10)
@@ -483,7 +495,7 @@ struct StoragePage {
                 .borderRadius(11)
                 .border({ width: 1, color: '#45F5B86C' })
 
-              Text('文件预览')
+              Text(this.text('file_preview'))
                 .margin({ left: 9 })
                 .fontSize(13)
                 .fontWeight(FontWeight.Bold)
@@ -492,7 +504,7 @@ struct StoragePage {
               Blank()
 
               if (this.selectedFilePath.length > 0) {
-                Button('重新上传')
+                Button(this.text('upload_again'))
                   .width(66)
                   .height(28)
                   .padding(0)
@@ -507,7 +519,7 @@ struct StoragePage {
                     void this.selectMedia();
                   })
               } else {
-                Text('点击选择')
+                Text(this.text('select_file'))
                   .fontSize(9)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#6E6257')
@@ -518,7 +530,7 @@ struct StoragePage {
 
             if (this.selectedFilePath.length > 0 &&
               this.selectedMediaKind === StorageMediaKind.VIDEO) {
-              Text('视频生成暂不支持安全检测')
+              Text(this.text('video_safety_unavailable'))
                 .width('100%')
                 .margin({ bottom: 10 })
                 .fontSize(9)
@@ -537,7 +549,7 @@ struct StoragePage {
                   .borderRadius(21)
                   .border({ width: 1, color: '#3DF5B86C' })
 
-                Text(this.isPicking ? '正在打开媒体库' : '点击选择图片或视频')
+                Text(this.isPicking ? this.text('opening_library') : this.text('select_image_video'))
                   .margin({ top: 11 })
                   .fontSize(11)
                   .fontWeight(FontWeight.Bold)
@@ -645,14 +657,14 @@ struct StoragePage {
 
             if (this.isUploading) {
               Row() {
-                Text(`上传中 ${Math.round(this.uploadProgress * 100)}%`)
+                Text(XLabLocalization.format('upload_progress', [Math.round(this.uploadProgress * 100).toString()], this.languageRevision))
                   .fontSize(10)
                   .fontColor('#F5B86C')
 
                 Blank()
 
                 Text(this.selectedMediaKind === StorageMediaKind.IMAGE ?
-                  this.activeUploadUsesSafetyCheck ? '包含内容安全检查' : '正在上传图片' : '正在上传视频')
+                  this.activeUploadUsesSafetyCheck ? this.text('with_safety_check') : this.text('uploading_image') : this.text('uploading_video'))
                   .fontSize(9)
                   .fontColor('#657386')
               }
@@ -671,7 +683,7 @@ struct StoragePage {
               if (this.selectedMediaKind === StorageMediaKind.IMAGE) {
                 Row({ space: 10 }) {
                   Button(this.isUploading && this.activeUploadUsesSafetyCheck ?
-                    '正在检测上传' : '安全检测上传')
+                    this.text('checking_upload') : this.text('safety_upload'))
                     .layoutWeight(1)
                     .height(38)
                     .fontSize(11)
@@ -687,7 +699,7 @@ struct StoragePage {
                     })
 
                   Button(this.isUploading && !this.activeUploadUsesSafetyCheck ?
-                    '正在上传' : '普通上传')
+                    this.text('uploading') : this.text('normal_upload'))
                     .layoutWeight(1)
                     .height(38)
                     .fontSize(11)
@@ -705,7 +717,7 @@ struct StoragePage {
                 .width('100%')
                 .margin({ top: 16 })
               } else {
-                Button(this.isUploading ? '正在上传' : '上传并获取地址')
+                Button(this.isUploading ? this.text('uploading') : this.text('upload_get_url'))
                   .width('100%')
                   .height(38)
                   .margin({ top: 16 })
@@ -762,7 +774,7 @@ struct StoragePage {
                   .borderRadius(11)
                   .border({ width: 1, color: '#45F5B86C' })
 
-                Text('上传结果')
+                Text(this.text('upload_result'))
                   .margin({ left: 9 })
                   .fontSize(13)
                   .fontWeight(FontWeight.Bold)
@@ -784,7 +796,7 @@ struct StoragePage {
               .width('100%')
 
               Row() {
-                Text('上传耗时')
+                Text(this.text('upload_duration'))
                   .fontSize(10)
                   .fontColor('#718095')
 
@@ -807,7 +819,7 @@ struct StoragePage {
                 .letterSpacing(0.8)
 
               Text(this.uploadedUrl.length > 0 ?
-                this.uploadedUrl : '上传完成后，远程地址会显示在这里。')
+                this.uploadedUrl : this.text('url_placeholder'))
                 .width('100%')
                 .margin({ top: 7 })
                 .padding(11)
@@ -818,7 +830,7 @@ struct StoragePage {
                 .borderRadius(11)
                 .border({ width: 1, color: '#20F5B86C' })
 
-              Button(this.uploadedUrl.length > 0 ? '复制地址' : '暂无可复制地址')
+              Button(this.uploadedUrl.length > 0 ? this.text('copy_url') : this.text('no_url'))
                 .width('100%')
                 .height(38)
                 .margin({ top: 12 })

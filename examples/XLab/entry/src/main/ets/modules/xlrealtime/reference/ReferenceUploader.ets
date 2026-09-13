@@ -1,9 +1,9 @@
+import { XLabLocalization } from '../../../localization/XLabLocalization';
 import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import {
   XmaxClient,
   XmaxConfiguration,
-  XmaxEnvironment,
   XmaxLoggerOption,
   XmaxUploadedFile
 } from '@xmax/sdk';
@@ -17,7 +17,7 @@ export class ReferenceUploader implements ReferenceUploading {
 
   constructor(context: common.UIAbilityContext, apiKey: string) {
     this.client = new XmaxClient(
-      new XmaxConfiguration(apiKey, XmaxEnvironment.CHINA, XmaxLoggerOption.ALL),
+      new XmaxConfiguration(apiKey, XLabLocalization.environment, XmaxLoggerOption.ALL),
       context
     );
   }

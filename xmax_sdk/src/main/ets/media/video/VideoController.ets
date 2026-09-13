@@ -150,7 +150,7 @@ export class VideoController {
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(
-          `停止外部音频源失败\n└─ 原因：${reason}`,
+          `${XmaxLogger.localized("停止外部音频源失败 (Failed to Stop External Audio Source)\n└─ 原因：", "停止外部音频源失败 (Failed to Stop External Audio Source)\n└─ Reason: ")}${reason}`,
           'Audio'
         );
       }
@@ -243,7 +243,7 @@ export class VideoController {
           const reason: string = audioError instanceof Error ?
             audioError.message : String(audioError);
           XmaxLogger.error(
-            `外部音频源启动回滚失败\n└─ 原因：${reason}`,
+            `${XmaxLogger.localized("外部音频源启动回滚失败 (External Audio Startup Rollback Failed)\n└─ 原因：", "外部音频源启动回滚失败 (External Audio Startup Rollback Failed)\n└─ Reason: ")}${reason}`,
             'Audio'
           );
         }

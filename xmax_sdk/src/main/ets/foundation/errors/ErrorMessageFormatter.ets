@@ -1,3 +1,4 @@
+import { XmaxLogger } from '../logging/XmaxLogger';
 import { XmaxError } from './XmaxError';
 
 interface PlatformError {
@@ -9,11 +10,11 @@ export class ErrorMessageFormatter {
   static format(error: Object): string {
     if (error instanceof XmaxError) {
       const apiCode: string = error.apiCode === undefined ?
-        '' : `，业务码 ${error.apiCode}`;
+        '' : `${XmaxLogger.localized("，业务码 ", ", API Code ")}${error.apiCode}`;
       const httpStatus: string = error.httpStatus === undefined ?
-        '' : `，HTTP ${error.httpStatus}`;
+        '' : `${XmaxLogger.localized('，', ', ')}HTTP ${error.httpStatus}`;
 
-      return `${error.message}（${error.code}${apiCode}${httpStatus}）`;
+      return `${error.message}${XmaxLogger.localized('（', ' (')}${error.code}${apiCode}${httpStatus}${XmaxLogger.localized('）', ')')}`;
     }
 
     if (error instanceof Error && error.message.trim().length > 0) {
@@ -24,10 +25,10 @@ export class ErrorMessageFormatter {
     const message: string = platformError.message?.trim() ?? '';
     const code: number | string | undefined = platformError.code;
     if (message.length > 0) {
-      return code === undefined ? message : `${message}（平台错误码：${code}）`;
+      return code === undefined ? message : `${message}${XmaxLogger.localized("（平台错误码：", " (Platform Error Code: ")}${code}${XmaxLogger.localized('）', ')')}`;
     }
     if (code !== undefined) {
-      return `平台请求失败（平台错误码：${code}）`;
+      return `${XmaxLogger.localized("平台请求失败（平台错误码：", "Platform Request Failed (Platform Error Code: ")}${code}${XmaxLogger.localized('）', ')')}`;
     }
 
     try {

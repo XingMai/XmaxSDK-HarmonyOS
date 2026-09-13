@@ -1,7 +1,14 @@
+import { XLabLocalization } from '../../../../localization/XLabLocalization';
 import { RealtimeViewState } from '../model/RealtimeViewState';
 
 @Component
 export struct RealtimeAudioControlsView {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @ObjectLink state: RealtimeViewState;
   @Prop isCamera: boolean = false;
   onOpenVolumeMenu: () => void = (): void => {};
@@ -46,9 +53,9 @@ export struct RealtimeAudioControlsView {
   private volumeMenu() {
     Column({ space: 8 }) {
       if (!this.isCamera) {
-        this.volumeSlider('本地音量', true, this.onLocalVolumeChanged)
+        this.volumeSlider(this.text('local_volume'), true, this.onLocalVolumeChanged)
       }
-      this.volumeSlider('远端音量', false, this.onRemoteVolumeChanged)
+      this.volumeSlider(this.text('remote_volume'), false, this.onRemoteVolumeChanged)
     }
     .width(260)
     .height(this.isCamera ? 82 : 144)
@@ -65,7 +72,7 @@ export struct RealtimeAudioControlsView {
         (this.state.isAudioMuted ? $r('sys.symbol.speaker_slash_fill') : $r('sys.symbol.speaker_wave_2_fill')))
         .fontSize(20)
         .fontColor(['#FFFFFF'])
-      Text(isVolumeButton ? '音量' : (this.state.isAudioMuted ? '静音' : '声音'))
+      Text(isVolumeButton ? this.text('volume') : (this.state.isAudioMuted ? this.text('mute') : this.text('sound')))
         .fontSize(10)
         .lineHeight(12)
         .fontWeight(FontWeight.Medium)
@@ -84,7 +91,7 @@ export struct RealtimeAudioControlsView {
       .height(58)
       .padding(0)
       .backgroundColor(Color.Transparent)
-      .accessibilityText('调整音量')
+      .accessibilityText(this.text('adjust_volume'))
       .onClick((): void => {
         if (!this.isVolumeMenuVisible) {
           this.onOpenVolumeMenu();
@@ -110,8 +117,8 @@ export struct RealtimeAudioControlsView {
         .height(58)
         .padding(0)
         .backgroundColor(Color.Transparent)
-        .accessibilityText(this.state.isAudioMuted ? '开启声音' : '关闭声音')
-        .accessibilityDescription(this.state.isAudioMuted ? '已静音' : '已开启')
+        .accessibilityText(this.state.isAudioMuted ? this.text('unmute') : this.text('mute_action'))
+        .accessibilityDescription(this.state.isAudioMuted ? this.text('muted') : this.text('sound_on'))
         .onClick((): void => {
           this.onMuteChanged(!this.state.isAudioMuted);
         })

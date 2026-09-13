@@ -1,21 +1,28 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { XLabApplicationLifecycle } from '../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
 import { XLabModelSelection } from '../modules/xlrealtime/config/XLabModelSelection';
+import { XLabLocalization } from '../localization/XLabLocalization';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'EntryAbility';
 
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    XLabLocalization.initialize(this.context);
     XLabApplicationLifecycle.initialize();
     hilog.info(DOMAIN, TAG, 'XLab created');
   }
 
   onForeground(): void {
+    XLabLocalization.refresh();
     XLabApplicationLifecycle.setForeground(true);
+  }
+
+  onConfigurationUpdate(_configuration: Configuration): void {
+    XLabLocalization.refresh();
   }
 
   onBackground(): void {

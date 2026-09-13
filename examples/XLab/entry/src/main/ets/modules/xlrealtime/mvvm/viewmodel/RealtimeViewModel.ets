@@ -1,3 +1,4 @@
+import { XLabLocalization } from '../../../../localization/XLabLocalization';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
@@ -11,7 +12,6 @@ import {
   RealtimeState,
   XmaxClient,
   XmaxConfiguration,
-  XmaxEnvironment,
   XmaxLoggerOption,
   XmaxError,
   XmaxRealtimeManaging
@@ -162,7 +162,7 @@ export class RealtimeViewModel {
       const client = new XmaxClient(
         new XmaxConfiguration(
           XLabConfiguration.currentApiKey(),
-          XmaxEnvironment.CHINA,
+          XLabLocalization.environment,
           XmaxLoggerOption.ALL
         ),
         context
@@ -190,7 +190,7 @@ export class RealtimeViewModel {
             this.state.errorMessage = state.reason.error.message;
           } else if (state.reason.kind === RealtimeReasonKind.ORIENTATION_CHANGED) {
             this.state.errorMessage = '';
-            this.onMessage?.('屏幕方向已切换，生成已断开，请重新开始');
+            this.onMessage?.(XLabLocalization.text('orientation_changed'));
           }
         }
         this.state.isLocalPreviewLoading = state.connectionState === RealtimeConnectionState.PREPARING;
@@ -420,7 +420,7 @@ export class RealtimeViewModel {
     const connectionAvailable: boolean = manager !== null && this.localStream !== null;
     if (!connectionAvailable) {
       const message: string = this.state.errorMessage.trim().length > 0 ?
-        this.state.errorMessage : '本地画面尚未就绪';
+        this.state.errorMessage : XLabLocalization.text('media_not_ready');
       this.onMessage?.(message);
       return;
     }
@@ -438,14 +438,14 @@ export class RealtimeViewModel {
   addPromptReference(filePath: string): void {
     const uploader: ReferenceUploading | null = this.referenceUploader;
     if (uploader === null) {
-      this.onMessage?.('参考图上传尚未就绪');
+      this.onMessage?.(XLabLocalization.text('reference_not_ready'));
       return;
     }
 
     const reference = new Reference(
       `prompt-${Date.now()}-${RealtimeViewModel.nextCustomReferenceId++}`,
       'free',
-      '自由模式参考图',
+      XLabLocalization.text('prompt_reference'),
       filePath,
       undefined,
       false,
@@ -475,7 +475,7 @@ export class RealtimeViewModel {
         this.promptReference = null;
         this.state.promptReferenceImageUrl = '';
         this.state.isPromptReferenceUploading = false;
-        this.onMessage?.('参考图上传失败，请重试');
+        this.onMessage?.(XLabLocalization.text('reference_upload_failed'));
       });
   }
 
@@ -514,7 +514,7 @@ export class RealtimeViewModel {
     const reference = new Reference(
       `custom-${Date.now()}-${RealtimeViewModel.nextCustomReferenceId++}`,
       categoryId,
-      '自定义参考图',
+      XLabLocalization.text('custom_reference'),
       filePath,
       undefined,
       false,
@@ -559,7 +559,7 @@ export class RealtimeViewModel {
     const filePath: string | undefined = item.reference.imageUrl;
     if (uploader === null || filePath === undefined) {
       item.reference.uploadState = ReferenceUploadState.FAILED;
-      this.onMessage?.('参考图上传尚未就绪');
+      this.onMessage?.(XLabLocalization.text('reference_not_ready'));
       return;
     }
 
@@ -584,7 +584,7 @@ export class RealtimeViewModel {
         }
         item.reference.uploadState = ReferenceUploadState.FAILED;
         this.uploadVersions.delete(item.reference.id);
-        this.onMessage?.('参考图上传失败，点击图片可重试');
+        this.onMessage?.(XLabLocalization.text('reference_upload_retry'));
       });
   }
 
@@ -802,7 +802,7 @@ export class RealtimeViewModel {
 
     const uploader: ReferenceUploading | null = this.referenceUploader;
     if (uploader === null) {
-      throw new Error('参考图上传尚未就绪');
+      throw new Error(XLabLocalization.text('reference_not_ready'));
     }
 
     this.state.isGenerationStarting = true;

@@ -77,7 +77,7 @@ export class RenderController implements RenderControlling {
       try {
         this.frameDispatcher.dispatch(copyFrame());
       } catch (error) {
-        XmaxLogger.error(`复制远端视频帧失败\n└─ 原因：${XmaxError.from(error).message}`, 'Render');
+        XmaxLogger.error(`${XmaxLogger.localized("复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ 原因：", "复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Render');
       }
     });
   }
@@ -176,7 +176,7 @@ export class RenderController implements RenderControlling {
     try {
       this.rtcManager.observeRemoteVideoFrames(stream, false);
     } catch (error) {
-      XmaxLogger.error(`停止远端视频帧观察失败\n└─ 原因：${XmaxError.from(error).message}`, 'Render');
+      XmaxLogger.error(`${XmaxLogger.localized("停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ 原因：", "停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Render');
     }
   }
 

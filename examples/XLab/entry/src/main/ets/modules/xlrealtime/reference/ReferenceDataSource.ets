@@ -1,3 +1,4 @@
+import { XLabLocalization } from '../../../localization/XLabLocalization';
 import { Reference } from './Reference';
 import {
   ReferenceCameraPosition,
@@ -14,36 +15,36 @@ export class ReferenceDataSource {
     return [
       ReferenceDataSource.makeCategory(
         'charx',
-        '换形象',
+        'category_charx',
         ReferenceCameraPosition.FRONT
       ),
       ReferenceDataSource.makeCategory(
         'clothx',
-        '换装',
+        'category_clothx',
         ReferenceCameraPosition.FRONT
       ),
       ReferenceDataSource.makeCategory(
         'vibex',
-        '换风格',
+        'category_vibex',
         ReferenceCameraPosition.FRONT
       ),
       new ReferenceCategory(
         'mox',
-        '触控动图',
+        'category_mox',
         ReferenceCameraPosition.FRONT,
         [ReferenceCameraPosition.FRONT, ReferenceCameraPosition.BACK],
         ReferenceCategoryInput.INSTRUCTION,
         [],
-        '在画面上拖拽，用轨迹控制角色'
+        'touch_instruction'
       ),
       ReferenceDataSource.makeCategory(
         'dimx',
-        '虚拟召唤',
+        'category_dimx',
         ReferenceCameraPosition.BACK
       ),
       new ReferenceCategory(
         'free',
-        '自由',
+        'category_free',
         ReferenceCameraPosition.FRONT,
         [ReferenceCameraPosition.FRONT, ReferenceCameraPosition.BACK],
         ReferenceCategoryInput.PROMPT
@@ -82,7 +83,7 @@ export class ReferenceDataSource {
     return new Reference(
       `${categoryId}-add`,
       categoryId,
-      '添加参考图',
+      XLabLocalization.text('add_reference'),
       undefined,
       undefined,
       true

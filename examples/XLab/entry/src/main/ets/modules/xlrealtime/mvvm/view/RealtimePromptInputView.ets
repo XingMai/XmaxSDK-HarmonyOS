@@ -1,7 +1,14 @@
+import { XLabLocalization } from '../../../../localization/XLabLocalization';
 import { vibrator } from '@kit.SensorServiceKit';
 
 @Component
 export struct RealtimePromptInputView {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop prompt: string = '';
   @Prop referenceImageUrl: string = '';
   @Prop isReferenceUploading: boolean = false;
@@ -47,7 +54,7 @@ export struct RealtimePromptInputView {
     Row() {
       TextInput({
         text: this.prompt,
-        placeholder: '输入你想要的效果',
+        placeholder: this.text('prompt_placeholder'),
         controller: this.controller
       })
         .fontSize(14)
@@ -91,7 +98,7 @@ export struct RealtimePromptInputView {
       .borderRadius(16)
       .clip(true)
       .enabled(!this.isReferenceUploading)
-      .accessibilityText(this.referenceImageUrl.length > 0 ? '删除参考图' : '添加参考图')
+      .accessibilityText(this.referenceImageUrl.length > 0 ? this.text('remove_reference') : this.text('add_reference'))
       .onClick((): void => {
         if (this.referenceImageUrl.length > 0) {
           this.onRemoveReference();
@@ -112,7 +119,7 @@ export struct RealtimePromptInputView {
       .backgroundColor('#FF2E88')
       .enabled(this.canSubmit())
       .opacity(this.canSubmit() ? 1 : 0.2)
-      .accessibilityText('提交指令')
+      .accessibilityText(this.text('submit_prompt'))
       .onClick((): void => {
         this.submit();
       })

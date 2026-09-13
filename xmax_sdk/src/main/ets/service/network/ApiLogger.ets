@@ -16,9 +16,9 @@ export class ApiLogger {
     }
     if (successful) {
       XmaxLogger.debug(
-        `${method} ${path} 成功\n` +
-        `├─ 状态：${statusCode}\n` +
-        `└─ 耗时：${durationMs} ms`,
+        `${method} ${path}${XmaxLogger.localized(" 成功\n", " Succeeded\n")}` +
+        `${XmaxLogger.localized("├─ 状态：", "├─ Status: ")}${statusCode}\n` +
+        `${XmaxLogger.localized("└─ 耗时：", "└─ Duration: ")}${durationMs} ms`,
         'API'
       );
       return;
@@ -27,9 +27,9 @@ export class ApiLogger {
     const formattedBody: string = ApiLogger.formatBody(body);
     const message: string =
       `${method} ${path}\n` +
-      `├─ 状态：${statusCode}\n` +
-      `├─ 耗时：${durationMs} ms\n` +
-      `└─ 数据：\n` +
+      `${XmaxLogger.localized("├─ 状态：", "├─ Status: ")}${statusCode}\n` +
+      `${XmaxLogger.localized("├─ 耗时：", "├─ Duration: ")}${durationMs} ms\n` +
+      XmaxLogger.localized("└─ 数据：\n", "└─ Data: \n") +
       `   ${formattedBody}`;
 
     XmaxLogger.error(message, 'API');
@@ -45,16 +45,16 @@ export class ApiLogger {
       return;
     }
     XmaxLogger.error(
-      `${method} ${path} 失败\n` +
-      `├─ 耗时：${durationMs} ms\n` +
-      `└─ 原因：${ErrorMessageFormatter.format(error)}`,
+      `${method} ${path}${XmaxLogger.localized(" 失败\n", " Failed\n")}` +
+      `${XmaxLogger.localized("├─ 耗时：", "├─ Duration: ")}${durationMs} ms\n` +
+      `${XmaxLogger.localized("└─ 原因：", "└─ Reason: ")}${ErrorMessageFormatter.format(error)}`,
       'API'
     );
   }
 
   private static formatBody(body?: string): string {
     if (body === undefined || body.trim().length === 0) {
-      return '无';
+      return XmaxLogger.localized("无", "None");
     }
 
     try {

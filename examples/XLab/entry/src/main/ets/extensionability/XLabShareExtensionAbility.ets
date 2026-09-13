@@ -1,5 +1,6 @@
 import {
   AbilityConstant,
+  Configuration,
   ShareExtensionAbility,
   UIExtensionContentSession,
   Want
@@ -8,12 +9,14 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { XLabApplicationLifecycle } from '../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
 import { XLabModelSelection } from '../modules/xlrealtime/config/XLabModelSelection';
+import { XLabLocalization } from '../localization/XLabLocalization';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'XLabShareExtension';
 
 export default class XLabShareExtensionAbility extends ShareExtensionAbility {
   onCreate(_launchParam: AbilityConstant.LaunchParam): void {
+    XLabLocalization.initialize(this.context);
     XLabApplicationLifecycle.initialize();
     XLabConfiguration.initialize();
     XLabModelSelection.initialize();
@@ -21,7 +24,12 @@ export default class XLabShareExtensionAbility extends ShareExtensionAbility {
   }
 
   onForeground(): void {
+    XLabLocalization.refresh();
     XLabApplicationLifecycle.setForeground(true);
+  }
+
+  onConfigurationUpdate(_configuration: Configuration): void {
+    XLabLocalization.refresh();
   }
 
   onBackground(): void {

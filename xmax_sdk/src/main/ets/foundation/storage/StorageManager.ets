@@ -330,17 +330,17 @@ export class StorageManager implements StorageManaging {
   private logUploadFailure(error: Object, startedAt: number): void {
     let details: string = '';
     if (error instanceof CosServiceError) {
-      details = `├─ HTTP 状态：${error.httpCode}\n` +
-        `├─ 错误信息：${this.errorMessage(error)}\n`;
+      details = `${XmaxLogger.localized("├─ HTTP 状态：", "├─ HTTP Status: ")}${error.httpCode}\n` +
+        `${XmaxLogger.localized("├─ 错误信息：", "├─ Error Message: ")}${this.errorMessage(error)}\n`;
     } else if (error instanceof CosError) {
-      details = `├─ COS 错误码：${error.cosErrorCode}\n` +
-        `├─ 错误信息：${this.errorMessage(error)}\n`;
+      details = `${XmaxLogger.localized("├─ COS 错误码：", "├─ COS Error Code: ")}${error.cosErrorCode}\n` +
+        `${XmaxLogger.localized("├─ 错误信息：", "├─ Error Message: ")}${this.errorMessage(error)}\n`;
     } else {
-      details = `├─ 错误信息：${this.errorMessage(error)}\n`;
+      details = `${XmaxLogger.localized("├─ 错误信息：", "├─ Error Message: ")}${this.errorMessage(error)}\n`;
     }
 
     XmaxLogger.error(
-      `上传失败\n${details}└─ 耗时：${this.formatDuration(Date.now() - startedAt)}`,
+      `${"上传失败 (Upload Failed)\n"}${details}${XmaxLogger.localized("└─ 耗时：", "└─ Duration: ")}${this.formatDuration(Date.now() - startedAt)}`,
       'Storage'
     );
   }

@@ -260,11 +260,11 @@ export class StorageService implements StorageServicing {
       const byteCount: number = this.sourceByteCount(source);
       const resolution: string = await this.readResolution(source, mediaType);
       XmaxLogger.info(
-        `开始上传\n` +
-        `├─ 类型：${mediaType}\n` +
-        `├─ 分辨率：${resolution}\n` +
-        `├─ 大小：${this.formatByteCount(byteCount)}\n` +
-        `└─ 安全检测：${checksSafety}`,
+        "开始上传 (Upload Started)\n" +
+        `${XmaxLogger.localized("├─ 类型：", "├─ Type: ")}${mediaType}\n` +
+        `${XmaxLogger.localized("├─ 分辨率：", "├─ Resolution: ")}${resolution}\n` +
+        `${XmaxLogger.localized("├─ 大小：", "├─ Size: ")}${this.formatByteCount(byteCount)}\n` +
+        `${XmaxLogger.localized("└─ 安全检测：", "└─ Safety Check: ")}${checksSafety}`,
         'Storage'
       );
 
@@ -287,19 +287,19 @@ export class StorageService implements StorageServicing {
       }
 
       XmaxLogger.info(
-        `上传完成\n` +
-        `├─ 地址：${result.url}\n` +
-        `└─ 耗时：${this.formatDuration(Date.now() - startedAt)}`,
+        "上传完成 (Upload Completed)\n" +
+        `${XmaxLogger.localized("├─ 地址：", "├─ URL: ")}${result.url}\n` +
+        `${XmaxLogger.localized("└─ 耗时：", "└─ Duration: ")}${this.formatDuration(Date.now() - startedAt)}`,
         'Storage'
       );
       return result;
     } catch (error) {
       if (!(error instanceof XmaxError && error.code === XmaxErrorCode.UPLOAD_ERROR)) {
         XmaxLogger.error(
-          `上传失败\n` +
-          `├─ 错误码：${this.errorCode(error)}\n` +
-          `├─ 原因：${this.errorMessage(error)}\n` +
-          `└─ 耗时：${this.formatDuration(Date.now() - startedAt)}`,
+          "上传失败 (Upload Failed)\n" +
+          `${XmaxLogger.localized("├─ 错误码：", "├─ Error Code: ")}${this.errorCode(error)}\n` +
+          `${XmaxLogger.localized("├─ 原因：", "├─ Reason: ")}${this.errorMessage(error)}\n` +
+          `${XmaxLogger.localized("└─ 耗时：", "└─ Duration: ")}${this.formatDuration(Date.now() - startedAt)}`,
           'Storage'
         );
       }

@@ -168,10 +168,13 @@ test('client applies environment and global loggerOptions; defaults remain China
   assert.equal(legacyConfiguration.loggerOptions, f.Option.ALL);
   const globalConfiguration = new XmaxConfiguration('global-key', XmaxEnvironment.GLOBAL);
   new XmaxClient(globalConfiguration);
+  assert.equal(f.Logger.localized('中文', 'English'), 'English');
   assert.deepEqual(services[2], {
     apiKey: 'global-key', baseURL: 'https://api.xmax.cloud/open/api/v1'
   });
   assert.equal(apiBaseURL(XmaxEnvironment.GLOBAL), 'https://api.xmax.cloud/open/api/v1');
+  new XmaxClient(defaultConfiguration);
+  assert.equal(f.Logger.localized('中文', 'English'), '中文');
   assert.throws(() => new XmaxConfiguration(' ').validate(), { code: 'INVALID_API_KEY' });
 });
 
@@ -352,4 +355,40 @@ test('stopping frame observation only logs failures and leaves no frame waiters'
   assert.deepEqual(failures, []);
   assert.match(f.logs.at(-1).message, /stop observation failed/);
   assert.equal(render.remoteFrameWaiters.size, 0);
+});
+
+test('global log details are English while raw payloads, error codes and redaction are preserved', () => {
+  const f = fixture();
+  const { XmaxEnvironment: Environment } = f.load('core/XmaxEnvironment.ets');
+  const { ApiLogger } = f.load('service/network/ApiLogger.ets');
+  const { ErrorMessageFormatter } = f.load('foundation/errors/ErrorMessageFormatter.ets');
+  f.Logger.configure(f.Option.ALL, Environment.GLOBAL);
+  assert.equal(f.Logger.localized('中文', 'English'), 'English');
+  const error = new f.XmaxError(f.Code.API_ERROR, '原始错误', 1003, 503);
+  const detail = ErrorMessageFormatter.format(error);
+  assert.equal(detail, '原始错误 (API_ERROR, API Code 1003, HTTP 503)');
+  assert.equal(error.message, '原始错误');
+  assert.equal(ErrorMessageFormatter.format({ code: 42, message: 'platform' }), 'platform (Platform Error Code: 42)');
+  ApiLogger.logResponse('POST', '/session', 503, '{"message":"原始数据","token":"secret-value"}', 12, false);
+  const log = f.logs.at(-1).message;
+  assert.match(log, /Status: 503/); assert.match(log, /Duration: 12 ms/);
+  assert.match(log, /原始数据/); assert.doesNotMatch(log, /secret-value/);
+  f.Logger.configure(f.Option.NONE, Environment.GLOBAL);
+  ApiLogger.logFailure('POST', '/session', error, 10);
+  assert.equal(f.logs.length, 1);
+  f.Logger.configure(f.Option.ALL);
+  assert.equal(f.Logger.localized('中文', 'English'), '中文');
+});
+
+test('RTC performance details follow the global log language and retain bilingual headings', () => {
+  const f = fixture({ '@bytertc/volcenginertc': { PerformanceAlarmReason: {}, NetworkQuality: { kNetworkQualityGood: 1 } } });
+  const { XmaxEnvironment: Environment } = f.load('core/XmaxEnvironment.ets');
+  const { RtcStatsLogger } = f.load('foundation/rtc/RtcStatsLogger.ets');
+  f.Logger.configure(f.Option.PERFORMANCE, Environment.GLOBAL);
+  RtcStatsLogger.logNetworkQuality({ tx_quality: 1, fraction_lost: 0, total_bandwidth: 1000, rtt: 20 }, []);
+  const log = f.logs.at(-1).message;
+  assert.match(log, /网络质量 \(Network Quality\)/);
+  assert.match(log, /Quality: Good/);
+  assert.match(log, /RTT 20 ms, Bandwidth/);
+  assert.doesNotMatch(log.split('\n').slice(1).join('\n'), /[\u4e00-\u9fff]/);
 });

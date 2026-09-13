@@ -87,7 +87,7 @@ export class XmaxRealtimeGenerationManager {
       try {
         this.stop(taskId);
       } catch (cleanupError) {
-        XmaxLogger.error(`取消生成等待失败\n└─ 原因：${XmaxError.from(cleanupError).message}`, 'Realtime');
+        XmaxLogger.error(`${XmaxLogger.localized("取消生成等待失败 (Failed to Cancel Generation Wait)\n└─ 原因：", "取消生成等待失败 (Failed to Cancel Generation Wait)\n└─ Reason: ")}${XmaxError.from(cleanupError).message}`, 'Realtime');
       }
       throw XmaxError.from(error);
     } finally {

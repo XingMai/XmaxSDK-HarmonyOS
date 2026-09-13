@@ -30,7 +30,7 @@ export class RoomHeartbeat {
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(
-          `发送房间心跳失败\n└─ 原因：${reason}`,
+          `${XmaxLogger.localized("发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ 原因：", "发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ Reason: ")}${reason}`,
           'Room'
         );
       }

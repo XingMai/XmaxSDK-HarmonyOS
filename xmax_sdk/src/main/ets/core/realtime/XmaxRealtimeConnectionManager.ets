@@ -103,7 +103,7 @@ export class XmaxRealtimeConnectionManager {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `静默远端视频渲染失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("静默远端视频渲染失败 (Failed to Mute Remote Video Rendering)\n└─ 原因：", "静默远端视频渲染失败 (Failed to Mute Remote Video Rendering)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }
@@ -183,7 +183,7 @@ export class XmaxRealtimeConnectionManager {
           const reason: string = closeError instanceof Error ?
             closeError.message : String(closeError);
           XmaxLogger.error(
-            `连接回滚关闭会话失败\n└─ 原因：${reason}`,
+            `${XmaxLogger.localized("连接回滚关闭会话失败 (Failed to Close Session during Connection Rollback)\n└─ 原因：", "连接回滚关闭会话失败 (Failed to Close Session during Connection Rollback)\n└─ Reason: ")}${reason}`,
             'Realtime'
           );
         }
@@ -216,7 +216,7 @@ export class XmaxRealtimeConnectionManager {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `重置远端视频渲染失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)\n└─ 原因：", "重置远端视频渲染失败 (Failed to Reset Remote Video Rendering)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }
@@ -226,7 +226,7 @@ export class XmaxRealtimeConnectionManager {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `释放 RTC 传输资源失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("释放 RTC 传输资源失败 (Failed to Release RTC Resources)\n└─ 原因：", "释放 RTC 传输资源失败 (Failed to Release RTC Resources)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }
@@ -238,7 +238,7 @@ export class XmaxRealtimeConnectionManager {
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(
-          `关闭实时会话失败\n└─ 原因：${reason}`,
+          `${XmaxLogger.localized("关闭实时会话失败 (Failed to Close Realtime Session)\n└─ 原因：", "关闭实时会话失败 (Failed to Close Realtime Session)\n└─ Reason: ")}${reason}`,
           'Realtime'
         );
       }
@@ -263,7 +263,7 @@ export class XmaxRealtimeConnectionManager {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `连接回滚释放 RTC 传输资源失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("连接回滚释放 RTC 传输资源失败 (Failed to Release RTC Resources during Connection Rollback)\n└─ 原因：", "连接回滚释放 RTC 传输资源失败 (Failed to Release RTC Resources during Connection Rollback)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }

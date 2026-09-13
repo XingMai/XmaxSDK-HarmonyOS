@@ -14,435 +14,435 @@
     },
     {
       "name": "reason_camera",
-      "value": "Real-time generation needs camera access to capture local video."
+      "value": "实时生成需要使用摄像头采集本地视频"
     },
     {
       "name": "reason_microphone",
-      "value": "Real-time generation needs microphone access to capture local audio."
+      "value": "实时生成需要使用麦克风采集本地音频"
     },
     {
       "name": "back_home",
-      "value": "Back to Home"
+      "value": "返回首页"
     },
     {
       "name": "storage_title",
-      "value": "Storage"
+      "value": "存储服务"
     },
     {
       "name": "read_file_failed",
-      "value": "Unable to read the file. Please try again."
+      "value": "读取文件失败，请重试"
     },
     {
       "name": "upload_failed",
-      "value": "Upload failed. Check your API key and network, then try again."
+      "value": "上传失败，请检查 API Key 和网络后重试"
     },
     {
       "name": "url_copied",
-      "value": "URL copied"
+      "value": "地址已复制"
     },
     {
       "name": "copy_failed",
-      "value": "Unable to copy. Please try again."
+      "value": "复制失败，请重试"
     },
     {
       "name": "image",
-      "value": "Image"
+      "value": "图片"
     },
     {
       "name": "video",
-      "value": "Video"
+      "value": "视频"
     },
     {
       "name": "storage_heading",
-      "value": "Upload local media with XmaxSDK"
+      "value": "把本地媒体交给 XmaxSDK"
     },
     {
       "name": "storage_description",
-      "value": "Choose an image or video and upload it to get a reusable URL."
+      "value": "选择图片或视频，上传后获取可直接使用的远程地址。"
     },
     {
       "name": "file_preview",
-      "value": "File preview"
+      "value": "文件预览"
     },
     {
       "name": "upload_again",
-      "value": "Replace"
+      "value": "重新上传"
     },
     {
       "name": "select_file",
-      "value": "Select a file"
+      "value": "点击选择"
     },
     {
       "name": "video_safety_unavailable",
-      "value": "Safety checks are unavailable for video uploads"
+      "value": "视频生成暂不支持安全检测"
     },
     {
       "name": "opening_library",
-      "value": "Opening media library"
+      "value": "正在打开媒体库"
     },
     {
       "name": "select_image_video",
-      "value": "Select an image or video"
+      "value": "点击选择图片或视频"
     },
     {
       "name": "with_safety_check",
-      "value": "Includes a content safety check"
+      "value": "包含内容安全检查"
     },
     {
       "name": "uploading_image",
-      "value": "Uploading image"
+      "value": "正在上传图片"
     },
     {
       "name": "uploading_video",
-      "value": "Uploading video"
+      "value": "正在上传视频"
     },
     {
       "name": "checking_upload",
-      "value": "Uploading and checking"
+      "value": "正在检测上传"
     },
     {
       "name": "safety_upload",
-      "value": "Upload with safety check"
+      "value": "安全检测上传"
     },
     {
       "name": "uploading",
-      "value": "Uploading"
+      "value": "正在上传"
     },
     {
       "name": "normal_upload",
-      "value": "Upload"
+      "value": "普通上传"
     },
     {
       "name": "upload_get_url",
-      "value": "Upload and get URL"
+      "value": "上传并获取地址"
     },
     {
       "name": "upload_result",
-      "value": "Upload result"
+      "value": "上传结果"
     },
     {
       "name": "upload_duration",
-      "value": "Upload duration"
+      "value": "上传耗时"
     },
     {
       "name": "url_placeholder",
-      "value": "The URL will appear here when the upload finishes."
+      "value": "上传完成后，远程地址会显示在这里。"
     },
     {
       "name": "copy_url",
-      "value": "Copy URL"
+      "value": "复制地址"
     },
     {
       "name": "no_url",
-      "value": "No URL to copy"
+      "value": "暂无可复制地址"
     },
     {
       "name": "stop_generation",
-      "value": "Stop generation"
+      "value": "停止生成"
     },
     {
       "name": "read_photo_failed",
-      "value": "Unable to read the photo. Please try again."
+      "value": "读取照片失败，请重试"
     },
     {
       "name": "flip",
-      "value": "Flip"
+      "value": "翻转"
     },
     {
       "name": "flip_camera",
-      "value": "Flip camera"
+      "value": "翻转摄像头"
     },
     {
       "name": "album",
-      "value": "Photos"
+      "value": "相册"
     },
     {
       "name": "replace_media",
-      "value": "Replace local media from Photos"
+      "value": "从相册替换本地素材"
     },
     {
       "name": "start_generation",
-      "value": "Start generation"
+      "value": "点击开始生成"
     },
     {
       "name": "category_charx",
-      "value": "Character"
+      "value": "换形象"
     },
     {
       "name": "category_clothx",
-      "value": "Outfit"
+      "value": "换装"
     },
     {
       "name": "category_vibex",
-      "value": "Style"
+      "value": "换风格"
     },
     {
       "name": "category_mox",
-      "value": "Touch Animation"
+      "value": "触控动图"
     },
     {
       "name": "category_dimx",
-      "value": "Summon"
+      "value": "虚拟召唤"
     },
     {
       "name": "category_free",
-      "value": "Free"
+      "value": "自由"
     },
     {
       "name": "touch_instruction",
-      "value": "Drag on the image to guide the character"
+      "value": "在画面上拖拽，用轨迹控制角色"
     },
     {
       "name": "add_reference",
-      "value": "Add reference image"
+      "value": "添加参考图"
     },
     {
       "name": "orientation_changed",
-      "value": "Screen orientation changed. Generation disconnected. Please start again."
+      "value": "屏幕方向已切换，生成已断开，请重新开始"
     },
     {
       "name": "media_not_ready",
-      "value": "Local preview is not ready"
+      "value": "本地画面尚未就绪"
     },
     {
       "name": "reference_not_ready",
-      "value": "Reference upload is not ready"
+      "value": "参考图上传尚未就绪"
     },
     {
       "name": "prompt_reference",
-      "value": "Prompt reference"
+      "value": "自由模式参考图"
     },
     {
       "name": "reference_upload_failed",
-      "value": "Reference upload failed. Please try again."
+      "value": "参考图上传失败，请重试"
     },
     {
       "name": "custom_reference",
-      "value": "Custom reference"
+      "value": "自定义参考图"
     },
     {
       "name": "reference_upload_retry",
-      "value": "Reference upload failed. Tap the image to retry."
+      "value": "参考图上传失败，点击图片可重试"
     },
     {
       "name": "prompt_placeholder",
-      "value": "Describe the effect you want"
+      "value": "输入你想要的效果"
     },
     {
       "name": "remove_reference",
-      "value": "Remove reference image"
+      "value": "删除参考图"
     },
     {
       "name": "submit_prompt",
-      "value": "Submit prompt"
+      "value": "提交指令"
     },
     {
       "name": "local_volume",
-      "value": "Local volume"
+      "value": "本地音量"
     },
     {
       "name": "remote_volume",
-      "value": "Remote volume"
+      "value": "远端音量"
     },
     {
       "name": "volume",
-      "value": "Volume"
+      "value": "音量"
     },
     {
       "name": "mute",
-      "value": "Mute"
+      "value": "静音"
     },
     {
       "name": "sound",
-      "value": "Sound"
+      "value": "声音"
     },
     {
       "name": "adjust_volume",
-      "value": "Adjust volume"
+      "value": "调整音量"
     },
     {
       "name": "unmute",
-      "value": "Unmute"
+      "value": "开启声音"
     },
     {
       "name": "mute_action",
-      "value": "Mute"
+      "value": "关闭声音"
     },
     {
       "name": "muted",
-      "value": "Muted"
+      "value": "已静音"
     },
     {
       "name": "sound_on",
-      "value": "Sound on"
+      "value": "已开启"
     },
     {
       "name": "loading",
-      "value": "Loading"
+      "value": "正在加载"
     },
     {
       "name": "close_extension",
-      "value": "Close UIExtensionAbility"
+      "value": "关闭 UIExtensionAbility"
     },
     {
       "name": "open_platform_failed",
-      "value": "Unable to open the API key page. Please try again later."
+      "value": "无法打开申请页面，请稍后重试"
     },
     {
       "name": "choose_model",
-      "value": "Choose your model"
+      "value": "选择你的模型"
     },
     {
       "name": "api_key_placeholder",
-      "value": "Enter your Xmax API key"
+      "value": "输入 Xmax API Key"
     },
     {
       "name": "no_api_key",
-      "value": "Need an API key?"
+      "value": "还没有 API Key？"
     },
     {
       "name": "apply_api_key",
-      "value": "Get one on the Xmax platform"
+      "value": "前往 Xmax 开放平台申请"
     },
     {
       "name": "run",
-      "value": "Run"
+      "value": "运行"
     },
     {
       "name": "enter",
-      "value": "Open"
+      "value": "进入"
     },
     {
       "name": "read_video_failed",
-      "value": "Unable to read the video. Please try again."
+      "value": "读取视频失败，请重试"
     },
     {
       "name": "read_image_failed",
-      "value": "Unable to read the image. Please try again."
+      "value": "读取图片失败，请重试"
     },
     {
       "name": "home_heading",
-      "value": "Real-time interactive video"
+      "value": "实时交互视频模型"
     },
     {
       "name": "home_description",
-      "value": "Choose an input to start real-time generation with XmaxSDK"
+      "value": "选择输入源，启动 XmaxSDK 流式生成链路"
     },
     {
       "name": "choose_input",
-      "value": "Choose a media input"
+      "value": "选择一种内容输入方式"
     },
     {
       "name": "camera_pipeline",
-      "value": "Live camera"
+      "value": "摄像头实时流"
     },
     {
       "name": "camera_description",
-      "value": "Capture live camera frames to drive continuous video generation."
+      "value": "实时采集摄像头画面，持续驱动视频生成。"
     },
     {
       "name": "video_pipeline",
-      "value": "Video generation"
+      "value": "视频生成管线"
     },
     {
       "name": "video_description",
-      "value": "Choose a local video to generate from its frames."
+      "value": "选择本地视频，将连续画面逐帧送入生成链路。"
     },
     {
       "name": "image_pipeline",
-      "value": "Image generation"
+      "value": "图片生成管线"
     },
     {
       "name": "image_description",
-      "value": "Choose an image and bring it to life."
+      "value": "选择本地图片，让静态画面持续流动起来。"
     },
     {
       "name": "more_features",
-      "value": "More capabilities and integration examples"
+      "value": "更多能力与接入示例"
     },
     {
       "name": "extension_description",
-      "value": "Test the realtime lifecycle in a UIExtensionAbility"
+      "value": "在 UIExtensionAbility 中验证实时生命周期"
     },
     {
       "name": "custom_trajectory",
-      "value": "Custom trajectories"
+      "value": "自定义轨迹渲染"
     },
     {
       "name": "trajectory_description",
-      "value": "Draw interactive trails with a custom renderer."
+      "value": "使用自定义 Renderer 绘制交互轨迹。"
     },
     {
       "name": "storage_card_description",
-      "value": "Upload an image or video to get a reusable URL"
+      "value": "上传图片或视频，获取可复用的远程地址"
     },
     {
       "name": "back_playground",
-      "value": "Back to Playground"
+      "value": "返回 Playground"
     },
     {
       "name": "language_title",
-      "value": "Language"
+      "value": "语言"
     },
     {
       "name": "language_system",
-      "value": "System default"
+      "value": "跟随系统"
     },
     {
       "name": "upload_progress",
-      "value": "Uploading {0}%"
+      "value": "上传中 {0}%"
     },
     {
       "name": "read_media_failed",
-      "value": "Unable to read {0}. Please try again."
+      "value": "读取{0}失败，请重试"
     },
     {
       "name": "open_extension_failed",
-      "value": "Unable to open UIExtensionAbility: {0}"
+      "value": "打开 UIExtensionAbility 失败：{0}"
     },
     {
       "name": "mode_unavailable",
-      "value": "{0} is not available yet"
+      "value": "{0}暂未开放"
     },
     {
       "name": "models_count",
-      "value": "{0} MODELS"
+      "value": "{0} 个模型"
     },
     {
       "name": "active",
-      "value": "ACTIVE"
+      "value": "已选"
     },
     {
       "name": "select",
-      "value": "SELECT"
+      "value": "选择"
     },
     {
       "name": "available",
-      "value": "AVAILABLE"
+      "value": "可用"
     },
     {
       "name": "ready",
-      "value": "READY"
+      "value": "就绪"
     },
     {
       "name": "runtime",
-      "value": "RUNTIME"
+      "value": "运行环境"
     },
     {
       "name": "min_api",
-      "value": "MIN API"
+      "value": "最低 API"
     },
     {
       "name": "latest_model",
-      "value": "LATEST MODEL"
+      "value": "最新模型"
     },
     {
       "name": "pipelines",
-      "value": "GENERATION PIPELINES"
+      "value": "生成管线"
     },
     {
       "name": "sdk_features",
-      "value": "SDK FEATURES"
+      "value": "SDK 能力"
     }
   ]
 }

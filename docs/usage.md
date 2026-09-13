@@ -118,6 +118,19 @@ const configuration = new XmaxConfiguration(
 Use `XmaxEnvironment.CHINA` to select the China service explicitly. RTC room
 credentials and storage configuration are returned by the selected service.
 
+SDK log details use Chinese for `CHINA` and English for `GLOBAL`; bilingual log
+headings are retained. Logging options and language are global: the most recently
+created client's configuration takes effect. Original server/platform error
+messages and error codes are preserved, and credential redaction still applies.
+
+XLab's home page offers **System default**, **简体中文**, and **English**. The
+selection persists across launches. System Chinese uses Simplified Chinese;
+other system languages fall back to English. Chinese selects the China service
+and API-key portal; English selects the global service and portal. Realtime,
+reference-image upload, and storage clients use this selection when created.
+Changing language updates UI text without rebuilding an active media pipeline.
+Preset generation prompts and user/server content are not translated.
+
 Omitting a camera format uses `defaultCameraVideoFormat`. For images and videos,
 omitting the format derives dimensions from the source's display size and uses
 `defaultFrameRate`; an explicit format preserves the requested frame rate while

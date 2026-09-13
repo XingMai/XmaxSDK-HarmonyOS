@@ -1,3 +1,4 @@
+import { XLabLanguage, XLabLocalization } from '../localization/XLabLocalization';
 import {
   promptAction,
   router
@@ -68,6 +69,12 @@ struct RuntimeMetric {
 
 @Component
 struct ModelRegistryCard {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop selectedModel: string = RealtimeModel.X2_0;
   @Prop apiKey: string = '';
   onSelect: (model: RealtimeModel) => void = (_model: RealtimeModel): void => {};
@@ -76,23 +83,24 @@ struct ModelRegistryCard {
   private async openApiKeyApplicationPage(): Promise<void> {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      await context.openLink('https://platform.xmaxai.com/api-keys');
+      await context.openLink(XLabLocalization.languageCode === 'zh-Hans' ?
+        'https://platform.xmaxai.com/api-keys' : 'https://platform.xmax.ai/api-keys');
     } catch (_error) {
-      promptAction.showToast({ message: '无法打开申请页面，请稍后重试' });
+      promptAction.showToast({ message: this.text('open_platform_failed') });
     }
   }
 
   build() {
     Column() {
       Row() {
-        Text('选择你的模型')
+        Text(this.text('choose_model'))
           .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor('#E9EDF3')
 
         Blank()
 
-        Text(`${XLabModelSelection.OPTIONS.length} MODELS`)
+        Text(XLabLocalization.format('models_count', [XLabModelSelection.OPTIONS.length.toString()], this.languageRevision))
           .fontSize(8)
           .fontColor('#70FFFFFF')
           .letterSpacing(0.8)
@@ -111,7 +119,7 @@ struct ModelRegistryCard {
 
         TextInput({
           text: this.apiKey,
-          placeholder: '输入 Xmax API Key'
+          placeholder: this.text('api_key_placeholder')
         })
           .width('100%')
           .height(40)
@@ -135,11 +143,11 @@ struct ModelRegistryCard {
           })
 
         Row({ space: 4 }) {
-          Text('还没有 API Key？')
+          Text(this.text('no_api_key'))
             .fontSize(9)
             .fontColor('#60708090')
 
-          Text('前往 Xmax 开放平台申请')
+          Text(this.text('apply_api_key'))
             .fontSize(9)
             .fontColor('#A08EF0C8')
             .onClick((): void => {
@@ -184,7 +192,7 @@ struct ModelRegistryCard {
           Blank()
 
           ConsoleTag({
-            label: this.selectedModel === option.model ? 'ACTIVE' : 'SELECT',
+            label: this.selectedModel === option.model ? this.text('active') : this.text('select'),
             tagColor: this.selectedModel === option.model ? '#8EF0C8' : '#80FFFFFF',
             tagBackground: this.selectedModel === option.model ? '#168EF0C8' : '#0AFFFFFF'
           })
@@ -214,6 +222,12 @@ struct ModelRegistryCard {
 
 @Component
 struct PipelineCard {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop sequence: string = '';
   @Prop modeId: string = '';
   @Prop status: string = '';
@@ -318,7 +332,7 @@ struct PipelineCard {
 
           if (this.isReady) {
             Row() {
-              Text('运行')
+              Text(this.text('run'))
                 .fontSize(11)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#08110E')
@@ -363,6 +377,12 @@ struct PipelineCard {
 
 @Component
 struct SdkFeatureCard {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @Prop categoryLabel: string = '';
   @Prop watermark: string = '';
   @Prop accentColor: string = '#8EF0C8';
@@ -417,7 +437,7 @@ struct SdkFeatureCard {
 
           Blank()
 
-          Text('AVAILABLE')
+          Text(this.text('available'))
             .height(25)
             .padding({ left: 10, right: 10 })
             .fontSize(8)
@@ -477,7 +497,7 @@ struct SdkFeatureCard {
           .margin({ left: 13 })
           .alignItems(HorizontalAlign.Start)
 
-          Text('进入')
+          Text(this.text('enter'))
             .width(58)
             .height(34)
             .margin({ left: 10 })
@@ -533,6 +553,12 @@ struct SdkFeatureCard {
 @Entry
 @Component
 struct Index {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   @StorageLink(XLabModelSelection.STORAGE_KEY)
   private selectedRealtimeModel: string = RealtimeModel.X2_0;
   @StorageLink(XLabConfiguration.API_KEY_STORAGE_KEY)
@@ -572,7 +598,7 @@ struct Index {
   private presentUIExtensionPlayground(): void {
     void this.openUIExtensionPlayground().catch((error: Error): void => {
       promptAction.showToast({
-        message: `打开 UIExtensionAbility 失败：${error.message}`
+        message: XLabLocalization.format('open_extension_failed', [error.message])
       });
     });
   }
@@ -610,7 +636,7 @@ struct Index {
         this.openRealtimePlayground(videoPath);
       }
     } catch (_error) {
-      promptAction.showToast({ message: '读取视频失败，请重试' });
+      promptAction.showToast({ message: this.text('read_video_failed') });
     } finally {
       this.isPickingVideo = false;
     }
@@ -640,14 +666,14 @@ struct Index {
         );
       }
     } catch (_error) {
-      promptAction.showToast({ message: '读取图片失败，请重试' });
+      promptAction.showToast({ message: this.text('read_image_failed') });
     } finally {
       this.isPickingImage = false;
     }
   }
 
   private showComingSoon(mode: string): void {
-    promptAction.showToast({ message: `${mode}暂未开放` });
+    promptAction.showToast({ message: XLabLocalization.format('mode_unavailable', [mode]) });
   }
 
   build() {
@@ -713,6 +739,31 @@ struct Index {
           }
           .width('100%')
 
+          Row() {
+            Text(this.text('language_title'))
+              .fontSize(12)
+              .fontColor('#A8B0BC')
+            Blank()
+            Select([
+              { value: this.text('language_system') },
+              { value: '简体中文' },
+              { value: 'English' }
+            ])
+              .selected(XLabLocalization.language === XLabLanguage.CHINESE ? 1 :
+                XLabLocalization.language === XLabLanguage.ENGLISH ? 2 : 0)
+              .fontColor('#FFFFFF')
+              .selectedOptionFontColor('#8EF0C8')
+              .optionFontColor('#FFFFFF')
+              .menuBackgroundColor('#20242C')
+              .backgroundColor('#20242C')
+              .onSelect((index: number): void => {
+                XLabLocalization.setLanguage(index === 1 ? XLabLanguage.CHINESE :
+                  index === 2 ? XLabLanguage.ENGLISH : XLabLanguage.SYSTEM);
+              })
+          }
+          .width('100%')
+          .margin({ top: 16 })
+
           Stack({ alignContent: Alignment.TopStart }) {
             Column()
               .width(96)
@@ -737,7 +788,7 @@ struct Index {
                   .letterSpacing(1.2)
               }
 
-              Text('实时交互视频模型')
+              Text(this.text('home_heading'))
                 .width('100%')
                 .margin({ top: 18 })
                 .fontSize(24)
@@ -745,7 +796,7 @@ struct Index {
                 .fontColor('#F5F7FB')
                 .letterSpacing(-0.3)
 
-              Text('选择输入源，启动 XmaxSDK 流式生成链路')
+              Text(this.text('home_description'))
                 .width('100%')
                 .margin({ top: 12 })
                 .fontSize(12)
@@ -768,9 +819,9 @@ struct Index {
           .shadow({ radius: 24, color: '#65000000', offsetY: 10 })
 
           Row({ space: 8 }) {
-            RuntimeMetric({ label: 'RUNTIME', value: 'HarmonyOS' })
-            RuntimeMetric({ label: 'MIN API', value: '18+' })
-            RuntimeMetric({ label: 'LATEST MODEL', value: 'X2.0' })
+            RuntimeMetric({ label: this.text('runtime'), value: 'HarmonyOS' })
+            RuntimeMetric({ label: this.text('min_api'), value: '18+' })
+            RuntimeMetric({ label: this.text('latest_model'), value: 'X2.0' })
           }
           .width('100%')
           .margin({ top: 12 })
@@ -789,13 +840,13 @@ struct Index {
 
           Row() {
             Column() {
-              Text('GENERATION PIPELINES')
+              Text(this.text('pipelines'))
                 .fontSize(10)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#C6D0DD')
                 .letterSpacing(1.1)
 
-              Text('选择一种内容输入方式')
+              Text(this.text('choose_input'))
                 .margin({ top: 5 })
                 .fontSize(11)
                 .fontColor('#667384')
@@ -808,10 +859,10 @@ struct Index {
           PipelineCard({
             sequence: '01',
             modeId: 'MODE_01 / CAMERA',
-            status: 'READY',
+            status: this.text('ready'),
             statusColor: '#8EF0C8',
-            title: '摄像头实时流',
-            subtitle: '实时采集摄像头画面，持续驱动视频生成。',
+            title: this.text('camera_pipeline'),
+            subtitle: this.text('camera_description'),
             capability: 'createLocalCameraStream()',
             isReady: true,
             onOpen: (): void => {
@@ -822,10 +873,10 @@ struct Index {
           PipelineCard({
             sequence: '02',
             modeId: 'MODE_02 / VIDEO.FILE',
-            status: 'READY',
+            status: this.text('ready'),
             statusColor: '#78A9FF',
-            title: '视频生成管线',
-            subtitle: '选择本地视频，将连续画面逐帧送入生成链路。',
+            title: this.text('video_pipeline'),
+            subtitle: this.text('video_description'),
             capability: 'createLocalVideoStream()',
             isReady: true,
             onOpen: (): void => {
@@ -837,10 +888,10 @@ struct Index {
           PipelineCard({
             sequence: '03',
             modeId: 'MODE_03 / IMAGE.FILE',
-            status: 'READY',
+            status: this.text('ready'),
             statusColor: '#C9A3FF',
-            title: '图片生成管线',
-            subtitle: '选择本地图片，让静态画面持续流动起来。',
+            title: this.text('image_pipeline'),
+            subtitle: this.text('image_description'),
             capability: 'createLocalImageStream()',
             isReady: true,
             onOpen: (): void => {
@@ -851,13 +902,13 @@ struct Index {
 
           Row() {
             Column() {
-              Text('SDK FEATURES')
+              Text(this.text('sdk_features'))
                 .fontSize(10)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#C6D0DD')
                 .letterSpacing(1.1)
 
-              Text('更多能力与接入示例')
+              Text(this.text('more_features'))
                 .margin({ top: 5 })
                 .fontSize(11)
                 .fontColor('#667384')
@@ -874,7 +925,7 @@ struct Index {
             icon: $r('app.media.sdk_feature_ui_extension'),
             iconLabel: 'ABILITY',
             title: 'UIExtensionAbility',
-            subtitle: '在 UIExtensionAbility 中验证实时生命周期',
+            subtitle: this.text('extension_description'),
             tags: ['SHARE', 'RTC', 'LIFECYCLE'],
             highlightedTag: 'LIFECYCLE',
             onOpen: (): void => {
@@ -888,8 +939,8 @@ struct Index {
             accentColor: '#FF8FD8',
             icon: $r('app.media.sdk_feature_trajectory_custom'),
             iconLabel: 'RENDER',
-            title: '自定义轨迹渲染',
-            subtitle: '使用自定义 Renderer 绘制交互轨迹。',
+            title: this.text('custom_trajectory'),
+            subtitle: this.text('trajectory_description'),
             tags: ['CANVAS', 'MULTI-TOUCH', 'CUSTOM EFFECT'],
             highlightedTag: 'CUSTOM EFFECT',
             onOpen: (): void => {
@@ -904,8 +955,8 @@ struct Index {
             accentColor: '#F5B86C',
             icon: $r('app.media.sdk_feature_storage'),
             iconLabel: 'UPLOAD',
-            title: '存储服务',
-            subtitle: '上传图片或视频，获取可复用的远程地址',
+            title: this.text('storage_title'),
+            subtitle: this.text('storage_card_description'),
             tags: ['IMAGE', 'VIDEO', 'REMOTE URL'],
             highlightedTag: 'REMOTE URL',
             onOpen: (): void => {

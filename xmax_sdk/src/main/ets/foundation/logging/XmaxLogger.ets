@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { XmaxLoggerOption } from './XmaxLoggerOption';
+import { XmaxEnvironment } from '../../core/XmaxEnvironment';
 
 const LOG_DOMAIN: number = 0x584D;
 const LOG_TAG: string = 'XmaxSDK';
@@ -9,10 +10,17 @@ type LogMessage = string | (() => string);
 /** SDK 内部日志入口；调用方不应传入认证信息或完整敏感响应。 */
 export class XmaxLogger {
   private static options: XmaxLoggerOption = XmaxLoggerOption.NONE;
+  private static environment: XmaxEnvironment = XmaxEnvironment.CHINA;
 
   /** 配置 SDK 全局日志；新客户端的配置会覆盖之前的配置。 */
-  static configure(options: XmaxLoggerOption): void {
+  static configure(options: XmaxLoggerOption, environment: XmaxEnvironment = XmaxEnvironment.CHINA): void {
     XmaxLogger.options = options;
+    XmaxLogger.environment = environment;
+  }
+
+  /** 日志标题保留中英双语，细项跟随最后创建的 Client 的服务环境。 */
+  static localized(chinese: string, english: string): string {
+    return XmaxLogger.environment === XmaxEnvironment.CHINA ? chinese : english;
   }
 
   static isEnabled(option: XmaxLoggerOption): boolean {

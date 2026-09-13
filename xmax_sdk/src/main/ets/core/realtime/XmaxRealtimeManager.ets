@@ -438,12 +438,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return;
     }
     void this.disconnect(RealtimeReason.ORIENTATION_CHANGED)
-      .catch((error: Object): void => this.logCleanupFailure('转屏后断开实时连接失败', error));
+      .catch((error: Object): void => this.logCleanupFailure("转屏后断开实时连接失败 (Failed to Disconnect after Orientation Change)", error));
     if (this.currentState.connectionState === RealtimeConnectionState.DISCONNECTING) {
       try {
         this.generationManager.reset();
       } catch (error) {
-        this.logCleanupFailure('转屏后停止生成失败', error);
+        this.logCleanupFailure("转屏后停止生成失败 (Failed to Stop Generation after Orientation Change)", error);
       }
     }
   }
@@ -497,7 +497,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.mediaController.setLocalAudioPreviewEnabled(false);
         this.mediaController.prepareForClose();
       } catch (error) {
-        this.logCleanupFailure('静默本地媒体失败', error);
+        this.logCleanupFailure("静默本地媒体失败 (Failed to Mute Local Media)", error);
       }
       this.connectionManager.prepareForClose();
     }
@@ -619,13 +619,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     try {
       this.generationManager.reset(taskId);
     } catch (error) {
-      this.logCleanupFailure('停止实时生成失败', error);
+      this.logCleanupFailure("停止实时生成失败 (Failed to Stop Realtime Generation)", error);
     }
     let sessionId: string | undefined = this.connectionManager.currentSessionId || undefined;
     try {
       sessionId = (await this.connectionManager.disconnect()) ?? sessionId;
     } catch (error) {
-      this.logCleanupFailure('断开实时连接失败', error);
+      this.logCleanupFailure("断开实时连接失败 (Failed to Disconnect Realtime Session)", error);
     }
     if (scope === RealtimeTerminationScope.ALL) {
       this.mediaController.setCameraPreviewReadyHandler(null);
@@ -636,7 +636,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       try {
         await this.mediaController.stopLocalStream();
       } catch (error) {
-        this.logCleanupFailure('关闭本地媒体失败', error);
+        this.logCleanupFailure("关闭本地媒体失败 (Failed to Close Local Media)", error);
       }
     } else {
       this.restoreLocalAudioPreview();
@@ -659,14 +659,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private logCleanupFailure(title: string, error: Object): void {
-    XmaxLogger.error(`${title}\n└─ 原因：${XmaxError.from(error).message}`, 'Realtime');
+    XmaxLogger.error(`${title}${XmaxLogger.localized("\n└─ 原因：", "\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Realtime');
   }
 
   private handleRuntimeError(error: XmaxError, scope: RealtimeTerminationScope): void {
     this.renderController.stopRemoteVideoFrameDelivery();
     this.renderController.failRemoteFrameWait(error);
     void this.coordinator.terminateWithError(error, scope)
-      .catch((failure: Object): void => this.logCleanupFailure('实时错误清理失败', failure));
+      .catch((failure: Object): void => this.logCleanupFailure("实时错误清理失败 (Realtime Error Cleanup Failed)", failure));
   }
 
   private reportError(error: Object): XmaxError {

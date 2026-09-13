@@ -347,7 +347,7 @@ export class VideoSourceController implements VideoSourceControlling {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `释放本地视频解码器失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("释放本地视频解码器失败 (Failed to Release Local Video Decoder)\n└─ 原因：", "释放本地视频解码器失败 (Failed to Release Local Video Decoder)\n└─ Reason: ")}${reason}`,
         'Video'
       );
     }

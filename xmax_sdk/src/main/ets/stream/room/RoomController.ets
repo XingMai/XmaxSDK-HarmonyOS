@@ -144,7 +144,7 @@ export class RoomController implements RoomControlling {
     } catch (error) {
       const xmaxError: XmaxError = XmaxError.from(error);
       XmaxLogger.error(
-        `发送生成停止消息失败\n└─ 原因：${xmaxError.message}`,
+        `${XmaxLogger.localized("发送生成停止消息失败 (Failed to Send Generation Stop Message)\n└─ 原因：", "发送生成停止消息失败 (Failed to Send Generation Stop Message)\n└─ Reason: ")}${xmaxError.message}`,
         'Room'
       );
     }
@@ -200,13 +200,9 @@ export class RoomController implements RoomControlling {
       const formattedMessage: string = JSON.stringify(event, null, 2);
       const indentedMessage: string = formattedMessage.replace(/\n/g, '\n   ');
 
-      return `发送房间信令
-├─ 类型：${eventType}
-└─ 内容：
-   ${indentedMessage}`;
+      return `${XmaxLogger.localized("发送房间信令 (Send Room Signal)\n├─ 类型：", "发送房间信令 (Send Room Signal)\n├─ Type: ")}${eventType}${XmaxLogger.localized("\n└─ 内容：\n   ", "\n└─ Content: \n   ")}${indentedMessage}`;
     } catch (_error) {
-      return `发送房间信令
-└─ 内容：${message}`;
+      return `${XmaxLogger.localized("发送房间信令 (Send Room Signal)\n└─ 内容：", "发送房间信令 (Send Room Signal)\n└─ Content: ")}${message}`;
     }
   }
 

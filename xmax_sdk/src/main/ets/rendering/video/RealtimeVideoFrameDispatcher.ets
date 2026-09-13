@@ -52,7 +52,7 @@ export class RealtimeVideoFrameDispatcher {
           listener(pendingFrame);
         } catch (error) {
           const reason: string = error instanceof Error ? error.message : String(error);
-          XmaxLogger.error(`远端视频帧监听器执行失败\n└─ 原因：${reason}`, 'Render');
+          XmaxLogger.error(`${XmaxLogger.localized("远端视频帧监听器执行失败 (Remote Video Frame Listener Failed)\n└─ 原因：", "远端视频帧监听器执行失败 (Remote Video Frame Listener Failed)\n└─ Reason: ")}${reason}`, 'Render');
         }
       }
     }, 0);

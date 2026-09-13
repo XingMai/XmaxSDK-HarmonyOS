@@ -141,46 +141,46 @@ export class RealtimeTiming {
     }
     const lines: string[] = [
       '实时生成启动耗时 (Realtime Generation Startup Timing)',
-      `├─ 总耗时：${this.duration(run.startedAt, run.readyAt)}`
+      `${XmaxLogger.localized("├─ 总耗时：", "├─ Total Duration: ")}${this.duration(run.startedAt, run.readyAt)}`
     ];
     if (run.connectionStartedAt !== undefined && run.connectionFinishedAt !== undefined) {
-      lines.push(`├─ 实时连接：${this.duration(run.connectionStartedAt, run.connectionFinishedAt)}`);
+      lines.push(`${XmaxLogger.localized("├─ 实时连接：", "├─ Realtime Connection: ")}${this.duration(run.connectionStartedAt, run.connectionFinishedAt)}`);
     }
-    lines.push(`├─ 等待生成结果流确认：${this.duration(run.signalStartedAt, run.seiMatchedAt)}`);
-    lines.push(`└─ 结果流确认到首帧就绪：${this.duration(run.seiMatchedAt, run.readyAt)}`);
+    lines.push(`${XmaxLogger.localized("├─ 等待生成结果流确认：", "├─ Waiting for Result Stream Confirmation: ")}${this.duration(run.signalStartedAt, run.seiMatchedAt)}`);
+    lines.push(`${XmaxLogger.localized("└─ 结果流确认到首帧就绪：", "└─ Result Stream Confirmation to First Frame Ready: ")}${this.duration(run.seiMatchedAt, run.readyAt)}`);
     return lines.join('\n');
   }
 
   private formatFailure(run: RealtimeTimingRun, error: XmaxError): string {
     const lines: string[] = [
       '实时生成启动未完成耗时 (Incomplete Realtime Generation Startup Timing)',
-      `├─ 已耗时：${this.duration(run.startedAt, run.failureAt)}`,
-      `├─ 停留阶段：${this.pendingStage(run)}`
+      `${XmaxLogger.localized("├─ 已耗时：", "├─ Elapsed Time: ")}${this.duration(run.startedAt, run.failureAt)}`,
+      `${XmaxLogger.localized("├─ 停留阶段：", "├─ Current Stage: ")}${this.pendingStage(run)}`
     ];
-    this.appendDetail(lines, '服务端会话创建', run.sessionStartedAt, run.sessionFinishedAt ?? run.failureAt);
-    this.appendDetail(lines, 'RTC 房间连接', run.roomJoinStartedAt, run.roomJoinFinishedAt ?? run.failureAt);
-    this.appendDetail(lines, '实时连接', run.connectionStartedAt, run.connectionFinishedAt ?? run.failureAt);
-    this.appendDetail(lines, '等待生成结果流确认', run.signalStartedAt, run.seiMatchedAt ?? run.failureAt);
-    this.appendDetail(lines, '结果流确认后等待首帧', run.seiMatchedAt, run.failureAt);
-    lines.push(`└─ 失败原因：${error.message}`);
+    this.appendDetail(lines, XmaxLogger.localized("服务端会话创建", "Server Session Creation"), run.sessionStartedAt, run.sessionFinishedAt ?? run.failureAt);
+    this.appendDetail(lines, XmaxLogger.localized("RTC 房间连接", "RTC Room Connection"), run.roomJoinStartedAt, run.roomJoinFinishedAt ?? run.failureAt);
+    this.appendDetail(lines, XmaxLogger.localized("实时连接", "Realtime Connection"), run.connectionStartedAt, run.connectionFinishedAt ?? run.failureAt);
+    this.appendDetail(lines, XmaxLogger.localized("等待生成结果流确认", "Waiting for Result Stream Confirmation"), run.signalStartedAt, run.seiMatchedAt ?? run.failureAt);
+    this.appendDetail(lines, XmaxLogger.localized("结果流确认后等待首帧", "Waiting for First Frame after Stream Confirmation"), run.seiMatchedAt, run.failureAt);
+    lines.push(`${XmaxLogger.localized("└─ 失败原因：", "└─ Failure Reason: ")}${error.message}`);
     return lines.join('\n');
   }
 
   private pendingStage(run: RealtimeTimingRun): string {
-    if (run.seiMatchedAt !== undefined) { return '结果流已确认，正在等待首帧'; }
-    if (run.signalStartedAt !== undefined) { return '正在等待生成结果流确认'; }
-    if (run.connectionFinishedAt !== undefined) { return '连接完成后准备生成'; }
+    if (run.seiMatchedAt !== undefined) { return XmaxLogger.localized("结果流已确认，正在等待首帧", "Result stream confirmed, waiting for the first frame"); }
+    if (run.signalStartedAt !== undefined) { return XmaxLogger.localized("正在等待生成结果流确认", "Waiting for result stream confirmation"); }
+    if (run.connectionFinishedAt !== undefined) { return XmaxLogger.localized("连接完成后准备生成", "Preparing generation after connection"); }
     if (run.roomJoinStartedAt !== undefined && run.roomJoinFinishedAt === undefined) {
-      return '正在连接 RTC 房间';
+      return XmaxLogger.localized("正在连接 RTC 房间", "Joining the RTC room");
     }
-    if (run.sessionFinishedAt !== undefined) { return 'RTC 连接准备'; }
-    if (run.sessionStartedAt !== undefined) { return '服务端会话创建'; }
-    return '调用与本地准备';
+    if (run.sessionFinishedAt !== undefined) { return XmaxLogger.localized("RTC 连接准备", "Preparing the RTC connection"); }
+    if (run.sessionStartedAt !== undefined) { return XmaxLogger.localized("服务端会话创建", "Server Session Creation"); }
+    return XmaxLogger.localized("调用与本地准备", "Call and local preparation");
   }
 
   private appendDetail(lines: string[], title: string, start?: number, end?: number): void {
     const value: number | undefined = this.milliseconds(start, end);
-    if (value !== undefined && value >= 1) { lines.push(`├─ ${title}：${value.toFixed(1)} ms`); }
+    if (value !== undefined && value >= 1) { lines.push(`├─ ${title}${XmaxLogger.localized('：', ': ')}${value.toFixed(1)} ms`); }
   }
 
   private milliseconds(start?: number, end?: number): number | undefined {

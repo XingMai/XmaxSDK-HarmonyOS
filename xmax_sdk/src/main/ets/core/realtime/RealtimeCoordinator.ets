@@ -309,7 +309,7 @@ export class RealtimeCoordinator {
         const sessionId: string | undefined = await this.cleanup(scope, this.state.taskId ?? '');
         pending.sessionId = sessionId ?? pending.sessionId;
       } catch (error) {
-        XmaxLogger.error(`实时资源清理失败\n└─ 原因：${XmaxError.from(error).message}`, 'Realtime');
+        XmaxLogger.error(`${XmaxLogger.localized("实时资源清理失败 (Realtime Cleanup Failed)\n└─ 原因：", "实时资源清理失败 (Realtime Cleanup Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Realtime');
       }
       if (pending.revision !== revision || pending.operations.size > 0) {
         continue;
@@ -361,7 +361,7 @@ export class RealtimeCoordinator {
     try {
       this.stateListener?.(state);
     } catch (error) {
-      XmaxLogger.error(`实时状态监听器执行失败\n└─ 原因：${XmaxError.from(error).message}`, 'Realtime');
+      XmaxLogger.error(`${XmaxLogger.localized("实时状态监听器执行失败 (Realtime State Listener Failed)\n└─ 原因：", "实时状态监听器执行失败 (Realtime State Listener Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Realtime');
     }
   }
 }

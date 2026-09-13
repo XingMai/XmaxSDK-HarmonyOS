@@ -86,7 +86,7 @@ export class PermissionManager implements PermissionManaging {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `权限申请失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("权限申请失败 (Permission Request Failed)\n└─ 原因：", "权限申请失败 (Permission Request Failed)\n└─ Reason: ")}${reason}`,
         'Permission'
       );
     }

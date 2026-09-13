@@ -256,7 +256,7 @@ export class MediaSourceController implements MediaSourceControlling {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `释放本地音频播放器失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ 原因：", "释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ Reason: ")}${reason}`,
         'Audio'
       );
     }
@@ -311,7 +311,7 @@ export class MediaSourceController implements MediaSourceControlling {
       } catch (error) {
         const reason: string = error instanceof Error ? error.message : String(error);
         XmaxLogger.error(
-          `释放视频元数据读取器失败\n└─ 原因：${reason}`,
+          `${XmaxLogger.localized("释放视频元数据读取器失败 (Failed to Release Video Metadata Reader)\n└─ 原因：", "释放视频元数据读取器失败 (Failed to Release Video Metadata Reader)\n└─ Reason: ")}${reason}`,
           'Video'
         );
       } finally {

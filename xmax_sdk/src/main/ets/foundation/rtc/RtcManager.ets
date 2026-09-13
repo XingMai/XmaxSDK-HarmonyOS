@@ -309,7 +309,7 @@ export class RtcManager implements RtcManaging {
     const result: number = this.requireEngine().pushExternalVideoFrame(rtcFrame);
     if (result < 0) {
       XmaxLogger.error(
-        `推送外部视频帧失败\n└─ 返回码：${result}`,
+        `${XmaxLogger.localized("推送外部视频帧失败 (External Video Frame Push Failed)\n└─ 返回码：", "推送外部视频帧失败 (External Video Frame Push Failed)\n└─ Return Code: ")}${result}`,
         'RTC'
       );
 
@@ -338,7 +338,7 @@ export class RtcManager implements RtcManaging {
 
     if (result < 0) {
       XmaxLogger.error(
-        `推送外部音频帧失败\n└─ 返回码：${result}`,
+        `${XmaxLogger.localized("推送外部音频帧失败 (External Audio Frame Push Failed)\n└─ 返回码：", "推送外部音频帧失败 (External Audio Frame Push Failed)\n└─ Return Code: ")}${result}`,
         'RTC'
       );
       return;

@@ -108,7 +108,7 @@ export class InteractionController implements InteractionControlling {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `发送交互轨迹失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("发送交互轨迹失败 (Failed to Send Interaction Trajectory)\n└─ 原因：", "发送交互轨迹失败 (Failed to Send Interaction Trajectory)\n└─ Reason: ")}${reason}`,
         'Interaction'
       );
     }

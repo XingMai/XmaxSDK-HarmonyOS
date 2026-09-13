@@ -40,7 +40,7 @@ export class XmaxClient {
     context?: common.UIAbilityContext
   ) {
     this.configuration = configuration;
-    XmaxLogger.configure(configuration.loggerOptions);
+    XmaxLogger.configure(configuration.loggerOptions, configuration.environment);
     this.context = context;
     this.apiService = new ApiService(
       configuration.apiKey,

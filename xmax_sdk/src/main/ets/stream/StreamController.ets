@@ -276,7 +276,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       if (published) {
         this.handleRtcEventError(XmaxError.from(error));
       } else {
-        XmaxLogger.error(`清理远端流失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
+        XmaxLogger.error(`${XmaxLogger.localized("清理远端流失败 (Remote Stream Cleanup Failed)\n└─ 原因：", "清理远端流失败 (Remote Stream Cleanup Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Stream');
       }
     }
   }
@@ -310,7 +310,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       if (published) {
         this.handleRtcEventError(XmaxError.from(error));
       } else {
-        XmaxLogger.error(`清理远端流失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
+        XmaxLogger.error(`${XmaxLogger.localized("清理远端流失败 (Remote Stream Cleanup Failed)\n└─ 原因：", "清理远端流失败 (Remote Stream Cleanup Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Stream');
       }
     }
   }
@@ -386,7 +386,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     try {
       this.rtcManager.subscribeRemoteAudio(userId, false);
     } catch (error) {
-      XmaxLogger.error(`取消远端音频订阅失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
+      XmaxLogger.error(`${XmaxLogger.localized("取消远端音频订阅失败 (Failed to Unsubscribe Remote Audio)\n└─ 原因：", "取消远端音频订阅失败 (Failed to Unsubscribe Remote Audio)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Stream');
     }
   }
 

@@ -5,6 +5,11 @@ const { loadEts } = require('./ets-loader.cjs');
 const { createCameraKitFixture } = require('./camera-kit-fixture.cjs');
 
 const platform = {
+  XLabLocalization: { XLabLocalization: {
+    environment: 'china',
+    text: key => require('../examples/XLab/entry/src/main/resources/zh_Hans/element/string.json')
+      .string.find(value => value.name === key)?.value ?? key
+  } },
     '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
   '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
   '@kit.ArkTS': { util: {

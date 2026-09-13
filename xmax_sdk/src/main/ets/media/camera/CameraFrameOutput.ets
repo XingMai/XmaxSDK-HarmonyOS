@@ -152,7 +152,7 @@ export class CameraFrameOutput {
         this.configureNative(outputFormat, this.captureFrameRate, rotation);
       }
     } catch (error) {
-      this.logError('更新相机帧旋转角度', error);
+      this.logError(XmaxLogger.localized("更新相机帧旋转角度", "Update Camera Frame Rotation"), error);
     }
   }
 
@@ -167,19 +167,19 @@ export class CameraFrameOutput {
       try {
         display.off('change', this.displayChangeListener);
       } catch (error) {
-        this.logError('移除相机屏幕变化监听', error);
+        this.logError(XmaxLogger.localized("移除相机屏幕变化监听", "Remove Camera Display Change Listener"), error);
       }
     }
     try {
       await this.output.release();
     } catch (error) {
-      this.logError('释放相机视频帧输出', error);
+      this.logError(XmaxLogger.localized("释放相机视频帧输出", "Release Camera Frame Output"), error);
     }
 
     try {
       this.receiver.release();
     } catch (error) {
-      this.logError('释放 Native 相机视频帧接收器', error);
+      this.logError(XmaxLogger.localized("释放 Native 相机视频帧接收器", "Release Native Camera Frame Receiver"), error);
     }
   }
 
@@ -194,7 +194,7 @@ export class CameraFrameOutput {
   ): void {
     if (error !== undefined) {
       XmaxLogger.error(
-        `接收 Native 相机视频帧失败\n└─ 原因：${error}`,
+        `${XmaxLogger.localized("接收 Native 相机视频帧失败 (Native Camera Frame Receive Failed)\n└─ 原因：", "接收 Native 相机视频帧失败 (Native Camera Frame Receive Failed)\n└─ Reason: ")}${error}`,
         'Camera'
       );
       try {
@@ -205,7 +205,7 @@ export class CameraFrameOutput {
       } catch (listenerError) {
         const reason: string = listenerError instanceof Error ?
           listenerError.message : String(listenerError);
-        XmaxLogger.error(`相机错误监听器执行失败\n└─ 原因：${reason}`, 'Camera');
+        XmaxLogger.error(`${XmaxLogger.localized("相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ 原因：", "相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ Reason: ")}${reason}`, 'Camera');
       }
       return;
     }
@@ -234,7 +234,7 @@ export class CameraFrameOutput {
       const reason: string = frameError instanceof Error ?
         frameError.message : String(frameError);
       XmaxLogger.error(
-        `处理 Native 相机视频帧失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("处理 Native 相机视频帧失败 (Native Camera Frame Processing Failed)\n└─ 原因：", "处理 Native 相机视频帧失败 (Native Camera Frame Processing Failed)\n└─ Reason: ")}${reason}`,
         'Camera'
       );
     }
@@ -268,9 +268,9 @@ export class CameraFrameOutput {
   ): void {
     const errorMessage: string = error instanceof Error ? error.message : String(error);
     const reason: string = errorMessage.length > 0 && errorMessage !== 'undefined' ?
-      errorMessage : '未知错误';
+      errorMessage : XmaxLogger.localized("未知错误", "Unknown Error");
     XmaxLogger.error(
-      `${action}失败\n└─ 原因：${reason}`,
+      `${action}${XmaxLogger.localized("失败\n└─ 原因：", " Failed\n└─ Reason: ")}${reason}`,
       'Camera'
     );
   }

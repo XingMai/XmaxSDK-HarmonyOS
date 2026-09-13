@@ -1,9 +1,16 @@
+import { XLabLocalization } from '../localization/XLabLocalization';
 import { common } from '@kit.AbilityKit';
 import { RealtimePage } from '../modules/xlrealtime/RealtimePage';
 
 @Entry
 @Component
 struct UIExtensionRealtimeContent {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+
+  private text(key: string): string {
+    return XLabLocalization.text(key, this.languageRevision);
+  }
+
   private closeExtension(): void {
     const context = this.getUIContext().getHostContext() as common.UIExtensionContext;
     void context.terminateSelf();
@@ -23,7 +30,7 @@ struct UIExtensionRealtimeContent {
       .padding(0)
       .position({ left: 8, top: 18 })
       .backgroundColor(Color.Transparent)
-      .accessibilityText('关闭 UIExtensionAbility')
+      .accessibilityText(this.text('close_extension'))
       .onClick((): void => {
         this.closeExtension();
       })

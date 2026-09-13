@@ -80,7 +80,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `网络质量监听器执行失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("网络质量监听器执行失败 (Network Quality Listener Failed)\n└─ 原因：", "网络质量监听器执行失败 (Network Quality Listener Failed)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }
@@ -123,7 +123,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `性能告警监听器执行失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("性能告警监听器执行失败 (Performance Alarm Listener Failed)\n└─ 原因：", "性能告警监听器执行失败 (Performance Alarm Listener Failed)\n└─ Reason: ")}${reason}`,
         'Realtime'
       );
     }

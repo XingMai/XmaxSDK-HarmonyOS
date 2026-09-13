@@ -23,15 +23,15 @@ export class XmaxRealtimeErrorManager {
 
   private format(error: XmaxError): string {
     const details: string[] = [
-      `错误码：${error.code}`,
-      `信息：${error.message}`
+      `${XmaxLogger.localized("错误码：", "Error Code: ")}${error.code}`,
+      `${XmaxLogger.localized("信息：", "Message: ")}${error.message}`
     ];
 
     if (error.apiCode !== undefined) {
-      details.push(`业务码：${error.apiCode}`);
+      details.push(`${XmaxLogger.localized("业务码：", "API Code: ")}${error.apiCode}`);
     }
     if (error.httpStatus !== undefined) {
-      details.push(`HTTP 状态：${error.httpStatus}`);
+      details.push(`${XmaxLogger.localized("HTTP 状态：", "HTTP Status: ")}${error.httpStatus}`);
     }
 
     const formattedDetails: string[] = details.map((

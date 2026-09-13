@@ -11,7 +11,7 @@ export class XmaxConfiguration {
   /** 调用 Xmax 服务使用的 API Key。 */
   readonly apiKey: string;
 
-  /** SDK 连接的服务环境。 */
+  /** SDK 连接的服务环境；同时决定日志细项语言，国内为中文，海外为英文。日志配置全局生效。 */
   readonly environment: XmaxEnvironment;
 
   /** SDK 全局日志选项；默认为关闭。 */

@@ -66,7 +66,7 @@ export class AudioManager implements AudioManaging {
         const releaseReason: string = releaseError instanceof Error ?
           releaseError.message : String(releaseError);
         XmaxLogger.error(
-          `释放本地音频播放器失败\n└─ 原因：${releaseReason}`,
+          `${XmaxLogger.localized("释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ 原因：", "释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ Reason: ")}${releaseReason}`,
           'Audio'
         );
       }
@@ -169,7 +169,7 @@ export class AudioManager implements AudioManaging {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `停止本地音频播放器失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("停止本地音频播放器失败 (Failed to Stop Local Audio Player)\n└─ 原因：", "停止本地音频播放器失败 (Failed to Stop Local Audio Player)\n└─ Reason: ")}${reason}`,
         'Audio'
       );
     }
@@ -179,7 +179,7 @@ export class AudioManager implements AudioManaging {
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(
-        `释放本地音频播放器失败\n└─ 原因：${reason}`,
+        `${XmaxLogger.localized("释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ 原因：", "释放本地音频播放器失败 (Failed to Release Local Audio Player)\n└─ Reason: ")}${reason}`,
         'Audio'
       );
     }
