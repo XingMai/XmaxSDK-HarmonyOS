@@ -247,15 +247,14 @@ remote audio is also unsubscribed when generation stops.
 
 Creating a local stream only starts local preview. The call above creates the
 server session; subsequent calls reuse the connection and remote track. During
-an active generation, a new context updates the current task. After
-`stopGeneration()`, omit the context to reuse the last successful context in that
-connection:
+an active generation, a new context updates the current task. To cancel generation,
+call `disconnect()`. Starting again creates a new session and requires a context:
 
 ```ts
-await realtime.stopGeneration();
+await realtime.disconnect();
 this.remoteVideoTrack = undefined;
 
-const resumedStream = await realtime.startGeneration(localStream);
+const resumedStream = await realtime.startGeneration(localStream, generationContext);
 this.remoteVideoTrack = resumedStream.videoTrack;
 ```
 
@@ -274,12 +273,9 @@ this.remoteVideoTrack = remoteStream.videoTrack;
 Only one local-media, connection, generation, or camera-switch operation may run
 at a time. Overlapping operations and new operations during cleanup reject with
 `XmaxErrorCode.INVALID_CONFIGURATION`; await the current operation before retrying.
-`stopGeneration()` only acts when a session exists and the state is `CONNECTED`
-or `GENERATING`. It can cancel a pending generation start on that connection.
-In `CONNECTING` or any other state, it returns immediately; an in-flight one-call
-generation still continues after connecting. Use `disconnect()` or `close()` to
-cancel that workflow. A cancelled operation rejects with
-`XmaxErrorCode.CANCELLED`.
+`disconnect()` cancels an in-flight connection or generation, stops microphone
+capture and retains local preview. `close()` additionally releases local media.
+A cancelled operation rejects with `XmaxErrorCode.CANCELLED`.
 
 ## Touch Interaction
 
@@ -355,7 +351,7 @@ its frame rate and orientation-dependent dimensions. During generation, the SDK 
 switches cameras, waits 500 ms for capture to settle, then starts a new task with
 the latest successful context. The connection and remote track are retained.
 Do not switch while a connection or generation start is pending. Calling
-`stopGeneration()` or `disconnect()` during the switch prevents automatic restart.
+`disconnect()` during the switch prevents automatic restart.
 
 ```ts
 const switchedStream = await realtime.switchCamera();
@@ -422,10 +418,7 @@ the local stream after disconnecting, as shown above.
 ```ts
 import { RealtimeReason } from '@xmax/sdk';
 
-// Pause generation while retaining the connection:
-await realtime.stopGeneration();
-
-// Or end the remote session while retaining local preview:
+// Cancel generation and end the remote session while retaining local preview:
 await realtime.disconnect();
 
 // Or disconnect with a business reason:
@@ -435,9 +428,8 @@ await realtime.disconnect(RealtimeReason.ORIENTATION_CHANGED);
 await realtime.close();
 ```
 
-`stopGeneration()` terminates the active generation task while retaining the
-remote connection and local preview. `disconnect()` closes the remote session
-while preserving the local preview. `close()` releases all local media and RTC
+`disconnect()` ends generation, stops microphone capture and closes the remote
+session while preserving local preview. `close()` releases all local media and RTC
 resources and should be called when the realtime workflow is no longer required.
 
 `disconnect(reason?: RealtimeReason)` defaults to `RealtimeReason.NORMAL`.
@@ -451,7 +443,7 @@ failure can still require full cleanup and replace the reason with that failure.
 
 When applicable, these methods wait for affected operations and resource cleanup to finish.
 For example, closing while a session request is pending waits for the late session
-to be rolled back. Concurrent stop/disconnect/close requests share a cleanup task
+to be rolled back. Concurrent disconnect/close requests share a cleanup task
 and expand its scope as needed. Cleanup failures are logged while the remaining
 resources continue to be released.
 

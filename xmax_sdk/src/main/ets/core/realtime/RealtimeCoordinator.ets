@@ -12,7 +12,6 @@ export enum RealtimeOperationKind {
 
 /** 清理范围由小到大，较大的范围包含较小的范围。 */
 export enum RealtimeTerminationScope {
-  GENERATION,
   CONNECTION,
   ALL
 }
@@ -263,8 +262,7 @@ export class RealtimeCoordinator {
 
   private requestTermination(target: RealtimeTerminationScope,
     error?: XmaxError, reason?: RealtimeReason): RealtimeTermination {
-    const beginsDisconnection: boolean = target >= RealtimeTerminationScope.CONNECTION &&
-      (this.termination === null || this.termination.target < RealtimeTerminationScope.CONNECTION);
+    const beginsDisconnection: boolean = this.termination === null;
     let pending: RealtimeTermination;
     if (this.termination !== null) {
       pending = this.termination;
@@ -331,9 +329,8 @@ export class RealtimeCoordinator {
 
   private resolveFinalState(pending: RealtimeTermination): RealtimeState {
     const connectionState: RealtimeConnectionState = pending.target === RealtimeTerminationScope.ALL ?
-      RealtimeConnectionState.IDLE : pending.target === RealtimeTerminationScope.GENERATION &&
-        this.state.sessionId !== undefined ? RealtimeConnectionState.CONNECTED :
-        this.hasLocalMedia() ? RealtimeConnectionState.READY : RealtimeConnectionState.IDLE;
+      RealtimeConnectionState.IDLE : this.hasLocalMedia() ?
+        RealtimeConnectionState.READY : RealtimeConnectionState.IDLE;
     return new RealtimeState(connectionState, pending.sessionId ?? this.state.sessionId, undefined, pending.reason);
   }
 
@@ -341,10 +338,7 @@ export class RealtimeCoordinator {
     if (scope === RealtimeTerminationScope.ALL) {
       return true;
     }
-    if (scope === RealtimeTerminationScope.CONNECTION) {
-      return kind !== RealtimeOperationKind.MEDIA;
-    }
-    return kind === RealtimeOperationKind.GENERATION || kind === RealtimeOperationKind.CAMERA_SWITCH;
+    return kind !== RealtimeOperationKind.MEDIA;
   }
 
   private finish(operation: RealtimeOperation): void {

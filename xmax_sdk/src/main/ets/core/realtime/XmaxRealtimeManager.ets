@@ -545,18 +545,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
-  /** 已连接时停止当前或尚在启动的生成，保留连接；其他状态直接返回。 */
-  stopGeneration(): Promise<void> {
-    const current: RealtimeState = this.currentState;
-    if (this.connectionManager.currentSessionId.length === 0 ||
-      (current.connectionState !== RealtimeConnectionState.CONNECTED &&
-      current.connectionState !== RealtimeConnectionState.GENERATING)) {
-      return Promise.resolve();
-    }
-    this.renderController.stopRemoteVideoFrameDelivery();
-    return this.coordinator.terminate(RealtimeTerminationScope.GENERATION);
-  }
-
   private ensureLocalMediaCanChange(): void {
     const current: RealtimeState = this.currentState;
     if (this.connectionManager.currentSessionId.length > 0 ||
@@ -570,30 +558,21 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /** 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。 */
   private async cleanup(scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> {
     this.renderController.stopRemoteVideoFrameDelivery();
-    if (scope >= RealtimeTerminationScope.CONNECTION) {
-      try {
-        this.mediaController.stopMicrophoneCapture();
-      } catch (error) {
-        this.logCleanupFailure('停止麦克风采集失败 (Failed to Stop Microphone Capture)', error);
-      }
+    try {
+      this.mediaController.stopMicrophoneCapture();
+    } catch (error) {
+      this.logCleanupFailure('停止麦克风采集失败 (Failed to Stop Microphone Capture)', error);
     }
     try {
-      if (scope >= RealtimeTerminationScope.CONNECTION) {
-        this.generationManager.reset(taskId);
-      } else {
-        this.generationManager.stop(taskId);
-      }
+      this.generationManager.reset(taskId);
     } catch (error) {
       this.logCleanupFailure('停止实时生成失败', error);
     }
-    let sessionId: string | undefined;
-    if (scope >= RealtimeTerminationScope.CONNECTION) {
-      sessionId = this.connectionManager.currentSessionId || undefined;
-      try {
-        sessionId = (await this.connectionManager.disconnect()) ?? sessionId;
-      } catch (error) {
-        this.logCleanupFailure('断开实时连接失败', error);
-      }
+    let sessionId: string | undefined = this.connectionManager.currentSessionId || undefined;
+    try {
+      sessionId = (await this.connectionManager.disconnect()) ?? sessionId;
+    } catch (error) {
+      this.logCleanupFailure('断开实时连接失败', error);
     }
     if (scope === RealtimeTerminationScope.ALL) {
       this.mediaController.setCameraPreviewReadyHandler(null);

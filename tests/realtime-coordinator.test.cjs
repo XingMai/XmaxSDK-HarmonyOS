@@ -57,9 +57,6 @@ test('normal cleanup reports NORMAL and failed cleanup carries the original erro
     await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
       f.coordinator.commit(new f.RealtimeState(f.State.GENERATING, 'session', 'task'), token);
     });
-    await f.coordinator.terminate(f.Scope.GENERATION);
-    assert.equal(f.coordinator.currentState.connectionState, f.State.CONNECTED);
-    assert.equal(f.coordinator.currentState.reason, f.Reason.NORMAL);
     await f.coordinator.terminate(f.Scope[scope]);
     assert.deepEqual(f.states.slice(-2).map(state => [state.connectionState, state.reason]), [
       [f.State.DISCONNECTING, undefined],
@@ -137,7 +134,7 @@ test('preflight errors without a cleanup scope leave resources and public state 
 
 test('background runtime error interrupts a readiness wait and survives cancellation unchanged', async () => {
   const f = fixture(), readiness = gate();
-  const running = outcome(f.coordinator.run(f.Kind.GENERATION, f.Scope.GENERATION,
+  const running = outcome(f.coordinator.run(f.Kind.GENERATION, f.Scope.CONNECTION,
     token => token.wait(readiness.promise)));
   const original = new f.XmaxError(f.Code.SESSION_ERROR, 'heartbeat lost', 123, 503);
   await f.coordinator.terminateWithError(original, f.Scope.CONNECTION);
@@ -148,10 +145,10 @@ test('background runtime error interrupts a readiness wait and survives cancella
   await settle();
 });
 
-test('concurrent stop/disconnect/close share one task and upgrade cleanup while it is suspended', async () => {
+test('concurrent disconnect/close share one task and upgrade cleanup while it is suspended', async () => {
   const cleanup = gate();
   const f = fixture(async scope => { if (scope === 0) await cleanup.promise; return 'session'; });
-  const stopping = f.coordinator.terminate(f.Scope.GENERATION);
+  const stopping = f.coordinator.terminate(f.Scope.CONNECTION);
   await settle();
   assert.equal(f.coordinator.terminate(f.Scope.CONNECTION), stopping);
   assert.equal(f.coordinator.terminate(f.Scope.ALL), stopping);
@@ -160,7 +157,7 @@ test('concurrent stop/disconnect/close share one task and upgrade cleanup while 
   cleanup.resolve();
   await stopping;
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
-    [`cleanup:${f.Scope.GENERATION}:`, `cleanup:${f.Scope.ALL}:`]);
+    [`cleanup:${f.Scope.CONNECTION}:`, `cleanup:${f.Scope.ALL}:`]);
   assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
   assert.equal(f.coordinator.currentState.sessionId, 'session');
   await f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => {});
@@ -168,21 +165,21 @@ test('concurrent stop/disconnect/close share one task and upgrade cleanup while 
 
 test('a synchronous final-state listener can escalate to close without losing the extra cleanup', async () => {
   const f = fixture();
-  await f.coordinator.run(f.Kind.GENERATION, f.Scope.GENERATION, async token => {
+  await f.coordinator.run(f.Kind.GENERATION, f.Scope.CONNECTION, async token => {
     f.coordinator.commit(new f.RealtimeState(f.State.GENERATING, 'session', 'task'), token);
   });
   let closing;
   f.coordinator.setStateListener(state => {
-    if (state.connectionState === f.State.CONNECTED) {
+    if (state.connectionState === f.State.READY) {
       closing = f.coordinator.terminate(f.Scope.ALL);
     }
   });
-  const stopping = f.coordinator.terminate(f.Scope.GENERATION);
+  const stopping = f.coordinator.terminate(f.Scope.CONNECTION);
   await stopping;
   assert.notEqual(closing, stopping);
   await closing;
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
-    [`cleanup:${f.Scope.GENERATION}:task`, `cleanup:${f.Scope.ALL}:`]);
+    [`cleanup:${f.Scope.CONNECTION}:`, `cleanup:${f.Scope.ALL}:`]);
   assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
 });
 
@@ -196,12 +193,12 @@ test('failure state callback can close resources after internal cleanup has comp
       closing = f.coordinator.terminate(f.Scope.ALL);
     }
   });
-  await f.coordinator.terminateWithError(original, f.Scope.GENERATION);
+  await f.coordinator.terminateWithError(original, f.Scope.CONNECTION);
   await closing;
   assert.deepEqual(f.errors, [original]);
   assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
-    [`cleanup:${f.Scope.GENERATION}:`, `cleanup:${f.Scope.ALL}:`]);
+    [`cleanup:${f.Scope.CONNECTION}:`, `cleanup:${f.Scope.ALL}:`]);
 });
 
 test('completed tokens cannot commit and equal states do not notify twice', async () => {

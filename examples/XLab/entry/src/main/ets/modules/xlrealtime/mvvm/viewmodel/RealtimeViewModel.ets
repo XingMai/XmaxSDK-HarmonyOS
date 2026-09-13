@@ -584,11 +584,9 @@ export class RealtimeViewModel {
     this.generationRevision++;
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     if (this.switchingCamera || this.generationUpdating) {
-      // 连接中需要断开才能取消旧的一键生成；已连接时只停止生成，保留会话。
+      // 取消旧操作时统一断开连接，停止麦克风并保留本地预览。
       if (manager !== null) {
-        const state: RealtimeConnectionState = manager.currentState.connectionState;
-        const stopping: Promise<void> = state === RealtimeConnectionState.CONNECTING ||
-          state === RealtimeConnectionState.DISCONNECTING ? manager.disconnect() : manager.stopGeneration();
+        const stopping: Promise<void> = manager.disconnect();
         void stopping.catch((error: Object): void => {
           if (this.realtimeManager === manager) {
             this.presentError(error);
@@ -644,7 +642,7 @@ export class RealtimeViewModel {
           } else {
             this.state.isGenerationStarting = false;
             this.state.isMoxGenerationActive = false;
-            await manager.stopGeneration();
+            await manager.disconnect();
           }
           if (this.realtimeManager === manager && revision === this.generationRevision) {
             this.state.errorMessage = '';

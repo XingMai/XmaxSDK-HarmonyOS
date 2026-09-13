@@ -130,13 +130,13 @@ test('startup timing spans session creation, RTC join, signaling, matched SEI an
   for (const detail of ['总耗时：157.0 ms',
     '实时连接：30.0 ms', '等待生成结果流确认：102.0 ms',
     '结果流确认到首帧就绪：25.0 ms']) assert.ok(f.timingLogs[0].message.includes(detail), detail);
-  await f.manager.stopGeneration();
+  await f.manager.disconnect();
   const second = await f.begin();
   f.advance(10); f.sei(second.task); await settle();
   f.advance(3); f.frame(); await second.pending;
   assert.equal(f.timingLogs.length, 2);
-  assert.match(f.timingLogs[1].message, /总耗时：15.0 ms/);
-  assert.doesNotMatch(f.timingLogs[1].message, /服务端会话创建|实时连接：/);
+  assert.match(f.timingLogs[1].message, /总耗时：45.0 ms/);
+  assert.match(f.timingLogs[1].message, /实时连接：30.0 ms/);
 });
 
 test('rejected concurrent calls and condition updates do not reset startup timing or produce extra reports', async t => {
@@ -155,7 +155,7 @@ test('rejected concurrent calls and condition updates do not reset startup timin
 test('cancelled startup emits no timing report and a retry ignores the old task SEI', async t => {
   const f = fixture(t), first = await f.begin();
   f.advance(20); f.sei(first.task); await settle();
-  await f.manager.stopGeneration();
+  await f.manager.disconnect();
   assert.equal((await first.pending).error.code, f.Code.CANCELLED);
   assert.deepEqual(f.timingLogs, []);
   const second = await f.begin();
@@ -203,7 +203,7 @@ test('session and room failures report their connection stage after cleanup', as
 test('synchronous stop from the GENERATING listener does not produce a successful timing report', async t => {
   const f = fixture(t);
   f.manager.setStateListener(state => {
-    if (state.connectionState === f.State.GENERATING) void f.manager.stopGeneration();
+    if (state.connectionState === f.State.GENERATING) void f.manager.disconnect();
   });
   const first = await f.begin();
   f.sei(first.task); await settle(); f.frame();
@@ -267,7 +267,7 @@ test('stop cancels first-frame waiting and an old timeout cannot fail a new task
   const f = fixture(t), first = await f.begin();
   f.sei(first.task); await settle();
   const oldTimeout = [...f.timers.values()][0].callback;
-  await f.manager.stopGeneration();
+  await f.manager.disconnect();
   assert.equal((await first.pending).error.code, f.Code.CANCELLED);
   assert.equal(f.errors.length, 0);
   const second = await f.begin(); f.sei(second.task); await settle();
@@ -281,7 +281,7 @@ test('stop cancels first-frame waiting and an old timeout cannot fail a new task
 test('stop after the frame callback but before its continuation cannot activate audio or emit GENERATING', async t => {
   const f = fixture(t), { pending, task } = await f.begin();
   f.sei(task); await settle(); f.frame();
-  await f.manager.stopGeneration();
+  await f.manager.disconnect();
   assert.equal((await pending).error.code, f.Code.CANCELLED);
   assert.equal(f.events.includes('audio:bot:true'), false);
   assert.equal(f.events.includes(`state:${f.State.GENERATING}`), false);
@@ -301,7 +301,7 @@ test('disconnect and close cancel pending first-frame waits without a late state
 test('restarting on the same remote stream requires a new frame and stops old audio', async t => {
   const f = fixture(t), first = await f.begin();
   f.sei(first.task); f.frame(); await first.pending;
-  await f.manager.stopGeneration();
+  await f.manager.disconnect();
   assert.equal(f.events.at(-2), 'audio:bot:false');
   f.rtc.listener.onRemoteAudioPublished('bot', true);
   assert.equal(f.events.filter(e => e === 'audio:bot:true').length, 1);
@@ -427,7 +427,7 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
   assert.equal(received.length, 3);
 });
 
-for (const action of ['stopGeneration', 'disconnect', 'close']) {
+for (const action of ['disconnect', 'close']) {
   test(`public remote frame delivery stops immediately on ${action} and resumes for a new generation`, async t => {
     const f = fixture(t), delivered = [];
     f.manager.setRemoteVideoFrameListener(frame => delivered.push(frame.timestampUs));
