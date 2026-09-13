@@ -1,10 +1,17 @@
+import { XLabLocalization } from '../../../../localization/XLabLocalization';
 import { Reference, ReferenceUploadState } from '../../reference/Reference';
 import { RealtimeReferenceItemState } from '../model/RealtimeViewState';
 
 @Component
 export struct RealtimeReferenceCell {
+  @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
   @ObjectLink item: RealtimeReferenceItemState;
   @ObjectLink reference: Reference;
+
+  private addReferenceImage(_revision: number): Resource {
+    return XLabLocalization.languageCode === 'zh-Hans' ?
+      $r('app.media.realtime_add_reference') : $r('app.media.realtime_add_reference_en');
+  }
 
   private displayImageUrl(): string | undefined {
     const imageUrl: string | undefined = this.reference.imageUrl;
@@ -18,10 +25,11 @@ export struct RealtimeReferenceCell {
     Stack({ alignContent: Alignment.Center }) {
       Stack({ alignContent: Alignment.Center }) {
         if (this.item.reference.isAddAction) {
-          Image($r('app.media.realtime_add_reference'))
+          Image(this.addReferenceImage(this.languageRevision))
             .width('100%')
             .height('100%')
             .objectFit(ImageFit.Cover)
+            .accessibilityText(XLabLocalization.text('add_reference', this.languageRevision))
         } else if (this.displayImageUrl() !== undefined) {
           Image(this.displayImageUrl())
             .width('100%')
