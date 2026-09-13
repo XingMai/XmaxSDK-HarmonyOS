@@ -161,7 +161,7 @@ test('public volume APIs validate finite normalized values before touching playb
   for (const volume of [-0.01, 1.01, NaN, Infinity, -Infinity]) {
     for (const method of ['setLocalAudioVolume', 'setRemoteAudioVolume']) {
       await assert.rejects(f.manager[method](volume), {
-        code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE'
+        code: 'INVALID_CONFIGURATION'
       });
     }
   }
@@ -177,7 +177,7 @@ test('public volume APIs validate finite normalized values before touching playb
   assert.equal(f.calls.sessions.length, 0);
 });
 
-test('volume failures retain their error code and remain recoverable during generation', async () => {
+test('volume failures retain their error code and leave generation running', async () => {
   const f = managerFixture(), errors = [];
   const local = await f.create();
   await f.manager.startGeneration(local, new f.Context('generate'));
@@ -185,10 +185,10 @@ test('volume failures retain their error code and remain recoverable during gene
   f.media.setLocalAudioVolume = async () => { throw new f.XmaxError(f.Code.MEDIA_ERROR, 'local failed'); };
   f.stream.setRemoteAudioVolume = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'remote failed'); };
   await assert.rejects(f.manager.setLocalAudioVolume(0.6), {
-    code: 'MEDIA_ERROR', message: 'local failed', severity: 'RECOVERABLE'
+    code: 'MEDIA_ERROR', message: 'local failed'
   });
   await assert.rejects(f.manager.setRemoteAudioVolume(0.6), {
-    code: 'RTC_ERROR', message: 'remote failed', severity: 'RECOVERABLE'
+    code: 'RTC_ERROR', message: 'remote failed'
   });
   assert.deepEqual(errors, []);
   assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
@@ -401,7 +401,7 @@ test('heartbeat failure cancels startup, closes the session and only then publis
   assert.notEqual(f.media.currentTrack, null);
 });
 
-test('stop-signal failure is logged without a fatal callback and preserves the connected preview', async () => {
+test('stop-signal failure is logged without a failure callback and preserves the connected preview', async () => {
   const f = managerFixture(), local = await f.create(), errors = [];
   await f.manager.startGeneration(local, new f.Context('test'));
   f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
@@ -751,14 +751,14 @@ function cameraFailureFixture(options = {}, rtcError) {
     new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
 }
 
-test('camera rejects genuinely unsupported frame rates as recoverable media errors and releases each session', async () => {
+test('camera rejects genuinely unsupported frame rates as media errors and releases each session', async () => {
   const f = cameraFailureFixture({ profiles: [
     { format: 'yuv420sp', size: { width: 1920, height: 1440 }, frameRates: [{ min: 24, max: 24 }] },
     { format: 'yuv420sp', size: { width: 1440, height: 1080 }, frameRates: [{ min: 60, max: 60 }] }
   ] });
   await assert.rejects(f.start(), error => {
     assert.equal(error.code, 'MEDIA_ERROR');
-    assert.equal(error.severity, 'RECOVERABLE');
+
     assert.match(error.message, /at 30 fps/);
     return true;
   });
@@ -779,7 +779,7 @@ test('camera platform failures retain the failing stage and native code instead 
     const f = cameraFailureFixture(options);
     await assert.rejects(f.start(), error => {
       assert.equal(error.code, 'MEDIA_ERROR');
-      assert.equal(error.severity, 'RECOVERABLE');
+
       assert.match(error.message, stage);
       assert.match(error.message, /7400110.*native failure/);
       assert.doesNotMatch(error.message, /does not support/);
@@ -800,7 +800,7 @@ test('camera missing capabilities and invalid lifecycle have the appropriate err
     { format: 'yuv420sp', size: { width: 1920, height: 1440 }, frameRates: [] }
   ] }]) {
     const f = cameraFailureFixture(options);
-    await assert.rejects(f.start(), { code: 'MEDIA_ERROR', severity: 'RECOVERABLE' });
+    await assert.rejects(f.start(), { code: 'MEDIA_ERROR' });
     assert.equal(f.camera.currentTrack, null);
   }
   const f = cameraFailureFixture();
@@ -1269,7 +1269,7 @@ test('image and video preparation enter READY without a camera callback, stoppin
   }
 });
 
-test('failed local preparation returns IDLE with the original recoverable error, and retry clears reason', async () => {
+test('failed local preparation returns IDLE with the original error, and retry clears reason', async () => {
   const f = managerFixture(), states = [];
   const create = f.media.createLocalCameraStream.bind(f.media);
   const original = new f.XmaxError(f.Code.CAMERA_PERMISSION_DENIED, 'permission denied', 123, 403);
@@ -1286,7 +1286,7 @@ test('failed local preparation returns IDLE with the original recoverable error,
   await f.manager.close();
 });
 
-test('fatal local runtime errors clean up media and connection and publish one original error through state only', async () => {
+test('local runtime errors clean up media and connection and publish one original error through state only', async () => {
   const f = managerFixture(), states = [];
   const local = await f.create();
   await f.manager.startGeneration(local, new f.Context('test'));
@@ -1338,4 +1338,49 @@ test('XLab loading and failures are driven exclusively by SDK states', async () 
   assert.equal(f.viewModel.state.localVideoTrack, null);
   assert.equal(f.viewModel.state.errorMessage, original.message);
   await f.viewModel.disconnect();
+});
+
+test('invalid preflight calls and condition update failures preserve an active generation and original errors', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('first'));
+  const task = f.manager.currentState.taskId;
+  await assert.rejects(f.manager.createLocalCameraStream(), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(f.manager.connect(local), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(f.manager.stopLocalCameraStream(), { code: 'INVALID_CONFIGURATION' });
+  const original = new f.XmaxError(f.Code.RTC_ERROR, 'update failed', 1003, 503);
+  f.stream.updateGeneration = () => { throw original; };
+  await assert.rejects(f.manager.startGeneration(new f.Context('next')), error => error === original);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.equal(f.manager.currentState.reason, undefined);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.media.currentTrack, local.videoTrack);
+  await f.manager.close();
+});
+
+test('missing generation context preserves connection, but failure after startup begins closes it regardless of error code', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.connect(local);
+  await assert.rejects(f.manager.startGeneration(), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.deepEqual(f.calls.closed, []);
+  const original = new f.XmaxError(f.Code.INVALID_CONFIGURATION, 'RTC rejected start', 123, 500);
+  f.stream.beginGeneration = () => { throw original; };
+  await assert.rejects(f.manager.startGeneration(new f.Context('start')), error => error === original);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentState.reason.error, original);
+  assert.equal(f.media.currentTrack, local.videoTrack);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  await f.manager.close();
+});
+
+test('local runtime failures use media cleanup scope even for former validation-category errors', async () => {
+  const f = managerFixture();
+  await f.create();
+  const original = new f.XmaxError(f.Code.INVALID_CONFIGURATION, 'invalid captured frame');
+  f.media.onError(original);
+  await settle();
+  assert.equal(f.media.currentTrack, null);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.reason.error, original);
 });

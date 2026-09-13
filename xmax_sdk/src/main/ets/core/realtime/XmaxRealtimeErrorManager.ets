@@ -6,7 +6,7 @@ import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 /** 统一记录实时错误；生命周期失败通过 RealtimeState.reason 通知接入方。 */
 export class XmaxRealtimeErrorManager {
 
-  // 同一个错误沿调用栈被多层捕获时，只记录和通知一次。
+  // 同一个错误沿调用栈被多层捕获时，只记录一次。
   private readonly reportedErrors: WeakSet<XmaxError> = new WeakSet();
 
   /** 同一个错误只记录一次，并保留原始对象。 */
@@ -24,7 +24,6 @@ export class XmaxRealtimeErrorManager {
   private format(error: XmaxError): string {
     const details: string[] = [
       `错误码：${error.code}`,
-      `级别：${error.severity}`,
       `信息：${error.message}`
     ];
 

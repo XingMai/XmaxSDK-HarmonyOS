@@ -36,7 +36,7 @@ test('model defaults and resolution buckets match iOS without media-source restr
     assert.equal(model.supportedMediaSources, undefined);
   }
   for (const name of ['unknown-model', 'x2.0-sla']) {
-    assert.throws(() => f.Models.realtime(name), { code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE' });
+    assert.throws(() => f.Models.realtime(name), { code: 'INVALID_CONFIGURATION' });
   }
 });
 

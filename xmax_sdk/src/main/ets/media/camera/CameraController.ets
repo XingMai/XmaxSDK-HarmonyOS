@@ -4,8 +4,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import {
   XmaxError,
   XmaxErrorCode,
-  XmaxErrorListener,
-  XmaxErrorSeverity
+  XmaxErrorListener
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -307,8 +306,7 @@ export class CameraController {
   }
 
   private cameraError(message: string): XmaxError {
-    return new XmaxError(XmaxErrorCode.MEDIA_ERROR, message,
-      undefined, undefined, XmaxErrorSeverity.RECOVERABLE);
+    return new XmaxError(XmaxErrorCode.MEDIA_ERROR, message);
   }
 
   /** 将相机帧交给统一外部视频推送链路。 */

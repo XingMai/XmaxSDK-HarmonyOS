@@ -1,10 +1,10 @@
+import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { RealtimeTiming } from '../core/realtime/RealtimeTiming';
 import { util } from '@kit.ArkTS';
 import {
   XmaxError,
   XmaxErrorCode,
-  XmaxErrorListener,
-  XmaxErrorSeverity
+  XmaxErrorListener
 } from '../foundation/errors/XmaxError';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
 import { VideoFrame } from '../foundation/media/video/VideoFrame';
@@ -268,9 +268,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
         this.unsubscribeRemoteAudio(userId);
       }
     } catch (error) {
-      this.handleRtcEventError(XmaxError.from(error).withSeverity(
-        published ? XmaxErrorSeverity.FATAL : XmaxErrorSeverity.RECOVERABLE
-      ));
+      if (published) {
+        this.handleRtcEventError(XmaxError.from(error));
+      } else {
+        XmaxLogger.error(`清理远端流失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
+      }
     }
   }
 
@@ -300,9 +302,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
       }
       this.rtcManager.subscribeRemoteVideo(userId, true);
     } catch (error) {
-      this.handleRtcEventError(XmaxError.from(error).withSeverity(
-        published ? XmaxErrorSeverity.FATAL : XmaxErrorSeverity.RECOVERABLE
-      ));
+      if (published) {
+        this.handleRtcEventError(XmaxError.from(error));
+      } else {
+        XmaxLogger.error(`清理远端流失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
+      }
     }
   }
 
@@ -350,10 +354,10 @@ export class StreamController implements StreamControlling, RtcEventListener {
     return receivedId.length > 0 && receivedId === currentId;
   }
 
-  /** 启动中的致命错误交给原 Promise 上报，其余异步错误走监听器。 */
+  /** 启动中的订阅错误交给原 Promise 上报，其余异步错误走监听器。 */
   private handleRtcEventError(error: XmaxError): void {
     const taskId: string = this.currentTask?.id ?? '';
-    if (error.severity === XmaxErrorSeverity.FATAL && taskId.length > 0 &&
+    if (taskId.length > 0 &&
       this.generationStartReject !== null) {
       this.rejectGenerationStart(taskId, error);
       return;
@@ -377,7 +381,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     try {
       this.rtcManager.subscribeRemoteAudio(userId, false);
     } catch (error) {
-      this.errorListener(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+      XmaxLogger.error(`取消远端音频订阅失败\n└─ 原因：${XmaxError.from(error).message}`, 'Stream');
     }
   }
 

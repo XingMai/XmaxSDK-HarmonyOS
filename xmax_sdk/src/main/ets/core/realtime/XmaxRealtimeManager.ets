@@ -2,8 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity
+  XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -179,7 +178,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.validateAudioVolume(volume);
       await this.mediaController.setLocalAudioVolume(volume);
     } catch (error) {
-      throw this.reportError(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+      throw this.reportError(XmaxError.from(error));
     }
   }
 
@@ -189,7 +188,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.validateAudioVolume(volume);
       this.streamController.setRemoteAudioVolume(volume);
     } catch (error) {
-      throw this.reportError(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+      throw this.reportError(XmaxError.from(error));
     }
   }
 
@@ -208,12 +207,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     videoFormat: RealtimeVideoFormat = this.options.model.defaultCameraVideoFormat,
     position: CameraPosition = CameraPosition.FRONT
   ): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalCameraStream(videoFormat, position);
@@ -228,9 +228,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 停止本地相机流并释放预览资源。 */
   stopLocalCameraStream(): Promise<void> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         await this.mediaController.stopLocalCameraStream();
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
@@ -239,7 +240,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 切换摄像头，生成中切换时保留连接并恢复当前生成条件。 */
   switchCamera(): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, RealtimeTerminationScope.CONNECTION,
+    return this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         const current: RealtimeState = this.currentState;
         const wasGenerating: boolean = current.connectionState === RealtimeConnectionState.GENERATING;
@@ -250,6 +251,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Camera switching is unavailable while realtime is transitioning');
         }
         if (wasGenerating) {
+          token.setFailureScope(RealtimeTerminationScope.CONNECTION);
           this.generationManager.stop(current.taskId ?? '');
           this.restoreLocalAudioPreview();
           this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED, current.sessionId), token);
@@ -266,12 +268,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 从本地视频文件创建并启动媒体流，使用当前模型的输入规则。 */
   async createLocalVideoStream(filePath: string, videoFormat?: RealtimeVideoFormat): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
@@ -282,9 +285,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 停止本地视频流并释放预览资源。 */
   stopLocalVideoStream(): Promise<void> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         await this.mediaController.stopLocalVideoStream();
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
@@ -296,12 +300,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         this.ensureLocalMediaCanChange();
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalImageStream(source, videoFormat);
@@ -312,9 +317,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 停止本地图片流并释放预览资源。 */
   stopLocalImageStream(): Promise<void> {
-    return this.coordinator.run(RealtimeOperationKind.MEDIA, RealtimeTerminationScope.ALL,
+    return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         await this.mediaController.stopLocalImageStream();
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
@@ -323,7 +329,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 使用当前 Manager 创建的本地流建立实时连接。 */
   connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.CONNECTION, RealtimeTerminationScope.CONNECTION,
+    return this.coordinator.run(RealtimeOperationKind.CONNECTION, null,
       (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => this.performConnect(localStream, token));
   }
 
@@ -341,6 +347,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'The local stream must be created and started by this realtime manager');
     }
+    token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.generationManager.reset();
     this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTING), token);
     const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
@@ -418,11 +425,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext): Promise<RealtimeMediaStream>;
   startGeneration(input?: RealtimeContext | RealtimeMediaStream,
     context?: RealtimeContext): Promise<void | RealtimeMediaStream> {
-    const scope: RealtimeTerminationScope = input instanceof RealtimeMediaStream &&
-      this.connectionManager.currentSessionId.length === 0 ?
-      RealtimeTerminationScope.CONNECTION : RealtimeTerminationScope.GENERATION;
     let measurement: RealtimeTimingRun | null = null;
-    const operation = this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, scope,
+    const operation = this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, null,
       async (token: RealtimeOperationToken): Promise<void | RealtimeMediaStream> => {
         // 只在获得操作所有权后开始计时；更新条件与被拒绝的并发调用不重置统计。
         if (this.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
@@ -464,7 +468,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       }
       this.mediaController.setLocalAudioPreviewEnabled(false);
       remoteStream = await this.performConnect(localStream, token);
-      token.setFailureScope(RealtimeTerminationScope.GENERATION);
+      token.setFailureScope(null);
     }
     token.ensureCurrent();
     await this.performStartGeneration(context, token);
@@ -481,13 +485,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       (current.connectionState !== RealtimeConnectionState.CONNECTED &&
       current.connectionState !== RealtimeConnectionState.GENERATING)) {
       throw new XmaxError(XmaxErrorCode.RTC_ERROR,
-        'Realtime connection is not open').withSeverity(XmaxErrorSeverity.RECOVERABLE);
+        'Realtime connection is not open');
     }
     if (current.connectionState === RealtimeConnectionState.GENERATING && current.taskId !== undefined) {
       this.generationManager.update(current.taskId, videoFormat, context);
       token.ensureCurrent();
       return;
     }
+    this.generationManager.validateContext(context);
+    token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.mediaController.setLocalAudioPreviewEnabled(false);
     try {
       const taskId: string = await this.generationManager.start(videoFormat, context,
@@ -580,10 +586,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private handleRuntimeError(error: XmaxError, scope: RealtimeTerminationScope): void {
-    if (error.severity !== XmaxErrorSeverity.FATAL) {
-      this.errorManager.handle(error);
-      return;
-    }
     this.renderController.failRemoteFrameWait(error);
     void this.coordinator.terminateWithError(error, scope)
       .catch((failure: Object): void => this.logCleanupFailure('实时错误清理失败', failure));

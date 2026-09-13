@@ -16,7 +16,7 @@ component and handle rejected promises.
 - [Adjust playback volume](#adjust-playback-volume)
 - [Switch cameras or change capture specifications](#switch-cameras-or-change-capture-specifications)
 - [Stop and release resources](#stop-and-release-resources)
-- [Handle recoverable and fatal errors](#handle-recoverable-and-fatal-errors)
+- [Observe lifecycle and failures](#observe-lifecycle-and-failures)
 - [Configure SDK logging](#configure-sdk-logging)
 - [Generation startup timing](#generation-startup-timing)
 - [Runtime information and task IDs](#runtime-information-and-task-ids)
@@ -397,13 +397,13 @@ preview readiness and failures. Register it before creating local media.
 Image/video creation enters `READY` when preparation completes. Camera creation
 returns a track while `PREPARING`; bind it to a preview view to receive `READY`.
 A generation or connection failure closes the connection and returns to `READY`
-if local media remains available. Failed local preparation or a fatal local-media
+if local media remains available. Failed local preparation or a local-media runtime
 error releases local resources and returns to `IDLE`.
 
 Terminal states carry `reason`: `RealtimeReason.NORMAL`,
 `RealtimeReason.ORIENTATION_CHANGED`, or `RealtimeReason.failure(error)`.
 Use `reason.kind` to distinguish cases and `reason.error` to read the original
-`XmaxError`, including its code, severity, API code and HTTP status.
+`XmaxError`, including its code, API code and HTTP status.
 The SDK finishes internal cleanup before notifying the terminal state, so the
 listener can start a new operation or close the manager safely.
 
@@ -428,15 +428,17 @@ try {
 }
 ```
 
-Awaited operations still reject with the original error. Recoverable validation
+Awaited operations still reject with the original error. Validation
 or configuration-update failures that do not end a lifecycle remain on the
 operation's rejection path. Cancellation rejects with `CANCELLED`; cleanup
 failures are logged while cleanup continues. State notifications work even when
 logging is disabled; passing `null` to `setStateListener()` removes the listener.
 
-`XmaxErrorSeverity` remains supported in HarmonyOS in this change. The dedicated
-error and camera-ready public callbacks have been removed; use the state listener
-for both responsibilities.
+Errors do not carry a severity level. Cleanup depends on the operation and its
+stage: connection and generation-start failures close the connection; local media
+preparation and runtime failures release all media. Validation and configuration
+update failures leave the current lifecycle intact. Use the state listener for
+lifecycle failures and camera readiness.
 
 ## Configure SDK logging
 

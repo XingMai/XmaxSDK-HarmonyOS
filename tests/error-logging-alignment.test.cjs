@@ -17,12 +17,12 @@ function fixture(extra = {}, globals = {}) {
   }, globals);
   const { XmaxLogger: Logger } = load('foundation/logging/XmaxLogger.ets');
   const { XmaxLoggerOption: Option } = load('foundation/logging/XmaxLoggerOption.ets');
-  const { XmaxError, XmaxErrorCode: Code, XmaxErrorSeverity: Severity } = load('foundation/errors/XmaxError.ets');
-  return { load, logs, Logger, Option, XmaxError, Code, Severity };
+  const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
+  return { load, logs, Logger, Option, XmaxError, Code };
 }
 
 function imageFixture(t) {
-  const intervals = new Map(), received = [], fatal = [];
+  const intervals = new Map(), received = [];
   let failure, intervalId = 0;
   const f = fixture({
     ImageManager: { ImageManager: class {
@@ -50,20 +50,20 @@ function imageFixture(t) {
     setVideoEncoderConfig() {}, pushLocalVideoFrame() { if (failure !== undefined) throw failure; }
   }, error => { received.push(error); errorManager.handle(error); });
   t.after(async () => { await controller.stopLocalImageStream(); assert.equal(intervals.size, 0); });
-  return { ...f, controller, received, fatal, intervals,
+  return { ...f, controller, received, intervals,
     start: () => controller.createLocalImageStream('test-image'),
     failWith(error) { failure = error; },
     tick() { assert.equal(intervals.size, 1); [...intervals.values()][0](); }
   };
 }
 
-test('image push errors preserve their identity, code, severity and details through the public error router', async t => {
+test('image push errors preserve their identity, code and details through the internal error router', async t => {
   const f = imageFixture(t);
   await f.start();
-  const recoverable = new f.XmaxError(f.Code.RTC_ERROR, 'retry frame', 1003, 503, f.Severity.RECOVERABLE);
-  const fatal = new f.XmaxError(f.Code.API_ERROR, 'fatal frame', 1004, 500, f.Severity.FATAL);
+  const rtcError = new f.XmaxError(f.Code.RTC_ERROR, 'retry frame', 1003, 503);
+  const apiError = new f.XmaxError(f.Code.API_ERROR, 'API frame failure', 1004, 500);
   const cancelled = new f.XmaxError(f.Code.CANCELLED, 'stopped');
-  for (const error of [recoverable, fatal, cancelled]) {
+  for (const error of [rtcError, apiError, cancelled]) {
     f.failWith(error);
     f.tick(); f.tick();
     assert.equal(f.received.at(-1), error);
@@ -79,36 +79,34 @@ test('ordinary image push exceptions use the shared XmaxError conversion instead
   const error = f.received[0];
   assert.ok(error instanceof f.XmaxError);
   assert.equal(error.code, f.Code.INTERNAL_ERROR);
-  assert.equal(error.severity, f.Severity.FATAL);
+
   assert.equal(error.message, 'native frame failure');
 });
 
 test('first image push failure rejects creation with the original error and does not start the frame timer', async t => {
   const f = imageFixture(t);
-  const error = new f.XmaxError(f.Code.RTC_ERROR, 'first frame rejected', undefined, undefined, f.Severity.RECOVERABLE);
+  const error = new f.XmaxError(f.Code.RTC_ERROR, 'first frame rejected', undefined, undefined);
   f.failWith(error);
   await assert.rejects(f.start(), actual => actual === error);
   assert.equal(f.intervals.size, 0);
   assert.deepEqual(f.received, []); // Synchronous creation failure is returned by the operation promise.
 });
 
-test('error defaults match iOS, with backwards-compatible API and HTTP error details', () => {
+test('errors retain identity and API/HTTP details without a severity API', () => {
   const f = fixture();
-  const recoverable = ['INVALID_API_KEY', 'INVALID_CONFIGURATION', 'CAMERA_PERMISSION_DENIED',
-    'MICROPHONE_PERMISSION_DENIED', 'CANCELLED'];
+  assert.equal(f.load('foundation/errors/XmaxError.ets').XmaxErrorSeverity, undefined);
   for (const code of Object.values(f.Code)) {
     const error = new f.XmaxError(code, 'message', 1003, 503);
-    assert.equal(error.severity, recoverable.includes(code) ? f.Severity.RECOVERABLE : f.Severity.FATAL);
-    assert.equal(error.apiCode, 1003); assert.equal(error.httpStatus, 503);
+    assert.equal(error.code, code);
+    assert.equal(error.apiCode, 1003);
+    assert.equal(error.httpStatus, 503);
     assert.equal(f.XmaxError.from(error), error);
-    const downgraded = error.withSeverity(f.Severity.RECOVERABLE);
-    assert.equal(downgraded.code, code); assert.equal(downgraded.message, 'message');
-    assert.equal(downgraded.apiCode, 1003); assert.equal(downgraded.httpStatus, 503);
-    assert.equal(downgraded.severity, f.Severity.RECOVERABLE);
+    assert.equal('severity' in error, false);
+    assert.equal(typeof error.withSeverity, 'undefined');
   }
-  assert.equal(new f.XmaxError(f.Code.RTC_ERROR, 'retry', undefined, undefined,
-    f.Severity.RECOVERABLE).severity, f.Severity.RECOVERABLE);
-  assert.equal(f.XmaxError.from(new Error('platform')).severity, f.Severity.FATAL);
+  const converted = f.XmaxError.from(new Error('platform'));
+  assert.equal(converted.code, f.Code.INTERNAL_ERROR);
+  assert.equal(converted.message, 'platform');
 });
 
 test('error logging preserves original errors and deduplicates each object without a public callback', () => {
@@ -226,27 +224,23 @@ function roomFixture() {
   return { ...f, room, failure };
 }
 
-test('start signal is fatal; condition/trajectory updates and stop failures are recoverable', () => {
+test('start, condition and trajectory failures preserve identity; stop failures only log', () => {
   const f = roomFixture(), format = { width: 1024, height: 1920, fps: 30 }, context = { prompt: 'test' };
-  assert.throws(() => f.room.startGeneration('task', format, context), { severity: f.Severity.FATAL });
-  assert.throws(() => f.room.changeGenerationCondition('task', format, context), {
-    severity: f.Severity.RECOVERABLE, apiCode: 1003, httpStatus: 500
-  });
-  assert.throws(() => f.room.sendTracks('task', [{ x: 0, y: 0 }]), { severity: f.Severity.RECOVERABLE });
+  assert.throws(() => f.room.startGeneration('task', format, context), error => error === f.failure);
+  assert.throws(() => f.room.changeGenerationCondition('task', format, context), error => error === f.failure);
+  assert.throws(() => f.room.sendTracks('task', [{ x: 0, y: 0 }]), error => error === f.failure);
   f.Logger.configure(f.Option.BUSINESS);
   assert.doesNotThrow(() => f.room.stopGeneration('task'));
-  assert.match(f.logs.at(-1).message, /RECOVERABLE/);
+  assert.match(f.logs.at(-1).message, /send failed/);
+  assert.doesNotMatch(f.logs.at(-1).message, /级别/);
 });
 
-test('session close errors keep error details but become recoverable', async () => {
+test('session close failures preserve the original error', async () => {
   const f = fixture();
   const { RealtimeSessionService } = f.load('service/realtime/RealtimeSessionService.ets');
-  const service = new RealtimeSessionService({ async delete() {
-    throw new f.XmaxError(f.Code.API_ERROR, 'close failed', 1003, 500);
-  } });
-  await assert.rejects(service.closeSession('test'), {
-    code: f.Code.API_ERROR, severity: f.Severity.RECOVERABLE, apiCode: 1003, httpStatus: 500
-  });
+  const original = new f.XmaxError(f.Code.API_ERROR, 'close failed', 1003, 500);
+  const service = new RealtimeSessionService({ async delete() { throw original; } });
+  await assert.rejects(service.closeSession('test'), error => error === original);
 });
 
 function streamFixture() {
@@ -269,17 +263,20 @@ test('subscription failure rejects startup promptly, or forwards a running failu
   const f = streamFixture();
   const starting = f.stream.beginGeneration('task', {}, {});
   assert.doesNotThrow(() => f.stream.onRemoteVideoPublished('bot', true));
-  await assert.rejects(starting, { message: 'video subscription failed', severity: f.Severity.FATAL });
+  await assert.rejects(starting, { message: 'video subscription failed' });
   assert.equal(f.received.length, 0);
   f.stream.stopGeneration('task');
   f.stream.onRemoteVideoPublished('other-user', true);
   assert.equal(f.received.length, 0);
   f.stream.onRemoteVideoPublished('bot', true);
   assert.equal(f.received.length, 1);
-  assert.equal(f.received[0].severity, f.Severity.FATAL);
+
+  f.Logger.configure(f.Option.BUSINESS);
   f.stream.subscribedRemoteAudioUsers.add('bot');
   f.stream.onRemoteAudioPublished('bot', false);
-  assert.equal(f.received.at(-1).severity, f.Severity.RECOVERABLE);
+  assert.equal(f.received.length, 1);
+  assert.match(f.logs.at(-1).message, /取消远端音频订阅失败/);
+
 });
 
 test('synchronous start signal failure returns one rejected promise with the original failure', async () => {
@@ -298,10 +295,10 @@ test('audio volume callback errors are forwarded for an activated remote stream'
   f.rtc.setRemoteAudioVolume = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'volume failed'); };
   assert.doesNotThrow(() => f.stream.onRemoteAudioPublished('bot', true));
   assert.equal(f.received.length, 1);
-  assert.equal(f.received[0].severity, f.Severity.FATAL);
+
 });
 
-test('remote surface bind failure reaches the fatal listener without escaping the UI callback', () => {
+test('remote surface bind failure reaches the runtime failure listener without escaping the UI callback', () => {
   const f = fixture(), received = [];
   const { RenderController } = f.load('rendering/RenderController.ets');
   const { RealtimeVideoTrack } = f.load('service/realtime/RealtimeVideoTrack.ets');
@@ -318,6 +315,42 @@ test('remote surface bind failure reaches the fatal listener without escaping th
   render.setRemoteStream(new RemoteStream('room', 'bot'));
   assert.doesNotThrow(() => VideoRenderRegistry.attach(track, 'surface', 0, () => {}, () => {}));
   assert.equal(received.length, 1);
-  assert.equal(received[0].severity, f.Severity.FATAL);
+
   render.resetRemoteTrack(track);
+});
+
+test('cleanup failures do not reject generation startup or reenter runtime error handling', async () => {
+  const f = streamFixture();
+  f.Logger.configure(f.Option.BUSINESS);
+  const starting = f.stream.beginGeneration('task', {}, {});
+  let completed = false;
+  starting.then(() => { completed = true; }, () => { completed = true; });
+  f.stream.subscribedRemoteAudioUsers.add('bot');
+  f.stream.onRemoteAudioPublished('bot', false);
+  f.stream.activeRemoteStream = { roomId: 'room', userId: 'bot' };
+  f.stream.remoteStreamListener = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'clear stream failed'); };
+  f.stream.onRemoteVideoPublished('bot', false);
+  await Promise.resolve();
+  assert.equal(completed, false);
+  assert.deepEqual(f.received, []);
+  assert.match(f.logs.at(-1).message, /clear stream failed/);
+  f.stream.remoteStreamListener = () => {};
+  f.stream.stopGeneration('task');
+  await assert.rejects(starting, { code: f.Code.CANCELLED });
+});
+
+test('stopping frame observation only logs failures and leaves no frame waiters', () => {
+  const f = fixture(), failures = [];
+  f.Logger.configure(f.Option.BUSINESS);
+  const { RenderController } = f.load('rendering/RenderController.ets');
+  const { RemoteStream } = f.load('foundation/rtc/RemoteStream.ets');
+  const render = new RenderController({
+    setRemoteVideoFrameListener() {}, setRemoteVideoRenderedListener() {}, unbindRemoteVideo() {},
+    observeRemoteVideoFrames(_stream, enabled) { if (!enabled) throw new Error('stop observation failed'); }
+  }, error => failures.push(error));
+  render.setRemoteStream(new RemoteStream('room', 'bot'));
+  render.setRemoteStream(null);
+  assert.deepEqual(failures, []);
+  assert.match(f.logs.at(-1).message, /stop observation failed/);
+  assert.equal(render.remoteFrameWaiters.size, 0);
 });

@@ -1,7 +1,6 @@
 import {
   XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity
+  XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { ApiServicing } from '../network/ApiServicing';
 import { RealtimeSession } from './RealtimeSession';
@@ -86,7 +85,7 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
     try {
       await this.apiService.delete<Object>(`/session/${sessionId}`);
     } catch (error) {
-      throw XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE);
+      throw XmaxError.from(error);
     }
   }
 
@@ -117,7 +116,7 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
         this.stopHeartbeat();
         await onFailure(
           sessionId,
-          XmaxError.from(error).withSeverity(XmaxErrorSeverity.FATAL)
+          XmaxError.from(error)
         );
 
         return;

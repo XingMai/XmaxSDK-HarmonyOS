@@ -42,6 +42,14 @@ export class XmaxRealtimeGenerationManager {
     this.streamController = streamController;
   }
 
+  /** 在开始生成和修改资源前验证首次生成所需的条件。 */
+  validateContext(context?: RealtimeContext): void {
+    if (context === undefined && this.currentContext === null) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'A realtime context is required for the first generation');
+    }
+  }
+
   /**
    * 启动生成并等待与任务匹配的远端结果流。
    *

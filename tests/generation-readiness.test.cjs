@@ -333,7 +333,7 @@ test('audio activation failure rejects startup, stops the task, and never emits 
   assert.equal(f.events.includes(`state:${f.State.GENERATING}`), false);
 });
 
-test('fatal RTC errors during first-frame waiting reject promptly with the original error once', async t => {
+test('RTC errors during first-frame waiting reject promptly with the original error once', async t => {
   const f = fixture(t), { pending, task } = await f.begin();
   f.sei(task); await settle();
   const error = new f.XmaxError(f.Code.RTC_ERROR, 'subscription failed');

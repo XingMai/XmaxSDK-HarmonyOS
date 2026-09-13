@@ -6,8 +6,7 @@ import xmaxVideoNative, {
 import {
   XmaxError,
   XmaxErrorCode,
-  XmaxErrorListener,
-  XmaxErrorSeverity
+  XmaxErrorListener
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { BufferVideoFrame } from '../../foundation/media/video/BufferVideoFrame';
@@ -222,10 +221,7 @@ export class CameraFrameOutput {
       try {
         errorListener(new XmaxError(
           XmaxErrorCode.MEDIA_ERROR,
-          error,
-          undefined,
-          undefined,
-          XmaxErrorSeverity.RECOVERABLE
+          error
         ));
       } catch (listenerError) {
         const reason: string = listenerError instanceof Error ?

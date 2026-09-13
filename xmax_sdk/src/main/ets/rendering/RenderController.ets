@@ -1,4 +1,5 @@
-import { XmaxError, XmaxErrorCode, XmaxErrorListener, XmaxErrorSeverity } from '../foundation/errors/XmaxError';
+import { XmaxLogger } from '../foundation/logging/XmaxLogger';
+import { XmaxError, XmaxErrorCode, XmaxErrorListener } from '../foundation/errors/XmaxError';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { RtcManaging } from '../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../foundation/media/video/VideoContentMode';
@@ -140,7 +141,7 @@ export class RenderController implements RenderControlling {
     try {
       this.rtcManager.observeRemoteVideoFrames(stream, false);
     } catch (error) {
-      this.errorListener(XmaxError.from(error).withSeverity(XmaxErrorSeverity.RECOVERABLE));
+      XmaxLogger.error(`停止远端视频帧观察失败\n└─ 原因：${XmaxError.from(error).message}`, 'Render');
     }
   }
 

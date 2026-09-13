@@ -3,8 +3,7 @@ export { XmaxConfiguration } from './src/main/ets/core/XmaxConfiguration';
 export { XmaxEnvironment } from './src/main/ets/core/XmaxEnvironment';
 export {
   XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity
+  XmaxErrorCode
 } from './src/main/ets/foundation/errors/XmaxError';
 export {
   RealtimeModel,

@@ -1,8 +1,7 @@
 import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
 import {
   XmaxError,
-  XmaxErrorCode,
-  XmaxErrorSeverity
+  XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RoomJoinConfiguration } from '../../foundation/rtc/RoomJoinConfiguration';
@@ -105,7 +104,7 @@ export class RoomController implements RoomControlling {
       taskId,
       videoFormat,
       context
-    ), XmaxErrorSeverity.FATAL);
+    ));
   }
 
   /**
@@ -126,7 +125,7 @@ export class RoomController implements RoomControlling {
       taskId,
       videoFormat,
       context
-    ), XmaxErrorSeverity.RECOVERABLE);
+    ));
   }
 
   /**
@@ -141,11 +140,11 @@ export class RoomController implements RoomControlling {
     }
 
     try {
-      this.send(RoomEvent.stop(this.localUserId, taskId), XmaxErrorSeverity.RECOVERABLE);
+      this.send(RoomEvent.stop(this.localUserId, taskId));
     } catch (error) {
       const xmaxError: XmaxError = XmaxError.from(error);
       XmaxLogger.error(
-        `发送生成停止消息失败\n├─ 级别：${xmaxError.severity}\n└─ 原因：${xmaxError.message}`,
+        `发送生成停止消息失败\n└─ 原因：${xmaxError.message}`,
         'Room'
       );
     }
@@ -170,21 +169,20 @@ export class RoomController implements RoomControlling {
       this.requireUserId(),
       taskId,
       points
-    ), XmaxErrorSeverity.RECOVERABLE);
+    ));
   }
 
   /**
    * 发送房间信令并记录结构化日志。
    *
    * @param message 已序列化的房间信令。
-   * @param severity 发送失败时对当前实时流程的影响。
    * @returns 无返回值。
    */
-  private send(message: string, severity: XmaxErrorSeverity): void {
+  private send(message: string): void {
     try {
       this.rtcManager.sendRoomMessage(message);
     } catch (error) {
-      throw XmaxError.from(error).withSeverity(severity);
+      throw XmaxError.from(error);
     }
     XmaxLogger.debug((): string => this.formatSignalLog(message), 'Room');
   }

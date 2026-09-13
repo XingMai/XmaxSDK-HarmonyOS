@@ -12,7 +12,7 @@ function gate() {
 function fixture(cleanup) {
   const events = [], states = [], errors = [], logs = [];
   const load = loadEts({ XmaxLogger: { XmaxLogger: { error: (...args) => logs.push(args) } } });
-  const { XmaxError, XmaxErrorCode: Code, XmaxErrorSeverity: Severity } = load('foundation/errors/XmaxError.ets');
+  const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeState, RealtimeConnectionState: State, RealtimeReason: Reason } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeErrorManager } = load('core/realtime/XmaxRealtimeErrorManager.ets');
   const { RealtimeCoordinator, RealtimeOperationKind: Kind, RealtimeTerminationScope: Scope } =
@@ -23,7 +23,7 @@ function fixture(cleanup) {
     return cleanup?.(scope, task);
   }, () => true);
   coordinator.setStateListener(state => { states.push(state); events.push(`state:${state.connectionState}`); if (state.reason?.error) { events.push('error'); errors.push(state.reason.error); } });
-  return { coordinator, handler, Kind, Scope, State, Reason, RealtimeState, XmaxError, Code, Severity,
+  return { coordinator, handler, Kind, Scope, State, Reason, RealtimeState, XmaxError, Code,
     events, states, errors, logs };
 }
 
@@ -113,12 +113,12 @@ test('close invalidates stale commits and awaits non-cancellable resource creati
   await f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => {});
 });
 
-test('fatal generation failure closes the connection and reports the original error in READY', async () => {
+test('generation failure closes the connection and reports the original error in READY', async () => {
   const f = fixture();
   const original = new f.XmaxError(f.Code.TIMEOUT, 'first frame', 1004, 504);
   await assert.rejects(f.coordinator.run(f.Kind.GENERATION, f.Scope.CONNECTION, async token => {
     f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'session'), token);
-    token.setFailureScope(f.Scope.GENERATION);
+    token.setFailureScope(f.Scope.CONNECTION);
     throw original;
   }), error => error === original);
   assert.deepEqual(f.events.slice(-3), [`cleanup:${f.Scope.CONNECTION}:`, `state:${f.State.READY}`, 'error']);
@@ -126,16 +126,16 @@ test('fatal generation failure closes the connection and reports the original er
   assert.equal(f.coordinator.currentState.sessionId, 'session');
 });
 
-test('recoverable operation errors leave resources and public state intact', async () => {
+test('preflight errors without a cleanup scope leave resources and public state intact', async () => {
   const f = fixture();
   const original = new f.XmaxError(f.Code.INVALID_CONFIGURATION, 'bad input');
-  await assert.rejects(f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => { throw original; }),
+  await assert.rejects(f.coordinator.run(f.Kind.MEDIA, null, async () => { throw original; }),
     error => error === original);
   assert.deepEqual(f.events, [`state:${f.State.IDLE}`]);
   assert.deepEqual(f.errors, []);
 });
 
-test('background fatal error interrupts a readiness wait and survives cancellation unchanged', async () => {
+test('background runtime error interrupts a readiness wait and survives cancellation unchanged', async () => {
   const f = fixture(), readiness = gate();
   const running = outcome(f.coordinator.run(f.Kind.GENERATION, f.Scope.GENERATION,
     token => token.wait(readiness.promise)));

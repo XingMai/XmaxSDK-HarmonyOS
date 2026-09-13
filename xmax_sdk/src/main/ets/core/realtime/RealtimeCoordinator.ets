@@ -1,4 +1,4 @@
-import { XmaxError, XmaxErrorCode, XmaxErrorSeverity } from '../../foundation/errors/XmaxError';
+import { XmaxError, XmaxErrorCode } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RealtimeConnectionState, RealtimeReason, RealtimeState, RealtimeStateListener } from '../../service/realtime/RealtimeState';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
@@ -25,9 +25,10 @@ export class RealtimeOperationToken {
   private valid: boolean = true;
   private failure: XmaxError | null = null;
   private readonly cancellationListeners: Set<CancellationListener> = new Set();
-  private storedFailureScope: RealtimeTerminationScope;
+  // 校验阶段不清理资源；操作开始修改资源后，显式登记失败时的清理范围。
+  private storedFailureScope: RealtimeTerminationScope | null;
 
-  constructor(failureScope: RealtimeTerminationScope) {
+  constructor(failureScope: RealtimeTerminationScope | null) {
     this.storedFailureScope = failureScope;
   }
 
@@ -35,7 +36,7 @@ export class RealtimeOperationToken {
     return this.valid;
   }
 
-  get failureScope(): RealtimeTerminationScope {
+  get failureScope(): RealtimeTerminationScope | null {
     return this.storedFailureScope;
   }
 
@@ -43,7 +44,7 @@ export class RealtimeOperationToken {
     return this.failure;
   }
 
-  setFailureScope(scope: RealtimeTerminationScope): void {
+  setFailureScope(scope: RealtimeTerminationScope | null): void {
     this.storedFailureScope = scope;
   }
 
@@ -111,7 +112,7 @@ class RealtimeOperation {
   completion: Promise<void> = Promise.resolve();
   termination: RealtimeTermination | null = null;
 
-  constructor(kind: RealtimeOperationKind, failureScope: RealtimeTerminationScope) {
+  constructor(kind: RealtimeOperationKind, failureScope: RealtimeTerminationScope | null) {
     this.kind = kind;
     this.token = new RealtimeOperationToken(failureScope);
   }
@@ -166,7 +167,7 @@ export class RealtimeCoordinator {
     this.notifyStateListener(this.state);
   }
 
-  run<T>(kind: RealtimeOperationKind, failureScope: RealtimeTerminationScope,
+  run<T>(kind: RealtimeOperationKind, failureScope: RealtimeTerminationScope | null,
     body: (token: RealtimeOperationToken) => Promise<T>): Promise<T> {
     if (this.termination !== null || this.activeOperation !== null) {
       return Promise.reject(this.errorManager.handle(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
@@ -224,11 +225,11 @@ export class RealtimeCoordinator {
       const resolved: XmaxError = XmaxError.from(error);
       let pending: RealtimeTermination | null = operation.termination;
       if (!operation.token.isCurrent || resolved.code === XmaxErrorCode.CANCELLED || pending !== null) {
-        pending = pending ?? this.requestTermination(operation.token.failureScope);
-      } else if (resolved.severity === XmaxErrorSeverity.FATAL ||
-        this.state.connectionState === RealtimeConnectionState.PREPARING) {
-        pending = this.requestTermination(Math.max(operation.token.failureScope,
-          RealtimeTerminationScope.CONNECTION), resolved);
+        if (pending === null && operation.token.failureScope !== null) {
+          pending = this.requestTermination(operation.token.failureScope);
+        }
+      } else if (operation.token.failureScope !== null) {
+        pending = this.requestTermination(operation.token.failureScope, resolved);
       } else {
         this.errorManager.handle(resolved);
       }
