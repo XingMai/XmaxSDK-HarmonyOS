@@ -402,9 +402,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.coordinator.hasOperation(RealtimeOperationKind.GENERATION) ||
       this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH))) {
       // 在新方向的帧进入生成链路前取消操作，不向旧任务发送尺寸更新。
-      this.renderController.stopRemoteVideoFrameDelivery();
-      void this.coordinator.terminate(RealtimeTerminationScope.CONNECTION,
-        RealtimeReason.ORIENTATION_CHANGED)
+      void this.disconnect(RealtimeReason.ORIENTATION_CHANGED)
         .catch((error: Object): void => this.logCleanupFailure('相机转屏后断开实时连接失败', error));
       try {
         this.generationManager.reset();
@@ -418,17 +416,18 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /** 取消连接/生成，等待回滚和清理完成，保留本地媒体与预览。 */
-  disconnect(): Promise<void> {
+  disconnect(reason: RealtimeReason = RealtimeReason.NORMAL): Promise<void> {
     const current: RealtimeState = this.currentState;
     if ((current.connectionState === RealtimeConnectionState.IDLE ||
       current.connectionState === RealtimeConnectionState.READY ||
       current.connectionState === RealtimeConnectionState.PREPARING) &&
       !this.coordinator.hasOperation(RealtimeOperationKind.CONNECTION) &&
-      !this.coordinator.hasOperation(RealtimeOperationKind.GENERATION)) {
+      !this.coordinator.hasOperation(RealtimeOperationKind.GENERATION) &&
+      !this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH)) {
       return Promise.resolve();
     }
     this.renderController.stopRemoteVideoFrameDelivery();
-    return this.coordinator.terminate(RealtimeTerminationScope.CONNECTION);
+    return this.coordinator.terminate(RealtimeTerminationScope.CONNECTION, reason);
   }
 
   /** 立即静默媒体，等待进行中的操作结束后释放所有实时资源。 */

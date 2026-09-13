@@ -6,6 +6,7 @@ import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream'
 import { RealtimeNetworkQualityListener } from '../../service/realtime/RealtimeNetworkQuality';
 import { RealtimePerformanceAlarmListener } from '../../service/realtime/RealtimePerformanceAlarm';
 import {
+  RealtimeReason,
   RealtimeState,
   RealtimeStateListener
 } from '../../service/realtime/RealtimeState';
@@ -154,10 +155,13 @@ export interface XmaxRealtimeManaging {
 
   /**
    * 断开实时连接并保留当前本地媒体流和预览。
+   * 取消正在进行的连接和生成；清理完成后通过 state.reason 返回原因。
+   * 尚未连接且没有相关操作时直接返回，不改变本地准备或预览状态。
    *
+   * @param reason 本次断开的原因；省略时为 RealtimeReason.NORMAL。
    * @returns 受影响的操作结束、会话回滚和连接清理完成后的 Promise。
    */
-  disconnect(): Promise<void>;
+  disconnect(reason?: RealtimeReason): Promise<void>;
 
   /**
    * 关闭当前实时生命周期并释放本地媒体、连接和 RTC Engine。

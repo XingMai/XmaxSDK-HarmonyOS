@@ -400,11 +400,16 @@ the local stream after disconnecting, as shown above.
 ## Stop and release resources
 
 ```ts
+import { RealtimeReason } from '@xmax/sdk';
+
 // Pause generation while retaining the connection:
 await realtime.stopGeneration();
 
 // Or end the remote session while retaining local preview:
 await realtime.disconnect();
+
+// Or disconnect with a business reason:
+await realtime.disconnect(RealtimeReason.ORIENTATION_CHANGED);
 
 // Or leave the screen and release all resources:
 await realtime.close();
@@ -414,6 +419,15 @@ await realtime.close();
 remote connection and local preview. `disconnect()` closes the remote session
 while preserving the local preview. `close()` releases all local media and RTC
 resources and should be called when the realtime workflow is no longer required.
+
+`disconnect(reason?: RealtimeReason)` defaults to `RealtimeReason.NORMAL`.
+When a disconnection occurs, the final `READY` (or `IDLE` if no local media remains)
+state carries the reason in `state.reason`; `DISCONNECTING` has no reason yet.
+`RealtimeReason.failure(error)` preserves the supplied `XmaxError` in that state.
+Calling disconnect without a connection or an affected operation is a no-op,
+including during local media preparation. Concurrent requests retain the first
+disconnection reason; late connection errors do not overwrite it. A local media
+failure can still require full cleanup and replace the reason with that failure.
 
 When applicable, these methods wait for affected operations and resource cleanup to finish.
 For example, closing while a session request is pending waits for the late session

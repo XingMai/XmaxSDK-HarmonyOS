@@ -212,6 +212,10 @@ export class RealtimeCoordinator {
   }
 
   terminateWithError(error: XmaxError, target: RealtimeTerminationScope): Promise<void> {
+    // 断开期间迟到的连接错误不覆盖主动结束原因；本地媒体故障仍须扩大清理范围。
+    if (this.termination !== null && target !== RealtimeTerminationScope.ALL) {
+      return Promise.resolve();
+    }
     return this.requestTermination(target, error).promise;
   }
 

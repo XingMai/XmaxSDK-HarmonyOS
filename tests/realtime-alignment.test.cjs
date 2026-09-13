@@ -1457,3 +1457,114 @@ test('XLab restores video volume after SDK creation defaults, including mute and
   await vm.resume({});
   assert.equal(f.manager.remoteAudioVolume, 0.7);
 });
+
+for (const state of ['CONNECTING', 'CONNECTED', 'GENERATING']) {
+  test(`disconnect from ${state} preserves local preview and exposes the supplied reason after cleanup`, async () => {
+    for (const kind of ['default', 'orientation', 'failure']) {
+      const f = managerFixture(), local = await f.create(), states = [];
+      const original = new f.XmaxError(f.Code.MEDIA_ERROR, 'host requested disconnect', 123, 503);
+      const reason = kind === 'default' ? undefined : kind === 'orientation' ?
+        f.Reason.ORIENTATION_CHANGED : f.Reason.failure(original);
+      let running, gate;
+      if (state === 'CONNECTING') {
+        gate = f.holdSession();
+        running = outcome(f.manager.startGeneration(local, new f.Context('test')));
+        await settle();
+      } else if (state === 'CONNECTED') {
+        await f.manager.connect(local);
+      } else {
+        await f.manager.startGeneration(local, new f.Context('test'));
+      }
+      assert.equal(f.manager.currentState.connectionState, f.State[state]);
+      f.manager.setStateListener(value => states.push(value));
+      const disconnecting = f.manager.disconnect(reason);
+      assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+      assert.equal(f.manager.currentState.reason, undefined);
+      gate?.resolve();
+      await disconnecting;
+      if (running) assert.equal((await running).error.code, f.Code.CANCELLED);
+      assert.equal(f.manager.currentState.connectionState, f.State.READY);
+      assert.equal(f.manager.currentState.reason, reason ?? f.Reason.NORMAL);
+      if (kind === 'failure') assert.equal(f.manager.currentState.reason.error, original);
+      assert.equal(f.media.currentTrack, local.videoTrack);
+      assert.equal(f.calls.audio.at(-1), true);
+      assert.deepEqual(f.calls.closed, ['session-1']);
+      assert.equal(f.stream.currentGenerationTaskId, '');
+      const count = states.length;
+      await f.manager.disconnect(f.Reason.NORMAL);
+      assert.equal(states.length, count);
+      await f.manager.startGeneration(local, new f.Context('next'));
+      assert.equal(f.manager.currentState.reason, undefined);
+      await f.manager.close();
+    }
+  });
+}
+
+test('disconnect with a reason does not interrupt unconnected local creation or change its state', async () => {
+  const f = managerFixture();
+  const idle = f.manager.currentState;
+  await f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.currentState, idle);
+  const gate = deferred(), create = f.media.createLocalCameraStream.bind(f.media);
+  f.media.createLocalCameraStream = async (...args) => { await gate.promise; return create(...args); };
+  const creating = f.create();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.PREPARING);
+  const preparing = f.manager.currentState;
+  await f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.currentState, preparing);
+  gate.resolve();
+  await creating;
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  const ready = f.manager.currentState;
+  await f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.currentState, ready);
+  assert.deepEqual(f.calls.closed, []);
+  await f.manager.close();
+});
+
+test('disconnect cancels an active camera switch even while the public state is READY', async () => {
+  const f = managerFixture(), local = await f.create(), gate = deferred();
+  f.media.switchCamera = async () => { await gate.promise; return local; };
+  const switching = outcome(f.manager.switchCamera());
+  const disconnecting = f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+  gate.resolve();
+  await disconnecting;
+  assert.equal((await switching).error.code, f.Code.CANCELLED);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.media.currentTrack, local.videoTrack);
+  await f.manager.close();
+});
+
+test('concurrent disconnect and close keep the first reason despite a late heartbeat error', async () => {
+  const f = managerFixture(), local = await f.create(), gate = deferred();
+  await f.manager.startGeneration(local, new f.Context('test'));
+  const disconnect = f.stream.disconnect.bind(f.stream);
+  f.stream.disconnect = async () => { await gate.promise; return disconnect(); };
+  const disconnecting = f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.disconnect(), disconnecting);
+  assert.equal(f.manager.close(), disconnecting);
+  await f.api.heartbeat(new f.XmaxError(f.Code.SESSION_ERROR, 'late heartbeat failure'));
+  gate.resolve();
+  await disconnecting;
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.media.currentTrack, null);
+});
+
+test('a local media failure during explicit disconnect still releases media and reports the original error', async () => {
+  const f = managerFixture(), local = await f.create(), gate = deferred();
+  await f.manager.startGeneration(local, new f.Context('test'));
+  const disconnect = f.stream.disconnect.bind(f.stream);
+  f.stream.disconnect = async () => { await gate.promise; return disconnect(); };
+  const disconnecting = f.manager.disconnect(f.Reason.ORIENTATION_CHANGED);
+  const original = new f.XmaxError(f.Code.MEDIA_ERROR, 'camera failed during disconnect');
+  f.media.onError(original);
+  gate.resolve();
+  await disconnecting;
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.reason.error, original);
+  assert.equal(f.media.currentTrack, null);
+});
