@@ -1022,6 +1022,98 @@ test('XLab replaces input during connection by closing the old session and gener
   assert.equal(f.viewModel.state.errorMessage, '');
 });
 
+function referenceItem(id) {
+  return { isSelected: false, reference: {
+    id, categoryId: 'charx', remoteUrl: `https://example.invalid/${id}.jpg`,
+    uploadState: 'ready', isAddAction: false
+  } };
+}
+
+for (const phase of ['connecting', 'waiting for generation']) {
+  test(`XLab keeps loading continuously when replacing references while ${phase}`, async () => {
+    const f = exampleFixture(), vm = f.viewModel;
+    const gate = phase === 'connecting' ? f.holdSession() : null;
+    f.holdGeneration();
+    await vm.connect({});
+    vm.selectReference(referenceItem('first'));
+    await settle();
+    assert.equal(vm.state.isGenerationStarting, true);
+    const loadingChanges = [];
+    let loading = true;
+    Object.defineProperty(vm.state, 'isGenerationStarting', {
+      get: () => loading,
+      set(value) { loading = value; loadingChanges.push(value); }
+    });
+    vm.selectReference(referenceItem('second'));
+    vm.selectReference(referenceItem('latest'));
+    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+    assert.equal(loading, true);
+    gate?.resolve();
+    await settle(); await settle();
+    assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+    assert.equal(f.calls.starts.at(-1).context.referencePath, 'https://example.invalid/latest.jpg');
+    assert.equal(f.calls.starts.some(call => call.context.referencePath?.includes('second.jpg')), false);
+    assert.equal(loadingChanges.includes(false), false);
+    assert.equal(vm.state.errorMessage, '');
+    f.stream.confirmation.resolve();
+    await settle();
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+    assert.equal(loading, false);
+    await vm.suspend();
+  });
+}
+
+for (const action of ['cancel', 'deselect', 'suspend']) {
+  test(`XLab ${action} ends loading while a reference replacement is disconnecting`, async () => {
+    const f = exampleFixture(), vm = f.viewModel, gate = f.holdSession();
+    await vm.connect({});
+    vm.selectReference(referenceItem('first'));
+    await settle();
+    const replacement = referenceItem('second');
+    vm.selectReference(replacement);
+    let closing;
+    if (action === 'cancel') vm.cancelGeneration();
+    else if (action === 'deselect') vm.selectReference(replacement);
+    else closing = vm.suspend();
+    assert.equal(vm.state.isGenerationStarting, false);
+    gate.resolve();
+    await closing;
+    await settle(); await settle();
+    assert.equal(vm.state.isGenerationStarting, false);
+    assert.equal(f.calls.sessions.length, 1);
+    assert.equal(f.calls.starts.length, 0);
+    assert.equal(vm.state.selectedReferenceId, '');
+    assert.equal(vm.state.errorMessage, '');
+    await vm.suspend();
+  });
+}
+
+for (const action of ['failure', 'orientation change']) {
+  test(`XLab ${action} ends loading after a replacement request starts`, async () => {
+    const f = exampleFixture(), vm = f.viewModel;
+    f.holdGeneration();
+    await vm.connect({});
+    vm.selectReference(referenceItem('first'));
+    await settle();
+    vm.selectReference(referenceItem('second'));
+    await settle(); await settle();
+    assert.equal(f.calls.starts.length, 2);
+    assert.equal(vm.state.isGenerationStarting, true);
+    if (action === 'failure') {
+      f.stream.confirmation.reject(new f.XmaxError(f.Code.RTC_ERROR, 'replacement failed'));
+    } else {
+      f.rotateCamera();
+    }
+    await settle(); await settle();
+    assert.equal(vm.state.isGenerationStarting, false);
+    assert.equal(vm.state.selectedReferenceId, '');
+    assert.equal(f.calls.sessions.length, 2);
+    assert.equal(f.calls.starts.length, 2);
+    assert.equal(vm.state.errorMessage, action === 'failure' ? 'replacement failed' : '');
+    await vm.suspend();
+  });
+}
+
 test('XLab orientation changes leave idle local preview and disconnected media alone', async () => {
   const f = exampleFixture(), messages = [];
   f.viewModel.onMessage = message => messages.push(message);

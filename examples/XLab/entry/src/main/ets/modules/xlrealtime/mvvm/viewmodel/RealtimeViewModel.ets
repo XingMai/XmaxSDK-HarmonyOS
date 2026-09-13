@@ -57,6 +57,7 @@ export class RealtimeViewModel {
   private switchingCamera: boolean = false;
   private changingLocalMedia: boolean = false;
   private generationUpdating: boolean = false;
+  private pendingGenerationRestart: boolean = false;
   private generationRevision: number = 0;
   private generationInputMode: GenerationInputMode = GenerationInputMode.REFERENCE;
   private submittedPrompt: string = '';
@@ -202,11 +203,16 @@ export class RealtimeViewModel {
         }
         this.state.connectionState = state.connectionState;
         if (state.connectionState === RealtimeConnectionState.CONNECTING) {
+          this.pendingGenerationRestart = false;
           this.state.isGenerationStarting = true;
         }
-        if (terminal || state.connectionState === RealtimeConnectionState.GENERATING ||
-          state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+        if (state.connectionState === RealtimeConnectionState.GENERATING ||
+          state.connectionState === RealtimeConnectionState.IDLE) {
+          this.pendingGenerationRestart = false;
           this.state.isGenerationStarting = false;
+        } else if (terminal || state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+          // 替换请求时的断开和 READY 是中间状态，等待新请求期间保持 loading。
+          this.state.isGenerationStarting = this.pendingGenerationRestart;
         }
         if (terminal || state.connectionState === RealtimeConnectionState.DISCONNECTING) {
           this.state.isMoxGenerationActive = false;
@@ -295,7 +301,7 @@ export class RealtimeViewModel {
     } finally {
       if (this.realtimeManager === manager) {
         this.switchingCamera = false;
-        this.state.isGenerationStarting = false;
+        this.state.isGenerationStarting = this.pendingGenerationRestart;
       }
     }
 
@@ -367,6 +373,7 @@ export class RealtimeViewModel {
     this.connecting = false;
     this.switchingCamera = false;
     this.changingLocalMedia = false;
+    this.pendingGenerationRestart = false;
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
     this.state.errorMessage = '';
@@ -535,6 +542,7 @@ export class RealtimeViewModel {
   }
 
   private clearGenerationSelection(): void {
+    this.pendingGenerationRestart = false;
     if (this.selectedReferenceItem !== null) {
       this.selectedReferenceItem.isSelected = false;
       this.selectedReferenceItem = null;
@@ -586,6 +594,8 @@ export class RealtimeViewModel {
     if (this.switchingCamera || this.generationUpdating) {
       // 取消旧操作时统一断开连接，停止麦克风并保留本地预览。
       if (manager !== null) {
+        this.pendingGenerationRestart = this.hasGenerationInput();
+        this.state.isGenerationStarting = this.pendingGenerationRestart;
         const stopping: Promise<void> = manager.disconnect();
         void stopping.catch((error: Object): void => {
           if (this.realtimeManager === manager) {
@@ -599,6 +609,13 @@ export class RealtimeViewModel {
       return;
     }
     void this.applyGenerationUpdates();
+  }
+
+  private hasGenerationInput(): boolean {
+    if (this.generationInputMode === GenerationInputMode.REFERENCE) {
+      return this.selectedReferenceItem?.reference.remoteUrl !== undefined;
+    }
+    return this.submittedPrompt.length > 0;
   }
 
   private async applyGenerationUpdates(): Promise<void> {
@@ -640,15 +657,17 @@ export class RealtimeViewModel {
               this.state.remoteVideoTrack = remoteStream.videoTrack ?? null;
             }
           } else {
+            this.pendingGenerationRestart = false;
             this.state.isGenerationStarting = false;
             this.state.isMoxGenerationActive = false;
             await manager.disconnect();
           }
-          if (this.realtimeManager === manager && revision === this.generationRevision) {
+          if (shouldGenerate && this.realtimeManager === manager && revision === this.generationRevision) {
             this.state.errorMessage = '';
           }
         } catch (error) {
           if (revision === this.generationRevision && this.realtimeManager === manager) {
+            this.pendingGenerationRestart = false;
             this.state.isGenerationStarting = false;
             this.state.isMoxGenerationActive = false;
             this.presentError(error);
