@@ -1,3 +1,4 @@
+import { RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { XmaxError } from '../foundation/errors/XmaxError';
 import { InteractionControlling } from '../media/interaction/InteractionControlling';
@@ -5,6 +6,12 @@ import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 
 /** 定义渲染层向 Core 暴露的统一能力。 */
 export interface RenderControlling {
+  /** 设置公开远端帧监听器；null 取消监听并清除待交付帧。 */
+  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
+
+  /** 停止当前流的公开帧交付，直至设置新的远端流。 */
+  stopRemoteVideoFrameDelivery(): void;
+
 
   /**
    * 更新当前需要渲染的远端 RTC 视频流。

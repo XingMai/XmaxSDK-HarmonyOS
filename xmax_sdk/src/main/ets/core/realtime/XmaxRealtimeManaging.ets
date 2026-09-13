@@ -1,3 +1,4 @@
+import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
@@ -27,6 +28,14 @@ export interface XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setStateListener(listener: RealtimeStateListener | null): void;
+
+  /**
+   * 异步交付当前生成流的 RTC 后处理帧；null 取消监听，未监听时不复制像素。
+   * 缓冲区可在回调后持有；仅保留最新待交付帧，不保证逐帧交付。
+   * 回调运行在 ArkTS 事件循环中，耗时处理应移交 Worker。
+   * 断开或停止生成后停止交付，监听器配置保留以供后续生成使用。
+   */
+  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
 
 
   /**

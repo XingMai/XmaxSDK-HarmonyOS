@@ -1,3 +1,4 @@
+import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
@@ -152,6 +153,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
 
+  /** @inheritdoc */
+  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void {
+    try {
+      this.renderController.setRemoteVideoFrameListener(listener);
+    } catch (error) {
+      throw this.reportError(XmaxError.from(error));
+    }
+  }
+
   /**
    * 设置实时网络质量监听器。
    *
@@ -252,6 +262,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         if (wasGenerating) {
           token.setFailureScope(RealtimeTerminationScope.CONNECTION);
+          this.renderController.stopRemoteVideoFrameDelivery();
           this.generationManager.stop(current.taskId ?? '');
           this.restoreLocalAudioPreview();
           this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED, current.sessionId), token);
@@ -376,6 +387,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.coordinator.hasOperation(RealtimeOperationKind.GENERATION) ||
       this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH))) {
       // 在新方向的帧进入生成链路前取消操作，不向旧任务发送尺寸更新。
+      this.renderController.stopRemoteVideoFrameDelivery();
       void this.coordinator.terminate(RealtimeTerminationScope.CONNECTION,
         RealtimeReason.ORIENTATION_CHANGED)
         .catch((error: Object): void => this.logCleanupFailure('相机转屏后断开实时连接失败', error));
@@ -400,11 +412,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       !this.coordinator.hasOperation(RealtimeOperationKind.GENERATION)) {
       return Promise.resolve();
     }
+    this.renderController.stopRemoteVideoFrameDelivery();
     return this.coordinator.terminate(RealtimeTerminationScope.CONNECTION);
   }
 
   /** 立即静默媒体，等待进行中的操作结束后释放所有实时资源。 */
   close(): Promise<void> {
+    this.renderController.stopRemoteVideoFrameDelivery();
     const wasClosing: boolean = this.coordinator.isClosing;
     const closing: Promise<void> = this.coordinator.terminate(
       RealtimeTerminationScope.ALL);
@@ -522,6 +536,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       current.connectionState !== RealtimeConnectionState.GENERATING)) {
       return Promise.resolve();
     }
+    this.renderController.stopRemoteVideoFrameDelivery();
     return this.coordinator.terminate(RealtimeTerminationScope.GENERATION);
   }
 
@@ -537,6 +552,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。 */
   private async cleanup(scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> {
+    this.renderController.stopRemoteVideoFrameDelivery();
     try {
       if (scope >= RealtimeTerminationScope.CONNECTION) {
         this.generationManager.reset(taskId);
@@ -578,6 +594,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (this.connectionManager.currentSessionId !== sessionId) {
       return Promise.resolve();
     }
+    this.renderController.stopRemoteVideoFrameDelivery();
     return this.coordinator.terminateWithError(error, RealtimeTerminationScope.CONNECTION);
   }
 
@@ -586,6 +603,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private handleRuntimeError(error: XmaxError, scope: RealtimeTerminationScope): void {
+    this.renderController.stopRemoteVideoFrameDelivery();
     this.renderController.failRemoteFrameWait(error);
     void this.coordinator.terminateWithError(error, scope)
       .catch((failure: Object): void => this.logCleanupFailure('实时错误清理失败', failure));

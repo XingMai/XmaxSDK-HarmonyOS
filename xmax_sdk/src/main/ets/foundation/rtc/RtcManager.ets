@@ -143,7 +143,7 @@ export class RtcManager implements RtcManaging {
         }
         const stream = new RemoteStream(key.room_id, key.user_id);
         if (this.observedRemoteStreams.has(stream.key())) {
-          this.remoteVideoFrameListener?.(stream);
+          this.remoteVideoFrameListener?.(stream, () => RtcVideoConverter.copyRemoteFrame(frame));
         }
       });
     engine.on(
@@ -663,6 +663,9 @@ export class RtcManager implements RtcManaging {
         return;
       }
       throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable');
+    }
+    if (enabled && this.observedRemoteStreams.has(streamId)) {
+      return;
     }
     if (enabled) {
       this.observedRemoteStreams.add(streamId);

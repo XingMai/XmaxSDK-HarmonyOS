@@ -1,3 +1,4 @@
+import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
 import { AudioFrame } from '../media/audio/AudioFrame';
 import { CameraPosition } from '../media/camera/CameraPosition';
 import { VideoFrame } from '../media/video/VideoFrame';
@@ -9,7 +10,8 @@ import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
 export type RtcRemoteVideoRenderedListener = (stream: RemoteStream) => void;
-export type RtcRemoteVideoFrameListener = (stream: RemoteStream) => void;
+/** copyFrame 只能在当前 RTC 回调内调用，按需复制帧数据。 */
+export type RtcRemoteVideoFrameListener = (stream: RemoteStream, copyFrame: () => RealtimeVideoFrame) => void;
 
 /** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
 export interface RtcManaging {

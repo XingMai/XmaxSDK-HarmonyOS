@@ -107,7 +107,7 @@ function fixture(t, timingOptions = {}) {
       return { pending, task: messages.filter(m => m.event === 'start').at(-1)?.uid };
     },
     sei(task, stream = remote) { rtc.listener.onSeiMessageReceived(stream, task); },
-    frame(stream = remote) { rtc.frameListener(stream); },
+    frame(stream = remote, copyFrame) { rtc.frameListener(stream, copyFrame); },
     runTimer(ms) {
       const entries = [...timers].filter(([, timer]) => timer.ms === ms);
       assert.equal(entries.length, 1);
@@ -409,8 +409,48 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
   rtc.observeRemoteVideoFrames(stream, true);
   onFrame(key, 1, frame);
   assert.equal(received.length, 2);
+  let copied;
+  rtc.setRemoteVideoFrameListener((stream, copyFrame) => { received.push(stream.key()); copied = copyFrame(); });
+  const pixels = Uint8Array.from([10, 20, 30, 40]);
+  onFrame(key, 1, { width: 2, height: 2, rotation: 0, timestamp_us: 999,
+    pixel_format: 1, number_of_planes: 3, plane_stride: [2, 1, 1],
+    plane_data: [pixels.buffer, Uint8Array.of(50).buffer, Uint8Array.of(60).buffer] });
+  pixels.fill(0); // RTC may recycle its buffers after this callback returns.
+  assert.deepEqual([...new Uint8Array(copied.planes[0].data)], [10, 20, 30, 40]);
+  assert.equal(copied.timestampUs, 999);
+  assert.equal(received.length, 3);
   await rtc.destroy();
   assert.equal(handlers.has('onRemoteVideoFrame'), false);
   onFrame(key, 1, frame); // Callback retained by a previous engine cannot leak into another lifetime.
-  assert.equal(received.length, 2);
+  assert.equal(received.length, 3);
 });
+
+for (const action of ['stopGeneration', 'disconnect', 'close']) {
+  test(`public remote frame delivery stops immediately on ${action} and resumes for a new generation`, async t => {
+    const f = fixture(t), delivered = [];
+    f.manager.setRemoteVideoFrameListener(frame => delivered.push(frame.timestampUs));
+    const first = await f.begin();
+    f.sei(first.task);
+    let copies = 0;
+    f.frame(f.remote, () => { copies++; return { timestampUs: 123 }; });
+    await settle();
+    assert.ok(!(await first.pending).error);
+    assert.equal(f.observations.at(-1).enabled, true);
+    assert.equal([...f.timers.values()].filter(timer => timer.ms === 0).length, 1);
+    const stopping = f.manager[action]();
+    assert.equal([...f.timers.values()].filter(timer => timer.ms === 0).length, 0);
+    f.frame(f.remote, () => { copies++; return { timestampUs: 999 }; });
+    assert.equal(copies, 1);
+    await stopping;
+    assert.deepEqual(delivered, []);
+    const second = await f.begin();
+    f.sei(second.task);
+    f.frame(f.remote, () => ({ timestampUs: 456 }));
+    await settle();
+    assert.ok(!(await second.pending).error);
+    f.runTimer(0);
+    assert.deepEqual(delivered, [456]);
+    f.manager.setRemoteVideoFrameListener(null);
+    assert.equal(f.observations.at(-1).enabled, false);
+  });
+}

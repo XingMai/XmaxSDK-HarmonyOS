@@ -1,4 +1,6 @@
+import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
 import {
+  IVideoFrame,
   MirrorType,
   RenderMode,
   VideoBufferType,
@@ -24,6 +26,45 @@ import { VideoEncoderPreference } from './VideoEncodingConfiguration';
 const EMPTY_SEI_DATA: Uint8Array = new Uint8Array();
 
 export class RtcVideoConverter {
+  /** 在 RTC 回调返回前复制 I420 有效像素，不让接入方依赖 RTC 缓冲区生命周期。 */
+  static copyRemoteFrame(frame: IVideoFrame): RealtimeVideoFrame {
+    if (frame.pixel_format !== RtcVideoPixelFormat.kVideoPixelFormatI420 ||
+      !Number.isSafeInteger(frame.width) || !Number.isSafeInteger(frame.height) ||
+      frame.width <= 0 || frame.height <= 0 || frame.width > 32768 || frame.height > 32768 ||
+      !Number.isFinite(frame.timestamp_us) || frame.timestamp_us < 0 || frame.number_of_planes !== 3) {
+      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Invalid remote I420 video frame');
+    }
+    let rotation: VideoRotation;
+    switch (frame.rotation) {
+      case 0: rotation = VideoRotation.ROTATION_0; break;
+      case 90: rotation = VideoRotation.ROTATION_90; break;
+      case 180: rotation = VideoRotation.ROTATION_180; break;
+      case 270: rotation = VideoRotation.ROTATION_270; break;
+      default:
+        throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Unsupported remote video rotation');
+    }
+    const planes: VideoFramePlane[] = [];
+    for (let index: number = 0; index < 3; index++) {
+      const width: number = index === 0 ? frame.width : Math.ceil(frame.width / 2);
+      const height: number = index === 0 ? frame.height : Math.ceil(frame.height / 2);
+      const source: ArrayBuffer | undefined = frame.plane_data[index];
+      const stride: number | undefined = frame.plane_stride[index];
+      if (source === undefined || stride === undefined || !Number.isSafeInteger(stride) ||
+        stride < width || source.byteLength < (height - 1) * stride + width) {
+        throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Invalid remote video plane or stride');
+      }
+      const data: ArrayBuffer = new ArrayBuffer(width * height);
+      const pixels: Uint8Array = new Uint8Array(data);
+      const input: Uint8Array = new Uint8Array(source);
+      for (let row: number = 0; row < height; row++) {
+        pixels.set(input.subarray(row * stride, row * stride + width), row * width);
+      }
+      planes.push(new VideoFramePlane(data, width));
+    }
+    return new RealtimeVideoFrame(frame.width, frame.height, VideoPixelFormat.I420,
+      planes, frame.timestamp_us, rotation);
+  }
+
   static convertEncoderPreference(preference: VideoEncoderPreference): VideoEncodePreference {
     switch (preference) {
       case VideoEncoderPreference.AUTO:

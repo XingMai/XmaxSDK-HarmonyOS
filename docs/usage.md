@@ -11,6 +11,7 @@ component and handle rejected promises.
 - [Service environments](#service-environments)
 - [Reference Image Upload](#reference-image-upload)
 - [Render local preview and generated video](#render-local-preview-and-generated-video)
+- [Receive remote video frames](#receive-remote-video-frames)
 - [Start generation in one call](#start-generation-in-one-call)
 - [Touch Interaction](#touch-interaction)
 - [Adjust playback volume](#adjust-playback-volume)
@@ -161,6 +162,45 @@ inputs. `isInteractionEnabled` controls remote touch interaction; a custom
 `trajectoryRenderer` may be supplied when creating the component. The existing
 `XmaxVideoView` remains available for displaying one track. Both components react
 to track replacements, including streams recreated with different dimensions.
+
+## Receive remote video frames
+
+Register a listener before or during generation to receive RTC post-processed
+video frames. No public listener means no pixel copy for frame delivery.
+
+```ts
+import { RealtimeVideoFrame } from '@xmax/sdk';
+
+realtime.setRemoteVideoFrameListener((frame: RealtimeVideoFrame): void => {
+  // I420 planes are ordered Y, U, V. Each plane exposes data, stride,
+  // byteOffset and byteLength. Buffers remain valid after this callback returns.
+  const yPlane = frame.planes[0];
+  const yBytes = new Uint8Array(yPlane.data, yPlane.byteOffset, yPlane.byteLength);
+  // Use frame.width, frame.height, frame.rotation and frame.timestampUs
+  // when handing pixels to your recorder or image-processing worker.
+});
+
+// Stop public delivery and discard queued frames:
+realtime.setRemoteVideoFrameListener(null);
+```
+
+`RealtimeVideoFrame` exposes `width`, `height`, `pixelFormat`, `planes`,
+`timestampUs` and `rotation`. The current output format is `VideoPixelFormat.I420`.
+Dimensions describe the pixel buffer before applying its clockwise rotation.
+These frames exclude view-level FIT/FILL cropping, mirroring and UI overlays.
+Timestamps are in microseconds and need not start at zero; use the first received
+frame as the recording timeline origin.
+
+The SDK copies visible pixels into independent buffers before the RTC callback
+returns. Delivery is asynchronous on the ArkTS event loop, retaining only the
+latest pending frame. It does not guarantee every frame will be delivered.
+Keep the callback short and move expensive processing to a Worker.
+
+Stopping generation, disconnecting, closing, replacing the stream or changing the
+listener invalidates pending delivery. The listener remains configured across
+sessions until explicitly removed. Sink activation failures throw `XmaxError`
+from the setter; exceptions thrown by the listener are logged without stopping
+generation.
 
 ## Start generation in one call
 

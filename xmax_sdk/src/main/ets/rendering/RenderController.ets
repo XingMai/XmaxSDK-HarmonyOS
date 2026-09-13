@@ -1,3 +1,5 @@
+import { RealtimeVideoFrame, RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrameDispatcher } from './video/RealtimeVideoFrameDispatcher';
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { XmaxError, XmaxErrorCode, XmaxErrorListener } from '../foundation/errors/XmaxError';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
@@ -37,6 +39,8 @@ export class RenderController implements RenderControlling {
   private remoteBinding: VideoRenderBinding | null = null;
   private remoteStream: RemoteStream | null = null;
   private remoteFrameReady: boolean = false;
+  private remoteFrameDeliveryActive: boolean = false;
+  private readonly frameDispatcher: RealtimeVideoFrameDispatcher = new RealtimeVideoFrameDispatcher();
   private remoteFrameError: XmaxError | null = null;
   private readonly remoteFrameWaiters: Set<RemoteFrameWaiter> = new Set();
 
@@ -58,21 +62,50 @@ export class RenderController implements RenderControlling {
     this.remoteVideoController = new RemoteVideoController(rtcManager, (ready: boolean): void => {
       this.remoteBinding?.setVideoReady(ready);
     });
-    rtcManager.setRemoteVideoFrameListener((stream: RemoteStream): void => {
-      if (this.remoteStream?.key() !== stream.key() || this.remoteFrameError !== null ||
-        this.remoteFrameReady) {
+    rtcManager.setRemoteVideoFrameListener((stream: RemoteStream, copyFrame: () => RealtimeVideoFrame): void => {
+      if (this.remoteStream?.key() !== stream.key() || this.remoteFrameError !== null) {
         return;
       }
-      this.remoteFrameReady = true;
-      this.stopFrameObservation(stream);
-      this.finishRemoteFrameWaiters();
+      if (!this.remoteFrameReady) {
+        this.remoteFrameReady = true;
+        this.finishRemoteFrameWaiters();
+      }
+      if (!this.frameDispatcher.hasListener || !this.remoteFrameDeliveryActive) {
+        this.stopFrameObservation(stream);
+        return;
+      }
+      try {
+        this.frameDispatcher.dispatch(copyFrame());
+      } catch (error) {
+        XmaxLogger.error(`复制远端视频帧失败\n└─ 原因：${XmaxError.from(error).message}`, 'Render');
+      }
     });
+  }
+
+  /** @inheritdoc */
+  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void {
+    const stream: RemoteStream | null = this.remoteStream;
+    // 先开启观察，失败时保留原监听器和已排队的帧。
+    if (listener !== null && stream !== null && this.remoteFrameDeliveryActive && this.remoteFrameError === null) {
+      this.rtcManager.observeRemoteVideoFrames(stream, true);
+    }
+    this.frameDispatcher.setListener(listener);
+    if (listener === null && stream !== null && this.remoteFrameReady) {
+      this.stopFrameObservation(stream);
+    }
+  }
+
+  /** @inheritdoc */
+  stopRemoteVideoFrameDelivery(): void {
+    this.remoteFrameDeliveryActive = false;
+    this.frameDispatcher.invalidatePendingFrames();
   }
 
   /** @inheritdoc */
   setRemoteStream(stream: RemoteStream | null): void {
     this.resetRemoteFrameWait();
     this.remoteStream = stream;
+    this.remoteFrameDeliveryActive = stream !== null;
     this.remoteVideoController.setRemoteStream(stream);
     if (stream !== null) {
       this.rtcManager.observeRemoteVideoFrames(stream, true);
@@ -108,12 +141,14 @@ export class RenderController implements RenderControlling {
     if (this.remoteStream === null || this.remoteFrameReady || this.remoteFrameError !== null) {
       return;
     }
+    this.stopRemoteVideoFrameDelivery();
     this.remoteFrameError = error;
     this.stopFrameObservation(this.remoteStream);
     this.finishRemoteFrameWaiters(error);
   }
 
   private resetRemoteFrameWait(): void {
+    this.stopRemoteVideoFrameDelivery();
     const stream: RemoteStream | null = this.remoteStream;
     this.remoteStream = null;
     this.remoteFrameReady = false;

@@ -92,6 +92,7 @@ function managerFixture(modelName = 'x2.0-pro') {
     RealtimeSessionService: { RealtimeSessionService: FakeSessionService },
     RenderController: { RenderController: class {
       registerRemoteTrack() {} resetRemoteTrack() {} failRemoteFrameWait() {}
+      stopRemoteVideoFrameDelivery() {} setRemoteVideoFrameListener() {}
       async waitUntilRemoteFrameReady() {}
     } }
   }, { setTimeout: callback => { timers.push(callback); return timers.length; } });
