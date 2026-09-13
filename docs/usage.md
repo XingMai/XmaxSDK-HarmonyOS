@@ -453,10 +453,12 @@ preview readiness and failures. Register it before creating local media.
 Image/video creation enters `READY` when preparation completes. Camera creation
 returns a track while `PREPARING`; bind it to a preview view to receive `READY`.
 A generation or connection failure closes the connection and returns to `READY`
-if local media remains available. Failed local preparation or a local-media runtime
-error releases local resources and returns to `IDLE`.
+if local media remains available. Failed local preparation rolls back the partial
+media and returns directly from `PREPARING` to `IDLE`, without `DISCONNECTING` or
+`state.reason`; catch the original error from the creation call. A local-media
+runtime error releases local resources and returns to `IDLE` with a failure reason.
 
-Terminal states carry `reason`: `RealtimeReason.NORMAL`,
+States completing a disconnection or full cleanup carry `reason`: `RealtimeReason.NORMAL`,
 `RealtimeReason.ORIENTATION_CHANGED`, or `RealtimeReason.failure(error)`.
 Use `reason.kind` to distinguish cases and `reason.error` to read the original
 `XmaxError`, including its code, API code and HTTP status.
@@ -484,15 +486,16 @@ try {
 }
 ```
 
-Awaited operations still reject with the original error. Validation
+Awaited operations still reject with the original error. Local preparation, validation
 or configuration-update failures that do not end a lifecycle remain on the
 operation's rejection path. Cancellation rejects with `CANCELLED`; cleanup
 failures are logged while cleanup continues. State notifications work even when
 logging is disabled; passing `null` to `setStateListener()` removes the listener.
 
 Errors do not carry a severity level. Cleanup depends on the operation and its
-stage: connection and generation-start failures close the connection; local media
-preparation and runtime failures release all media. Validation and configuration
+stage: connection and generation-start failures close the connection; preparation
+failures roll back partially created media, while local runtime failures release
+all media. Validation and configuration
 update failures leave the current lifecycle intact. Use the state listener for
 lifecycle failures and camera readiness.
 

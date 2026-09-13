@@ -233,11 +233,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
-        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalCameraStream(videoFormat, position);
         token.ensureCurrent();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.streamController.setRemoteAudioVolume(0);
         this.mediaController.setCameraPreviewReadyHandler((): void => {
           this.coordinator.localPreviewDidBecomeReady((): boolean =>
@@ -296,11 +296,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
-        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
         token.ensureCurrent();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.streamController.setRemoteAudioVolume(1);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;
@@ -330,11 +330,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (this.mediaController.currentTrack !== null) {
           throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Stop the current local stream before creating another one');
         }
-        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
         const stream = await this.mediaController.createLocalImageStream(source, videoFormat);
         token.ensureCurrent();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
         this.streamController.setRemoteAudioVolume(0);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;

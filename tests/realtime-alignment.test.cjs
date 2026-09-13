@@ -1272,22 +1272,51 @@ test('image and video preparation enter READY without a camera callback, stoppin
   }
 });
 
-test('failed local preparation returns IDLE with the original error, and retry clears reason', async () => {
-  const f = managerFixture(), states = [];
-  const create = f.media.createLocalCameraStream.bind(f.media);
-  const original = new f.XmaxError(f.Code.CAMERA_PERMISSION_DENIED, 'permission denied', 123, 403);
-  f.media.createLocalCameraStream = async () => { throw original; };
-  f.manager.setStateListener(state => states.push(state));
-  await assert.rejects(f.create(), error => error === original);
-  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
-  assert.equal(f.manager.currentState.reason.kind, f.ReasonKind.FAILURE);
-  assert.equal(f.manager.currentState.reason.error, original);
-  f.media.createLocalCameraStream = create;
-  await f.create();
-  assert.equal(f.manager.currentState.connectionState, f.State.READY);
-  assert.equal(f.manager.currentState.reason, undefined);
-  await f.manager.close();
-});
+for (const source of ['Camera', 'Image', 'Video']) {
+  test(`${source} preparation failure returns directly to IDLE without reason and permits immediate retry`, async () => {
+    const f = managerFixture(), states = [];
+    const original = new f.XmaxError(f.Code.MEDIA_ERROR, 'preparation failed', 123, 403);
+    const method = `createLocal${source}Stream`;
+    f.media[method] = async () => { throw original; };
+    let retry, preparing = false;
+    f.manager.setStateListener(state => {
+      states.push(state);
+      if (state.connectionState === f.State.PREPARING) preparing = true;
+      if (preparing && state.connectionState === f.State.IDLE && !retry) {
+        f.media[method] = async () => {
+          f.media.currentTrack = new f.Track('local', new f.Format(1024, 1920, 30), 'front');
+          return new f.MediaStream('local', f.media.currentTrack);
+        };
+        retry = f.manager[method]('input');
+      }
+    });
+    await assert.rejects(f.manager[method]('input'), error => error === original);
+    await retry;
+    assert.deepEqual(states.map(state => state.connectionState), [
+      f.State.IDLE, f.State.PREPARING, f.State.IDLE, f.State.PREPARING, f.State.READY
+    ]);
+    assert.ok(states.every(state => state.reason === undefined));
+    assert.deepEqual(f.calls.closed, []);
+    await f.manager.close();
+  });
+
+  test(`${source} post-preparation failure still cleans up the created media and reports failure`, async () => {
+    const f = managerFixture(), states = [];
+    f.media[`createLocal${source}Stream`] = async () => {
+      f.media.currentTrack = new f.Track('local', new f.Format(1024, 1920, 30), 'front');
+      return new f.MediaStream('local', f.media.currentTrack);
+    };
+    const original = new f.XmaxError(f.Code.RTC_ERROR, 'volume configuration failed');
+    f.stream.setRemoteAudioVolume = () => { throw original; };
+    f.manager.setStateListener(state => states.push(state));
+    await assert.rejects(f.manager[`createLocal${source}Stream`]('input'), error => error === original);
+    assert.deepEqual(states.map(state => state.connectionState), [
+      f.State.IDLE, f.State.PREPARING, f.State.DISCONNECTING, f.State.IDLE
+    ]);
+    assert.equal(f.manager.currentState.reason.error, original);
+    assert.equal(f.media.currentTrack, null);
+  });
+}
 
 test('local runtime errors clean up media and connection and publish one original error through state only', async () => {
   const f = managerFixture(), states = [];

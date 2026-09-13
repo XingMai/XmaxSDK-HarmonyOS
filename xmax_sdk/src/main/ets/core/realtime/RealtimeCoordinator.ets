@@ -228,23 +228,33 @@ export class RealtimeCoordinator {
     } catch (error) {
       const resolved: XmaxError = XmaxError.from(error);
       let pending: RealtimeTermination | null = operation.termination;
-      if (!operation.token.isCurrent || resolved.code === XmaxErrorCode.CANCELLED || pending !== null) {
+      const cancelled: boolean = !operation.token.isCurrent ||
+        resolved.code === XmaxErrorCode.CANCELLED || pending !== null;
+      if (cancelled) {
         if (pending === null && operation.token.failureScope !== null) {
           pending = this.requestTermination(operation.token.failureScope);
         }
       } else if (operation.token.failureScope !== null) {
         pending = this.requestTermination(operation.token.failureScope, resolved);
-      } else {
-        this.errorManager.handle(resolved);
       }
       if (pending !== null) {
         await pending.promise;
       }
       this.finish(operation);
+      if (pending === null) {
+        // 本地创建自行回滚；先释放操作所有权，再通知无 reason 的 IDLE，允许监听器重试。
+        if (operation.kind === RealtimeOperationKind.MEDIA &&
+          this.state.connectionState === RealtimeConnectionState.PREPARING) {
+          this.setState(new RealtimeState(RealtimeConnectionState.IDLE));
+        }
+        if (!cancelled) {
+          this.errorManager.handle(resolved);
+        }
+      }
       if (operation.token.terminalError !== null) {
         throw operation.token.terminalError;
       }
-      if (pending !== null) {
+      if (pending !== null || cancelled) {
         throw RealtimeOperationToken.cancelledError();
       }
       throw resolved;

@@ -217,3 +217,15 @@ test('completed tokens cannot commit and equal states do not notify twice', asyn
   assert.throws(() => f.coordinator.commit(new f.RealtimeState(f.State.READY), retained),
     { code: f.Code.CANCELLED });
 });
+
+test('media preparation cancellation resets to IDLE without reason or duplicate cleanup', async () => {
+  const f = fixture();
+  await assert.rejects(f.coordinator.run(f.Kind.MEDIA, null, async token => {
+    f.coordinator.commit(new f.RealtimeState(f.State.PREPARING), token);
+    throw new f.XmaxError(f.Code.CANCELLED, 'creation cancelled');
+  }), { code: f.Code.CANCELLED });
+  assert.deepEqual(f.states.map(state => state.connectionState), [f.State.IDLE, f.State.PREPARING, f.State.IDLE]);
+  assert.ok(f.states.every(state => state.reason === undefined));
+  assert.equal(f.events.some(event => event.startsWith('cleanup:')), false);
+  assert.deepEqual(f.logs, []);
+});
