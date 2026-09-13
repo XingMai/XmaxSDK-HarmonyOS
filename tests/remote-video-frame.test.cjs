@@ -83,7 +83,7 @@ test('no public listener means no pixel copy and observation stops after first-f
   assert.equal(f.timers.size, 0);
 });
 
-test('public listening keeps the sink after readiness and delivers only the newest queued frame', async () => {
+test('public listening keeps the sink after readiness and delivers every queued frame in receive order', async () => {
   const f = fixture();
   f.render.setRemoteVideoFrameListener(frame => f.received.push(frame.timestampUs));
   f.render.setRemoteStream(f.stream);
@@ -93,14 +93,14 @@ test('public listening keeps the sink after readiness and delivers only the newe
   assert.deepEqual(f.received, []);
   assert.equal(f.timers.size, 1);
   f.flush();
-  assert.deepEqual(f.received, [19]);
+  assert.deepEqual(f.received, Array.from({ length: 20 }, (_, i) => i));
   assert.equal(f.observations.some(([, enabled]) => !enabled), false);
   f.render.setRemoteVideoFrameListener(null);
   assert.deepEqual(f.observations.at(-1), ['room:bot', false]);
   f.render.setRemoteVideoFrameListener(frame => f.received.push(frame.timestampUs));
   assert.deepEqual(f.observations.at(-1), ['room:bot', true]);
   f.frame(); f.flush();
-  assert.deepEqual(f.received, [19, 123456]);
+  assert.deepEqual(f.received, [...Array.from({ length: 20 }, (_, i) => i), 123456]);
   f.render.resetRemoteTrack(null);
 });
 
@@ -114,6 +114,62 @@ test('listener removal before readiness does not stop required first-frame obser
   f.frame(); await ready;
   assert.deepEqual(f.observations.at(-1), ['room:bot', false]);
 });
+
+test('receive order survives repeated timestamps, a throwing callback and frames arriving during delivery', () => {
+  const f = fixture();
+  f.render.setRemoteVideoFrameListener(frame => {
+    f.received.push(frame.timestampUs);
+    if (f.received.length === 1) {
+      f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 7 }));
+      throw new Error('first callback failed');
+    }
+  });
+  f.render.setRemoteStream(f.stream);
+  for (const timestamp of [9, 8, 8]) {
+    f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: timestamp }));
+  }
+  assert.deepEqual(f.received, []);
+  f.flush();
+  assert.deepEqual(f.received, [9, 8, 8]);
+  assert.match(f.logs.at(-1), /first callback failed/);
+  f.flush();
+  assert.deepEqual(f.received, [9, 8, 8, 7]);
+  assert.equal(f.timers.size, 0);
+  f.render.resetRemoteTrack(null);
+});
+
+for (const action of ['replace listener', 'remove listener', 'reset stream', 'stop delivery', 'reset track']) {
+  test(`${action} inside the callback invalidates the rest of its batch and any queued follow-up`, () => {
+    const f = fixture();
+    const next = frame => f.received.push(`new:${frame.timestampUs}`);
+    f.render.setRemoteVideoFrameListener(frame => {
+      f.received.push(frame.timestampUs);
+      f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 4 }));
+      const staleTimer = [...f.timers.values()][0].callback;
+      switch (action) {
+        case 'replace listener': f.render.setRemoteVideoFrameListener(next); break;
+        case 'remove listener': f.render.setRemoteVideoFrameListener(null); break;
+        case 'reset stream': f.render.setRemoteStream(f.stream); break;
+        case 'stop delivery': f.render.stopRemoteVideoFrameDelivery(); break;
+        case 'reset track': f.render.resetRemoteTrack(null); break;
+      }
+      f.render.setRemoteVideoFrameListener(next);
+      f.render.setRemoteStream(f.stream);
+      f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 5 }));
+      staleTimer(); // An already queued old callback cannot drain or clear the new batch.
+    });
+    f.render.setRemoteStream(f.stream);
+    for (const timestamp of [1, 2, 3]) {
+      f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: timestamp }));
+    }
+    f.flush();
+    assert.deepEqual(f.received, [1]);
+    f.flush();
+    assert.deepEqual(f.received, [1, 'new:5']);
+    assert.equal(f.timers.size, 0);
+    f.render.resetRemoteTrack(null);
+  });
+}
 
 test('replacement, stream reset and stop invalidate pending callbacks, including a reused stream ID', () => {
   const f = fixture();

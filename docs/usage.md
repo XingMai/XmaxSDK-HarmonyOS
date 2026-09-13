@@ -212,9 +212,11 @@ Timestamps are in microseconds and need not start at zero; use the first receive
 frame as the recording timeline origin.
 
 The SDK copies visible pixels into independent buffers before the RTC callback
-returns. Delivery is asynchronous on the ArkTS event loop, retaining only the
-latest pending frame. It does not guarantee every frame will be delivered.
-Keep the callback short and move expensive processing to a Worker.
+returns. Each successfully converted frame is delivered asynchronously in receive
+order on the ArkTS event loop; pending frames are not merged or replaced by newer
+ones. This does not recover frames dropped upstream by RTC. Keep the callback
+short and move expensive processing to a Worker to avoid blocking the event loop
+and accumulating queued frames.
 
 Stopping generation, disconnecting, closing, replacing the stream or changing the
 listener invalidates pending delivery. The listener remains configured across

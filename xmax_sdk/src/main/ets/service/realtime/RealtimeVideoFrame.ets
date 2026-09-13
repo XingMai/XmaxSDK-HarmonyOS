@@ -28,5 +28,5 @@ export class RealtimeVideoFrame {
   }
 }
 
-/** 在 ArkTS 事件循环中异步接收最新远端帧；耗时处理应移交 Worker。 */
+/** 在 ArkTS 事件循环中按接收顺序异步接收每帧；耗时处理应移交 Worker。 */
 export type RealtimeVideoFrameListener = (frame: RealtimeVideoFrame) => void;
