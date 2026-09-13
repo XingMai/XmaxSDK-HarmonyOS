@@ -123,7 +123,8 @@ headings are retained. Logging options and language are global: the most recentl
 created client's configuration takes effect. Original server/platform error
 messages and error codes are preserved, and credential redaction still applies.
 
-XLab's home page offers **System default**, **简体中文**, and **English**. The
+The globe button at the top right of XLab's home page offers **System default**,
+**简体中文**, and **English**. The
 selection persists across launches. System Chinese uses Simplified Chinese;
 other system languages fall back to English. Chinese selects the China service
 and API-key portal; English selects the global service and portal. Realtime,

@@ -554,6 +554,7 @@ struct SdkFeatureCard {
 @Component
 struct Index {
   @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
+  @StorageLink(XLabLocalization.LANGUAGE_KEY) private selectedLanguage: string = XLabLanguage.SYSTEM;
 
   private text(key: string): string {
     return XLabLocalization.text(key, this.languageRevision);
@@ -565,6 +566,34 @@ struct Index {
   private realtimeApiKey: string = '';
   private isPickingVideo: boolean = false;
   private isPickingImage: boolean = false;
+
+  private languageTitle(language: string): string {
+    switch (language) {
+      case XLabLanguage.CHINESE:
+        return '简体中文';
+      case XLabLanguage.ENGLISH:
+        return 'English';
+      default:
+        return this.text('language_system');
+    }
+  }
+
+  @Builder
+  private languageMenu() {
+    Menu() {
+      MenuItemGroup({ header: '语言 / Language' }) {
+        ForEach([XLabLanguage.SYSTEM, XLabLanguage.CHINESE, XLabLanguage.ENGLISH], (language: XLabLanguage) => {
+          MenuItem({ content: this.languageTitle(language) })
+            .selected(this.selectedLanguage === language)
+            .selectIcon(true)
+            .contentFontColor(this.selectedLanguage === language ? '#8EF0C8' : '#FFFFFF')
+            .onClick((): void => {
+              XLabLocalization.setLanguage(language);
+            })
+        })
+      }
+    }
+  }
 
   private selectRealtimeModel(model: RealtimeModel): void {
     this.selectedRealtimeModel = model;
@@ -736,33 +765,23 @@ struct Index {
             Blank()
 
             ConsoleTag({ label: `v${XMAX_SDK_VERSION}` })
-          }
-          .width('100%')
 
-          Row() {
-            Text(this.text('language_title'))
-              .fontSize(12)
-              .fontColor('#A8B0BC')
-            Blank()
-            Select([
-              { value: this.text('language_system') },
-              { value: '简体中文' },
-              { value: 'English' }
-            ])
-              .selected(XLabLocalization.language === XLabLanguage.CHINESE ? 1 :
-                XLabLocalization.language === XLabLanguage.ENGLISH ? 2 : 0)
-              .fontColor('#FFFFFF')
-              .selectedOptionFontColor('#8EF0C8')
-              .optionFontColor('#FFFFFF')
-              .menuBackgroundColor('#20242C')
-              .backgroundColor('#20242C')
-              .onSelect((index: number): void => {
-                XLabLocalization.setLanguage(index === 1 ? XLabLanguage.CHINESE :
-                  index === 2 ? XLabLanguage.ENGLISH : XLabLanguage.SYSTEM);
-              })
+            Button({ type: ButtonType.Normal }) {
+              Image($r('app.media.language_globe'))
+                .width(22)
+                .height(22)
+            }
+            .width(44)
+            .height(44)
+            .padding(0)
+            .backgroundColor(Color.Transparent)
+            .accessibilityText(`${this.text('language_title')}: ${this.languageTitle(this.selectedLanguage)}`)
+            .bindMenu(this.languageMenu, {
+              placement: Placement.BottomRight,
+              backgroundColor: '#20242C'
+            })
           }
           .width('100%')
-          .margin({ top: 16 })
 
           Stack({ alignContent: Alignment.TopStart }) {
             Column()
