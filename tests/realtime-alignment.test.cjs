@@ -22,14 +22,14 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function managerFixture(modelName = 'x2.0-sla') {
+function managerFixture(modelName = 'x2.0-pro') {
   const calls = { sessions: [], closed: [], starts: [], updates: [], stops: [], audio: [], switches: 0 };
   const timers = [];
-  let sessionGate = null, autoConfirm = true, media, stream, api;
+  let sessionGate = null, autoConfirm = true, holdPreview = false, media, stream, api;
   let Track, Format, MediaStream, XmaxError, Code, CameraPosition, updatePosition;
   class FakeMedia {
     constructor(_context, _rtc, _stream, _error, _service, formatListener) {
-      media = this; this.currentTrack = null; this.hasAudio = true; this.formatListener = formatListener;
+      media = this; this.currentTrack = null; this.hasAudio = true; this.formatListener = formatListener; this.onError = _error;
     }
     get currentVideoFormat() { return this.currentTrack?.videoFormat; }
     async createLocalCameraStream(format, position) {
@@ -45,7 +45,7 @@ function managerFixture(modelName = 'x2.0-sla') {
     start(task, format) { this.interactionTask = task; this.interactionFormat = format; }
     stop() { this.interactionTask = null; }
     prepareForClose() {}
-    setCameraPreviewReadyListener() {}
+    setCameraPreviewReadyHandler(listener) { this.readyHandler = listener; if (!holdPreview) listener?.(); }
     async switchCamera() {
       calls.switches++;
       updatePosition(this.currentTrack, CameraPosition.BACK);
@@ -101,11 +101,11 @@ function managerFixture(modelName = 'x2.0-sla') {
   ({ XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets'));
   ({ CameraPosition } = load('foundation/media/camera/CameraPosition.ets'));
   const { RealtimeContext: Context } = load('service/realtime/RealtimeContext.ets');
-  const { RealtimeConnectionState: State, RealtimeDisconnectionReason: Reason } = load('service/realtime/RealtimeState.ets');
+  const { RealtimeConnectionState: State, RealtimeReason: Reason, RealtimeReasonKind: ReasonKind } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
   const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime(modelName) }, {});
-  return { load, manager, media, stream, api, calls, timers, State, Reason, Context, Format, Track, MediaStream, XmaxError, Code,
+  return { load, manager, media, stream, api, calls, timers, State, Reason, ReasonKind, Context, Format, Track, MediaStream, XmaxError, Code,
     rotateCamera(format) {
       const track = media.currentTrack;
       const previous = track.videoFormat;
@@ -117,12 +117,13 @@ function managerFixture(modelName = 'x2.0-sla') {
     create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
+    holdPreview() { holdPreview = true; },
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
 
 test('default camera formats follow the manager model and reach generation signaling unchanged', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 24], ['x2.0-sla', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-pro', 1024, 1920, 30]]) {
     const f = managerFixture(name);
     const local = await f.manager.createLocalCameraStream(undefined, 'back');
     assert.deepEqual(local.videoTrack.videoFormat, new f.Format(width, height, fps));
@@ -134,54 +135,29 @@ test('default camera formats follow the manager model and reach generation signa
   }
 });
 
-test('SLA rejects all image overloads and video input before touching an active camera or generation', async () => {
-  const f = managerFixture(), errors = [], mediaCalls = [];
-  f.media.createLocalImageStream = async () => { mediaCalls.push('image'); };
-  f.media.createLocalVideoStream = async () => { mediaCalls.push('video'); };
-  f.manager.setErrorListener(error => errors.push(error));
-  const local = await f.manager.createLocalCameraStream();
-  for (const generating of [false, true]) {
-    if (generating) await f.manager.startGeneration(local, new f.Context('test'));
-    const state = f.manager.currentState, calls = JSON.stringify(f.calls);
-    for (const source of ['missing.png', new ArrayBuffer(0), new Uint8Array(0), {}]) {
-      await assert.rejects(f.manager.createLocalImageStream(source), {
-        code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE',
-        message: 'Model x2.0-sla does not support image input'
-      });
+for (const name of ['x2.0', 'x2.0-pro']) {
+  test(`${name} admits image and video input and forwards optional formats to media preparation`, async () => {
+    const f = managerFixture(name), calls = [];
+    for (const method of ['createLocalImageStream', 'createLocalVideoStream']) {
+      f.media[method] = async (source, format) => {
+        calls.push({ method, source, format });
+        return new f.MediaStream('local');
+      };
+      for (const format of [undefined, new f.Format(832, 1472, 20)]) {
+        const source = method === 'createLocalImageStream' ? new Uint8Array([1, 2]) : 'source.mp4';
+        await f.manager[method](source, format);
+        assert.deepEqual(calls.at(-1), { method, source, format });
+      }
     }
-    await assert.rejects(f.manager.createLocalVideoStream('missing.mp4'), {
-      code: 'INVALID_CONFIGURATION', severity: 'RECOVERABLE',
-      message: 'Model x2.0-sla does not support video input'
-    });
-    assert.equal(f.manager.currentState, state);
-    assert.equal(f.media.currentTrack, local.videoTrack);
-    assert.equal(JSON.stringify(f.calls), calls);
-  }
-  assert.deepEqual(mediaCalls, []);
-  assert.deepEqual(errors, []);
-  await f.manager.close();
-});
+    assert.equal(calls.length, 4);
+    assert.deepEqual(f.calls.sessions, []);
+  });
 
-test('x2.0 admits image and video input and forwards optional formats to media preparation', async () => {
-  const f = managerFixture('x2.0'), calls = [];
-  for (const method of ['createLocalImageStream', 'createLocalVideoStream']) {
-    f.media[method] = async (source, format) => {
-      calls.push({ method, source, format });
-      return new f.MediaStream('local');
-    };
-    for (const format of [undefined, new f.Format(832, 1472, 20)]) {
-      const source = method === 'createLocalImageStream' ? new Uint8Array([1, 2]) : 'source.mp4';
-      await f.manager[method](source, format);
-      assert.deepEqual(calls.at(-1), { method, source, format });
-    }
-  }
-  assert.equal(calls.length, 4);
-  assert.deepEqual(f.calls.sessions, []);
-});
+}
 
 test('public volume APIs validate finite normalized values before touching playback', async () => {
   const f = managerFixture(), errors = [];
-  f.manager.setErrorListener(error => errors.push(error));
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
   for (const volume of [-0.01, 1.01, NaN, Infinity, -Infinity]) {
     for (const method of ['setLocalAudioVolume', 'setRemoteAudioVolume']) {
       await assert.rejects(f.manager[method](volume), {
@@ -205,7 +181,7 @@ test('volume failures retain their error code and remain recoverable during gene
   const f = managerFixture(), errors = [];
   const local = await f.create();
   await f.manager.startGeneration(local, new f.Context('generate'));
-  f.manager.setErrorListener(error => errors.push(error));
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
   f.media.setLocalAudioVolume = async () => { throw new f.XmaxError(f.Code.MEDIA_ERROR, 'local failed'); };
   f.stream.setRemoteAudioVolume = () => { throw new f.XmaxError(f.Code.RTC_ERROR, 'remote failed'); };
   await assert.rejects(f.manager.setLocalAudioVolume(0.6), {
@@ -225,7 +201,7 @@ test('one-call generation connects on demand, reuses its remote track and suppor
   const first = await f.manager.startGeneration(local, context);
   const second = await f.manager.startGeneration(local, new f.Context('updated'));
   assert.equal(second.videoTrack, first.videoTrack);
-  assert.deepEqual(f.calls.sessions, ['x2.0-sla']);
+  assert.deepEqual(f.calls.sessions, ['x2.0-pro']);
   assert.equal(f.calls.starts.length, 1);
   assert.equal(f.calls.updates[0].context.prompt, 'updated');
   assert.equal(f.calls.starts[0].format, local.videoTrack.videoFormat);
@@ -306,7 +282,7 @@ test('close during connection rolls back the late session without reopening audi
   assert.equal(f.calls.audio.at(-1), false);
   assert.equal(f.calls.starts.length, 0);
   assert.deepEqual(f.calls.closed, ['session-1']);
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
 });
 
 test('a cancelled start cannot stop a newer generation or restore its muted preview', async () => {
@@ -343,7 +319,7 @@ test('close upgrades a pending stop on an established connection and releases lo
   assert.deepEqual(f.calls.closed, ['session-1']);
   assert.equal(f.stream.currentGenerationTaskId, '');
   assert.equal(f.media.currentTrack, null);
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
 });
 
 test('disconnect still cancels one-call connection after stopGeneration returns without action', async () => {
@@ -366,7 +342,7 @@ test('disconnect still cancels one-call connection after stopGeneration returns 
   assert.equal(f.calls.starts.length, 0);
   assert.ok(f.media.currentTrack);
   assert.equal(f.calls.audio.at(-1), true);
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
 });
 
 test('connection failure after a no-op generation stop reports the original error', async () => {
@@ -376,15 +352,15 @@ test('connection failure after a no-op generation stop reports the original erro
   await f.manager.stopGeneration();
   gate.reject(error);
   assert.equal((await running).error, error);
-  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.equal(f.calls.starts.length, 0);
   assert.equal(f.calls.audio.at(-1), true);
 });
 
-test('stop is a no-op outside CONNECTED and GENERATING, including ERROR with a retained session', async () => {
+test('stop is a no-op after generation failure has closed the session and returned to READY', async () => {
   const f = managerFixture(), local = await f.create();
   await f.manager.stopGeneration();
-  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.deepEqual(f.calls.audio, []);
   assert.deepEqual(f.calls.stops, []);
   await f.manager.connect(local);
@@ -393,41 +369,42 @@ test('stop is a no-op outside CONNECTED and GENERATING, including ERROR with a r
   const failure = new f.XmaxError(f.Code.TIMEOUT, 'generation confirmation timed out');
   f.calls.starts.at(-1).gate.reject(failure);
   assert.equal((await running).error, failure);
-  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
-  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.equal(f.manager.currentState.reason.error, failure);
   const stops = [...f.calls.stops], audio = [...f.calls.audio];
   await f.manager.stopGeneration();
-  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.deepEqual(f.calls.stops, stops);
   assert.deepEqual(f.calls.audio, audio);
   await f.manager.disconnect();
   const disconnectedStops = [...f.calls.stops], disconnectedAudio = [...f.calls.audio];
   await f.manager.stopGeneration();
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.deepEqual(f.calls.stops, disconnectedStops);
   assert.deepEqual(f.calls.audio, disconnectedAudio);
 });
 
-test('heartbeat failure cancels startup, closes the session and only then notifies the fatal listener', async () => {
+test('heartbeat failure cancels startup, closes the session and only then publishes the original error in state.reason', async () => {
   const f = managerFixture(), local = await f.create(), received = [];
   await f.manager.connect(local);
   f.holdGeneration();
   const running = outcome(f.manager.startGeneration(new f.Context('test')));
-  f.manager.setErrorListener(error => received.push({ error,
+  f.manager.setStateListener(state => { if (state.reason?.error) received.push({ error: state.reason.error,
     state: f.manager.currentState.connectionState,
     closed: [...f.calls.closed], task: f.stream.currentGenerationTaskId
-  }));
+  }); });
   const failure = new f.XmaxError(f.Code.SESSION_ERROR, 'heartbeat failed', 1004, 503);
   await f.api.heartbeat(failure);
   assert.equal((await running).error, failure);
-  assert.deepEqual(received, [{ error: failure, state: f.State.ERROR, closed: ['session-1'], task: '' }]);
+  assert.deepEqual(received, [{ error: failure, state: f.State.READY, closed: ['session-1'], task: '' }]);
   assert.notEqual(f.media.currentTrack, null);
 });
 
 test('stop-signal failure is logged without a fatal callback and preserves the connected preview', async () => {
   const f = managerFixture(), local = await f.create(), errors = [];
   await f.manager.startGeneration(local, new f.Context('test'));
-  f.manager.setErrorListener(error => errors.push(error));
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
   const stop = f.stream.stopGeneration.bind(f.stream);
   f.stream.stopGeneration = task => {
     stop(task);
@@ -643,7 +620,7 @@ test('camera controller uses CameraKit external frames and preserves its track w
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame(frame) { pushedFrames.push(frame); }
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
   let readyCount = 0;
   camera.setPreviewReadyListener(() => readyCount++);
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
@@ -700,7 +677,7 @@ test('camera capture falls back to the largest compatible 4:3 profile when 16:9 
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame() {}
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
 
   await camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30),
@@ -769,7 +746,7 @@ function cameraFailureFixture(options = {}, rtcError) {
     bindLocalVideo() {}, unbindLocalVideo() {}
   }, { setVideoEncoderConfig() {}, pushLocalVideoFrame() {} },
   new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
   return { camera, calls, start: () => camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
 }
@@ -876,14 +853,14 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unpublish 
   assert.equal(handlers.has('onFirstRemoteVideoFrameRendered'), false);
 });
 
-function exampleFixture(modelName = 'x2.0-sla') {
+function exampleFixture(modelName = 'x2.0-pro') {
   const f = managerFixture(modelName);
   let nextManager = f.manager;
   const load = loadEts({ ...platform,
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
     '@xmax/sdk': {
       CameraPosition: { FRONT: 'front' }, RealtimeConnectionState: f.State,
-      RealtimeDisconnectionReason: f.Reason,
+      RealtimeReasonKind: f.ReasonKind,
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
       XmaxEnvironment: { CHINA: 'china', GLOBAL: 'global' },
@@ -891,7 +868,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
       XmaxClient: class { createRealtimeManager() { return nextManager; } }
     },
     XLabConfiguration: { XLabConfiguration: { currentApiKey: () => 'test-only' } },
-    XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-sla' } },
+    XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-pro' } },
     ReferenceDataSource: { ReferenceDataSource: { categories: () => [] } }
   }, { Observed: value => value });
   const path = require('node:path');
@@ -903,7 +880,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
 }
 
 test('XLab uses model camera defaults for both models without an interpolation size override', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 24], ['x2.0-sla', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-pro', 1024, 1920, 30]]) {
     const f = exampleFixture(name);
     await f.viewModel.connect({});
     await settle();
@@ -1018,7 +995,7 @@ test('XLab cancellation during one-call connection leaves local preview without 
   assert.equal(f.viewModel.state.isGenerationStarting, false);
   assert.equal(f.viewModel.state.errorMessage, '');
   assert.ok(f.viewModel.state.localVideoTrack);
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.deepEqual(f.calls.closed, ['session-1']);
 });
 
@@ -1088,7 +1065,7 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     gate?.resolve();
     await disconnecting;
     await settle();
-    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
     assert.deepEqual(f.calls.closed, ['session-1']);
     assert.equal(f.calls.sessions.length, 1);
     assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
@@ -1102,7 +1079,12 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     f.rotateCamera();
     assert.equal(messages.length, 1);
 
+    const retryGate = f.holdSession();
     f.viewModel.submitPrompt('after rotation');
+    await settle();
+    assert.equal(f.viewModel.state.connectionState, f.State.CONNECTING);
+    assert.equal(f.viewModel.state.isGenerationStarting, true);
+    retryGate.resolve();
     await settle();
     f.stream.confirmation?.resolve();
     await settle();
@@ -1139,8 +1121,7 @@ test('XLab cancellation after connecting retains the session and local preview',
 for (const phase of ['connecting', 'starting', 'generating']) {
   test(`SDK camera rotation disconnects while ${phase} without an app orientation listener`, async () => {
     const f = managerFixture(), states = [], errors = [];
-    f.manager.setStateListener(state => states.push(state));
-    f.manager.setErrorListener(error => errors.push(error));
+    f.manager.setStateListener(state => { states.push(state); if (state.reason?.error) errors.push(state.reason.error); });
     const local = await f.create();
     const gate = phase === 'connecting' ? f.holdSession() : null;
     if (phase === 'starting') f.holdGeneration();
@@ -1151,14 +1132,14 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     if (phase === 'generating') assert.ok((await result).value);
     const landscape = f.rotateCamera();
     assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
-    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.CAMERA_ORIENTATION_CHANGED);
+    assert.equal(f.manager.currentState.reason, undefined);
     assert.equal(f.stream.currentGenerationTaskId, '');
     f.rotateCamera(); // No duplicate termination when the direction changes again during cleanup.
     gate?.resolve();
     if (phase !== 'generating') assert.equal((await result).error.code, f.Code.CANCELLED);
     await settle();
-    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTED);
-    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.CAMERA_ORIENTATION_CHANGED);
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
+    assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
     assert.deepEqual(f.calls.closed, ['session-1']);
     assert.equal(f.calls.sessions.length, 1);
     assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
@@ -1167,7 +1148,7 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     assert.equal(f.media.interactionTask, null);
     assert.deepEqual(errors, []);
     assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, 1);
-    assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTED).length, 1);
+    assert.equal(states.filter(state => state.connectionState === f.State.READY && state.reason === f.Reason.ORIENTATION_CHANGED).length, 1);
 
     f.rotateCamera(landscape);
     const restart = f.manager.startGeneration(local, new f.Context('after rotation'));
@@ -1175,9 +1156,9 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     f.stream.confirmation?.resolve();
     await restart;
     assert.deepEqual(f.calls.starts.at(-1).format, landscape);
-    assert.equal(f.manager.currentState.disconnectionReason, undefined);
+    assert.equal(f.manager.currentState.reason, undefined);
     await f.manager.disconnect();
-    assert.equal(f.manager.currentState.disconnectionReason, f.Reason.NORMAL);
+    assert.equal(f.manager.currentState.reason, f.Reason.NORMAL);
     await f.manager.close();
   });
 }
@@ -1186,7 +1167,7 @@ test('SDK camera rotation keeps preview and stopped connections, and unchanged o
   const f = managerFixture();
   const local = await f.create();
   f.rotateCamera();
-  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   const remote = await f.manager.connect(local);
   const portrait = f.rotateCamera();
   assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
@@ -1219,7 +1200,7 @@ test('camera applies oriented output before connect and rejects queued frames fr
   }, {
     setVideoEncoderConfig: format => events.push(['encode', format.width, format.height]),
     pushLocalVideoFrame: frame => events.push(['push', frame.format.width, frame.format.height])
-  }, new MediaService(RealtimeModels.realtime('x2.0-sla')), error => errors.push(error),
+  }, new MediaService(RealtimeModels.realtime('x2.0-pro')), error => errors.push(error),
   format => events.push(['signal', format.width, format.height]));
   const local = await camera.createLocalCameraStream(new Format(1024, 1920, 30), 'front');
   try {
@@ -1241,4 +1222,120 @@ test('camera applies oriented output before connect and rejects queued frames fr
   } finally {
     await camera.stopLocalCameraStream();
   }
+});
+
+test('camera exposes PREPARING until preview readiness and ignores old ready notifications after close/replacement/connect', async () => {
+  const f = managerFixture(), states = [];
+  f.holdPreview();
+  f.manager.setStateListener(state => states.push(state));
+  assert.equal(typeof f.manager.setErrorListener, 'undefined');
+  assert.equal(typeof f.manager.setCameraPreviewReadyListener, 'undefined');
+  const first = await f.create();
+  assert.equal(f.manager.currentState.connectionState, f.State.PREPARING);
+  const oldReady = f.media.readyHandler;
+  await f.manager.close();
+  oldReady();
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  const second = await f.create();
+  assert.notEqual(first.videoTrack, second.videoTrack);
+  oldReady();
+  assert.equal(f.manager.currentState.connectionState, f.State.PREPARING);
+  const ready = f.media.readyHandler;
+  ready(); ready();
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(states.filter(state => state.connectionState === f.State.READY).length, 1);
+  const gate = f.holdSession(), connecting = f.manager.connect(second);
+  ready();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTING);
+  gate.resolve(); await connecting;
+  ready();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  await f.manager.close();
+});
+
+test('image and video preparation enter READY without a camera callback, stopping local media returns IDLE', async () => {
+  for (const source of ['Image', 'Video']) {
+    const f = managerFixture(), states = [];
+    f.media[`createLocal${source}Stream`] = async () => {
+      f.media.currentTrack = new f.Track('file', new f.Format(1024, 1920, 30));
+      return new f.MediaStream('local', f.media.currentTrack);
+    };
+    f.media[`stopLocal${source}Stream`] = async () => { f.media.currentTrack = null; };
+    f.manager.setStateListener(state => states.push(state.connectionState));
+    await f.manager[`createLocal${source}Stream`]('input');
+    await f.manager[`stopLocal${source}Stream`]();
+    assert.deepEqual(states, [f.State.IDLE, f.State.PREPARING, f.State.READY, f.State.IDLE]);
+    await f.manager.close();
+  }
+});
+
+test('failed local preparation returns IDLE with the original recoverable error, and retry clears reason', async () => {
+  const f = managerFixture(), states = [];
+  const create = f.media.createLocalCameraStream.bind(f.media);
+  const original = new f.XmaxError(f.Code.CAMERA_PERMISSION_DENIED, 'permission denied', 123, 403);
+  f.media.createLocalCameraStream = async () => { throw original; };
+  f.manager.setStateListener(state => states.push(state));
+  await assert.rejects(f.create(), error => error === original);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.reason.kind, f.ReasonKind.FAILURE);
+  assert.equal(f.manager.currentState.reason.error, original);
+  f.media.createLocalCameraStream = create;
+  await f.create();
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentState.reason, undefined);
+  await f.manager.close();
+});
+
+test('fatal local runtime errors clean up media and connection and publish one original error through state only', async () => {
+  const f = managerFixture(), states = [];
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('test'));
+  f.manager.setStateListener(state => states.push(state));
+  const original = new f.XmaxError(f.Code.MEDIA_ERROR, 'capture failed', 456, 500);
+  f.media.onError(original);
+  await settle();
+  assert.equal(f.media.currentTrack, null);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  assert.equal(f.manager.currentState.reason.error, original);
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.equal(states.filter(state => state.reason?.error === original).length, 1);
+  assert.equal(f.stream.currentGenerationTaskId, '');
+});
+
+test('a READY failure listener can immediately start a fresh connection without stale cleanup cancelling it', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('first'));
+  let restart;
+  const original = new f.XmaxError(f.Code.SESSION_ERROR, 'heartbeat lost');
+  f.manager.setStateListener(state => {
+    if (state.reason?.error === original) {
+      restart = f.manager.startGeneration(local, new f.Context('retry'));
+    }
+  });
+  await f.api.heartbeat(original);
+  await restart;
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.manager.currentState.reason, undefined);
+  assert.equal(f.calls.starts.at(-1).context.prompt, 'retry');
+  assert.deepEqual(f.calls.closed, ['session-1']);
+  await f.manager.close();
+});
+
+test('XLab loading and failures are driven exclusively by SDK states', async () => {
+  const f = exampleFixture();
+  f.holdPreview();
+  await f.viewModel.connect({});
+  assert.equal(f.viewModel.state.connectionState, f.State.PREPARING);
+  assert.equal(f.viewModel.state.isLocalPreviewLoading, true);
+  assert.ok(f.viewModel.state.localVideoTrack);
+  f.media.readyHandler();
+  assert.equal(f.viewModel.state.connectionState, f.State.READY);
+  assert.equal(f.viewModel.state.isLocalPreviewLoading, false);
+  const original = new f.XmaxError(f.Code.MEDIA_ERROR, 'camera stopped');
+  f.media.onError(original);
+  await settle();
+  assert.equal(f.viewModel.state.connectionState, f.State.IDLE);
+  assert.equal(f.viewModel.state.localVideoTrack, null);
+  assert.equal(f.viewModel.state.errorMessage, original.message);
+  await f.viewModel.disconnect();
 });

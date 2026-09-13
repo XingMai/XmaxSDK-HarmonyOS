@@ -43,36 +43,41 @@ Only one local input stream may be active at a time.
 
 ## Model capabilities
 
-`RealtimeModels.realtime(model)` returns a `ModelDefinition` describing the model's
-supported media sources, input pixel bounds, alignment, default frame rate and
-default camera format.
+`RealtimeModels.realtime(model)` returns a `ModelDefinition` describing supported
+input resolutions, pixel bounds, alignment, default frame rate and camera format.
+Camera, video and image inputs are available for both models.
 
-| Model | Media sources | Input pixels | Alignment | Default FPS | Default camera |
-| --- | --- | --- | --- | --- | --- |
-| `x2.0` | Camera, video, image | 600,000–1,280,000 | 32 | 24 | 832 × 1472 |
-| `x2.0-sla` | Camera only | 600,000–2,100,000 | 32 | 30 | 1024 × 1920 |
+| Model | Input resolution rules | Default FPS | Default camera |
+| --- | --- | --- | --- |
+| `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 30 | 832 × 1472 |
+| `x2.0-pro` | Exactly 1024 × 1920 or 1920 × 1024 | 30 | 1024 × 1920 |
 
 ```ts
-import { ImageSize, RealtimeMediaSource } from '@xmax/sdk';
+import { ImageSize } from '@xmax/sdk';
 
-const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
+const model = RealtimeModels.realtime(RealtimeModel.X2_0_PRO);
+const supportedResolutions = model.resolutionBuckets;
 const realtime = client.createRealtimeManager(new RealtimeConfiguration(model));
 const localStream = await realtime.createLocalCameraStream();
-const supportsImage = model.supportedMediaSources.has(RealtimeMediaSource.IMAGE);
 
-const mediaService = client.createMediaService(RealtimeModel.X2_0_SLA);
+const mediaService = client.createMediaService(RealtimeModel.X2_0_PRO);
 const inputSize = mediaService.resolveModelInputSize(new ImageSize(1024, 1920));
 ```
 
-`createMediaService()` defaults to `x2.0`; pass the model when calculating sizes
-for another model. The realtime manager shares its model's media rules across
-camera, image and video preparation. Alignment is checked against pixel bounds
-again so rounding cannot produce an out-of-range input size.
+A nonempty `resolutionBuckets` list requires an exact width/height match.
+Unsupported Pro dimensions reject with `INVALID_CONFIGURATION`; the SDK does not
+round or resize them to a supported bucket. An empty list, as in `x2.0`, uses
+pixel bounds and alignment to calculate the input size.
 
-Unsupported sources reject with `INVALID_CONFIGURATION` and `RECOVERABLE`
-severity before media preparation begins, preserving any active input and session.
-Use `supportedMediaSources` to configure your UI. XLab dims unsupported entries
-and prompts the user to switch models when they are tapped.
+`createMediaService()` defaults to `x2.0`; pass the model when calculating sizes
+for another model. These rules apply to camera, image and video preparation.
+Image and video inputs use their display dimensions unless an explicit
+`RealtimeVideoFormat` is supplied; for Pro, supply a supported output format when
+the source dimensions do not match a bucket. CameraKit raw capture can still use
+16:9 profiles; the fixed-resolution rule applies to the prepared model input.
+
+The former `x2.0-sla` model is replaced by `x2.0-pro`. XLab migrates a saved SLA
+selection to Pro and keeps all three media entries available.
 
 ## Service environments
 
@@ -264,21 +269,16 @@ disconnects and retains the local preview. It cancels pending operations with
 new orientation to the old task through `change_condition`. Frames queued with
 the previous dimensions are discarded before pushing to RTC.
 
-Both `DISCONNECTING` and `DISCONNECTED` states carry
-`RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED`. Applications can use
-the existing state listener to clear pending generation intent and display a
-message; no app-level rotation listener or disconnect call is required. XLab
-shows “屏幕方向已切换，生成已断开，请重新开始” after disconnection.
-
-Normal disconnection, including explicit `disconnect()` and `close()` calls,
-uses `RealtimeDisconnectionReason.NORMAL`. A concurrent cleanup call preserves
-the original disconnection reason. Other connection states do not carry a
-disconnection reason; failures continue to use `ERROR` and the error listener.
+After cleanup, the state returns to `READY` when local media remains available,
+or `IDLE` otherwise. `state.reason` is `RealtimeReason.ORIENTATION_CHANGED` for
+camera rotation and `RealtimeReason.NORMAL` for normal cleanup. Applications can
+use the existing state listener to clear pending generation intent and display a
+message; no app-level rotation listener or disconnect call is required.
+`DISCONNECTING` carries no reason. Starting a new operation clears the old reason.
 
 ```ts
 realtime.setStateListener((state: RealtimeState): void => {
-  if (state.connectionState === RealtimeConnectionState.DISCONNECTED &&
-    state.disconnectionReason === RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED) {
+  if (state.reason?.kind === RealtimeReasonKind.ORIENTATION_CHANGED) {
     // Show an app-specific message asking the user to start again.
   }
 });
@@ -326,7 +326,7 @@ this.remoteVideoTrack = resizedRemoteStream.videoTrack;
 The old local stream is no longer valid after stopping it. Input dimensions follow
 the selected model's pixel bounds and 32-pixel alignment. Use the returned track's
 `videoFormat` to inspect the resolved dimensions; for example, `1024 × 1920` is
-retained for `x2.0-sla` and reduced to `800 × 1536` for `x2.0`.
+retained for `x2.0-pro` and reduced to `800 × 1536` for `x2.0`.
 
 ## Stop and release resources
 
@@ -352,52 +352,64 @@ to be rolled back. Concurrent stop/disconnect/close requests share a cleanup tas
 and expand its scope as needed. Cleanup failures are logged while the remaining
 resources continue to be released.
 
-A fatal generation-start failure enters `ERROR` after generation cleanup, then
-notifies the error listener. If the connection is still open, generation can be
-retried on the same connection. Heartbeat failures clean up the connection before
-reporting the error. Recoverable input errors leave the current lifecycle intact.
+## Observe lifecycle and failures
 
-## Handle recoverable and fatal errors
+`setStateListener()` is the single public callback for lifecycle state, local
+preview readiness and failures. Register it before creating local media.
 
-`XmaxError.severity` distinguishes recoverable and fatal errors:
+| State | Meaning |
+| --- | --- |
+| `IDLE` | No available local media. |
+| `PREPARING` | Preparing local media; camera preview awaits a valid frame and view binding. |
+| `READY` | Local media is ready; no active realtime connection. |
+| `CONNECTING` | Creating the session and joining the room. |
+| `CONNECTED` | Connected without an active generation task. |
+| `GENERATING` | The generated stream and a usable remote frame are ready. |
+| `DISCONNECTING` | Cleaning up resources. |
 
-- `RECOVERABLE`: the operation did not complete, but the SDK can still be used.
-  Invalid configuration, permission denial, cancellation, and failed generation
-  condition/trajectory updates belong here. Handle a failed asynchronous call in
-  its `catch`; it does not trigger `setErrorListener`.
-- `FATAL`: the current realtime workflow cannot continue normally. Connection,
-  generation-start, subscription and media failures are fatal by default, and
-  session heartbeat failure is always fatal. The realtime error listener receives
-  these failures so the host can recover or leave the workflow.
+Image/video creation enters `READY` when preparation completes. Camera creation
+returns a track while `PREPARING`; bind it to a preview view to receive `READY`.
+A generation or connection failure closes the connection and returns to `READY`
+if local media remains available. Failed local preparation or a fatal local-media
+error releases local resources and returns to `IDLE`.
 
-An awaited operation still rejects when it fails, including fatal failures already
-sent to the listener. Avoid showing the same fatal error from both places:
+Terminal states carry `reason`: `RealtimeReason.NORMAL`,
+`RealtimeReason.ORIENTATION_CHANGED`, or `RealtimeReason.failure(error)`.
+Use `reason.kind` to distinguish cases and `reason.error` to read the original
+`XmaxError`, including its code, severity, API code and HTTP status.
+The SDK finishes internal cleanup before notifying the terminal state, so the
+listener can start a new operation or close the manager safely.
 
 ```ts
-import { XmaxError, XmaxErrorCode, XmaxErrorSeverity } from '@xmax/sdk';
+const reportedErrors = new WeakSet<XmaxError>();
+realtime.setStateListener((state: RealtimeState): void => {
+  const error = state.reason?.error;
+  if (error !== undefined) {
+    reportedErrors.add(error);
+    console.error(`${error.code}: ${error.message}`);
+  }
+});
 
 try {
   const remoteStream = await realtime.startGeneration(localStream, generationContext);
   this.remoteVideoTrack = remoteStream.videoTrack;
 } catch (error) {
   const sdkError = XmaxError.from(error);
-  if (sdkError.code !== XmaxErrorCode.CANCELLED &&
-    sdkError.severity === XmaxErrorSeverity.RECOVERABLE) {
+  if (sdkError.code !== XmaxErrorCode.CANCELLED && !reportedErrors.has(sdkError)) {
     console.error(`Operation failed: ${sdkError.message}`);
   }
 }
 ```
 
-The listener is independent of logging. Passing `null` removes it. The same error
-instance propagating through multiple SDK layers is logged and forwarded once.
-Best-effort stop-signal and cleanup failures are logged without invoking the fatal
-listener; shutdown continues. Cancellation is recoverable and only appears in SDK
-logs when business logging is enabled.
+Awaited operations still reject with the original error. Recoverable validation
+or configuration-update failures that do not end a lifecycle remain on the
+operation's rejection path. Cancellation rejects with `CANCELLED`; cleanup
+failures are logged while cleanup continues. State notifications work even when
+logging is disabled; passing `null` to `setStateListener()` removes the listener.
 
-The existing `XmaxError(code, message, apiCode?, httpStatus?)` constructor remains
-compatible. An optional fifth `severity` argument overrides the default; API and
-HTTP error details are preserved when the SDK changes an error's severity for a
-specific operation.
+`XmaxErrorSeverity` remains supported in HarmonyOS in this change. The dedicated
+error and camera-ready public callbacks have been removed; use the state listener
+for both responsibilities.
 
 ## Configure SDK logging
 

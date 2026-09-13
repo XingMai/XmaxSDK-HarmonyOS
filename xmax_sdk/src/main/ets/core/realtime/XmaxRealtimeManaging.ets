@@ -1,8 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
-import { RealtimeCameraPreviewReadyListener } from '../../service/realtime/RealtimeCameraPreview';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
-import { RealtimeErrorListener } from '../../service/realtime/RealtimeError';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeNetworkQualityListener } from '../../service/realtime/RealtimeNetworkQuality';
 import { RealtimePerformanceAlarmListener } from '../../service/realtime/RealtimePerformanceAlarm';
@@ -23,20 +21,13 @@ export interface XmaxRealtimeManaging {
   readonly currentState: RealtimeState;
 
   /**
-   * 设置实时连接状态监听器。
+   * 设置实时生命周期状态监听器，包含本地准备、预览就绪及 state.reason 中的结束/失败原因。
    *
    * @param listener 状态监听器；传入空值时清除监听器。
    * @returns 无返回值。
    */
   setStateListener(listener: RealtimeStateListener | null): void;
 
-  /**
-   * 设置实时致命错误监听器；可恢复错误只记录日志并由具体调用返回。
-   *
-   * @param listener 错误监听器；传入空值时清除监听器。
-   * @returns 无返回值。
-   */
-  setErrorListener(listener: RealtimeErrorListener | null): void;
 
   /**
    * 设置实时网络质量监听器。
@@ -69,18 +60,9 @@ export interface XmaxRealtimeManaging {
    */
   setRemoteAudioVolume(volume: number): Promise<void>;
 
-  /**
-   * 设置本地摄像头预览就绪监听器。
-   *
-   * @param listener 预览就绪监听器；传入空值时清除监听器。
-   * @returns 无返回值。
-   */
-  setCameraPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null
-  ): void;
 
   /**
-   * 创建本地相机流并开始预览。
+   * 创建本地相机流并开始预览；返回轨道供视图绑定，有效帧和预览绑定完成后进入 READY。
    *
    * @param videoFormat 本地视频格式；省略时使用当前模型默认相机规格。
    * @param position 初始相机位置；未传入时使用前置相机。
@@ -112,7 +94,7 @@ export interface XmaxRealtimeManaging {
    * @param filePath 本地视频文件路径。
    * @param videoFormat 期望的视频输出格式；未传入时按文件显示尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
    * @returns 可用于建立实时连接的本地媒体流。
-   * @throws 模型不支持该输入来源时返回可恢复的 INVALID_CONFIGURATION 错误。
+   * @throws 输出尺寸不符合模型规则时返回 INVALID_CONFIGURATION 错误。
    */
   createLocalVideoStream(
     filePath: string,
@@ -132,7 +114,7 @@ export interface XmaxRealtimeManaging {
    * @param source 本地文件路径、图片编码数据或平台 PixelMap。
    * @param videoFormat 期望的视频输出格式；未传入时按图片尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
    * @returns 可用于建立实时连接的本地媒体流。
-   * @throws 模型不支持该输入来源时返回可恢复的 INVALID_CONFIGURATION 错误。
+   * @throws 输出尺寸不符合模型规则时返回 INVALID_CONFIGURATION 错误。
    */
   createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,

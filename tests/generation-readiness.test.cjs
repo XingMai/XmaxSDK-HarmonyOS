@@ -40,6 +40,8 @@ function fixture(t, timingOptions = {}) {
   }
   class FakeMedia {
     constructor() { media = this; this.hasAudio = false; }
+    get currentTrack() { return this.track ?? null; }
+    setCameraPreviewReadyHandler(listener) { listener?.(); }
     get currentVideoFormat() { return this.track?.videoFormat; }
     async createLocalCameraStream(format, position) {
       this.track = new Track('local', format, position);
@@ -90,9 +92,8 @@ function fixture(t, timingOptions = {}) {
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
-  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-sla') }, {});
-  manager.setErrorListener(error => errors.push(error));
-  manager.setStateListener(state => events.push(`state:${state.connectionState}`));
+  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-pro') }, {});
+  manager.setStateListener(state => { events.push(`state:${state.connectionState}`); if (state.reason?.error) errors.push(state.reason.error); });
   const remote = new RemoteStream('room', 'bot');
   t.after(async () => { await manager.close(); assert.equal(timers.size, 0); });
   return { load, rtc, media, manager, events, messages, observations, errors, timers, State, XmaxError, Code,
@@ -178,7 +179,7 @@ test('generation confirmation and first-frame timeouts report the correct stage 
     assert.equal(f.timingLogs.length, 1);
     assert.ok(f.timingLogs[0].message.includes(`停留阶段：${stage}`));
     assert.ok(f.timingLogs[0].message.includes(`已耗时：${milliseconds.toFixed(1)} ms`));
-    assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
   }
 });
 
@@ -192,7 +193,7 @@ test('session and room failures report their connection stage after cleanup', as
     assert.equal((await first.pending).error, error);
     assert.equal(f.timingLogs.length, 1);
     assert.ok(f.timingLogs[0].message.includes(`停留阶段：${stage}`));
-    assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
     assert.equal(f.messages.some(message => message.event === 'start'), false);
   }
 });
@@ -248,7 +249,7 @@ test('10-second first-frame timeout stops the task, restores preview audio and a
   assert.equal(failure.code, f.Code.TIMEOUT);
   assert.equal(failure.message, 'Remote video first frame timed out');
   assert.deepEqual(f.errors, [failure]);
-  assert.equal(f.manager.currentState.connectionState, f.State.ERROR);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
   assert.equal(f.messages.at(-1).event, 'stop');
   assert.equal(f.messages.at(-1).uid, first.task);
   assert.equal(f.media.previewAudio, true);

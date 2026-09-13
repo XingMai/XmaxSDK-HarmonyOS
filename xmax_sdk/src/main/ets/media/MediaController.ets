@@ -9,7 +9,7 @@ import {
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { CameraPosition } from '../foundation/media/camera/CameraPosition';
 import { RtcManaging } from '../foundation/rtc/RtcManaging';
-import { RealtimeCameraPreviewReadyListener } from '../service/realtime/RealtimeCameraPreview';
+import { CameraPreviewReadyHandler } from './camera/CameraPreviewReadyHandler';
 import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimePoint } from '../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
@@ -162,8 +162,8 @@ export class MediaController implements MediaControlling {
    * @param listener 预览就绪监听器；传入空值时清除监听器。
    * @returns 无返回值。
    */
-  setCameraPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null
+  setCameraPreviewReadyHandler(
+    listener: CameraPreviewReadyHandler | null
   ): void {
     this.cameraController.setPreviewReadyListener(listener);
   }

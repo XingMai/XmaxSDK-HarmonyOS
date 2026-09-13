@@ -1,6 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../foundation/media/camera/CameraPosition';
-import { RealtimeCameraPreviewReadyListener } from '../service/realtime/RealtimeCameraPreview';
+import { CameraPreviewReadyHandler } from './camera/CameraPreviewReadyHandler';
 import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
@@ -36,8 +36,8 @@ export interface MediaControlling extends InteractionControlling {
    * @param listener 预览就绪监听器；传入空值时清除监听器。
    * @returns 无返回值。
    */
-  setCameraPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null
+  setCameraPreviewReadyHandler(
+    listener: CameraPreviewReadyHandler | null
   ): void;
 
   /**

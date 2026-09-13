@@ -1,4 +1,4 @@
-import { RealtimeMediaSource, RealtimeModel, RealtimeModels } from '@xmax/sdk';
+import { RealtimeModel } from '@xmax/sdk';
 
 export class XLabModelOption {
   readonly model: RealtimeModel;
@@ -22,9 +22,9 @@ export class XLabModelSelection {
       'RealtimeModel.X2_0'
     ),
     new XLabModelOption(
-      RealtimeModel.X2_0_SLA,
-      'X2.0 SLA',
-      'RealtimeModel.X2_0_SLA'
+      RealtimeModel.X2_0_PRO,
+      'X2.0 Pro',
+      'RealtimeModel.X2_0_PRO'
     )
   ];
 
@@ -33,22 +33,19 @@ export class XLabModelSelection {
       XLabModelSelection.STORAGE_KEY,
       XLabModelSelection.DEFAULT_MODEL
     );
+    if (AppStorage.get<string>(XLabModelSelection.STORAGE_KEY) === 'x2.0-sla') {
+      AppStorage.set<string>(XLabModelSelection.STORAGE_KEY, RealtimeModel.X2_0_PRO);
+    }
   }
 
   static current(): RealtimeModel {
     const selectedModel: string | undefined = AppStorage.get<string>(
       XLabModelSelection.STORAGE_KEY
     );
-    if (selectedModel === RealtimeModel.X2_0_SLA) {
-      return RealtimeModel.X2_0_SLA;
+    // 旧版本保存的 SLA 选择迁移到 Pro。
+    if (selectedModel === RealtimeModel.X2_0_PRO || selectedModel === 'x2.0-sla') {
+      return RealtimeModel.X2_0_PRO;
     }
     return XLabModelSelection.DEFAULT_MODEL;
-  }
-
-  /** 按所选模型查询入口能力，默认读取当前持久化选择。 */
-  static supports(source: RealtimeMediaSource, model: string = XLabModelSelection.current()): boolean {
-    const selected: RealtimeModel = model === RealtimeModel.X2_0_SLA ?
-      RealtimeModel.X2_0_SLA : RealtimeModel.X2_0;
-    return RealtimeModels.realtime(selected).supportedMediaSources.has(source);
   }
 }

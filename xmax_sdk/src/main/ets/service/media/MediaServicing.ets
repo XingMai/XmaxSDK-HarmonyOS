@@ -8,7 +8,7 @@ export interface MediaServicing {
   readonly model: ModelDefinition;
 
   /**
-   * 计算满足模型输入约束的尺寸。
+   * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
    *
    * @param size 原始图片尺寸。
    * @returns 满足模型输入约束的尺寸。

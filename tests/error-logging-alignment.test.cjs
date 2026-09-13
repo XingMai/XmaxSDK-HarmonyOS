@@ -43,7 +43,6 @@ function imageFixture(t) {
   });
   const { XmaxRealtimeErrorManager } = f.load('core/realtime/XmaxRealtimeErrorManager.ets');
   const errorManager = new XmaxRealtimeErrorManager();
-  errorManager.setListener(error => fatal.push(error));
   const { ImageController } = f.load('media/image/ImageController.ets');
   const controller = new ImageController({
     useExternalVideoSource() {}, renderLibraryName: () => 'rtc', unbindLocalVideo() {}
@@ -70,7 +69,6 @@ test('image push errors preserve their identity, code, severity and details thro
     assert.equal(f.received.at(-1), error);
     assert.equal(f.received.at(-2), error);
   }
-  assert.deepEqual(f.fatal, [fatal]); // Recoverable/cancelled stay internal; repeated fatal instance is deduplicated.
   assert.equal(f.logs.length, 0); // Error forwarding does not depend on logging.
 });
 
@@ -83,7 +81,6 @@ test('ordinary image push exceptions use the shared XmaxError conversion instead
   assert.equal(error.code, f.Code.INTERNAL_ERROR);
   assert.equal(error.severity, f.Severity.FATAL);
   assert.equal(error.message, 'native frame failure');
-  assert.equal(f.fatal[0], error);
 });
 
 test('first image push failure rejects creation with the original error and does not start the frame timer', async t => {
@@ -114,38 +111,17 @@ test('error defaults match iOS, with backwards-compatible API and HTTP error det
   assert.equal(f.XmaxError.from(new Error('platform')).severity, f.Severity.FATAL);
 });
 
-test('fatal listener works with logging disabled; recoverable errors and cancellation are not forwarded', () => {
-  const f = fixture(), received = [];
+test('error logging preserves original errors and deduplicates each object without a public callback', () => {
+  const f = fixture();
   const { XmaxRealtimeErrorManager } = f.load('core/realtime/XmaxRealtimeErrorManager.ets');
   const handler = new XmaxRealtimeErrorManager();
-  handler.setListener(error => received.push(error));
-  for (const code of [f.Code.INVALID_CONFIGURATION, f.Code.CANCELLED, f.Code.CAMERA_PERMISSION_DENIED]) {
-    handler.handle(new f.XmaxError(code, 'recoverable'));
-  }
-  const fatal = new f.XmaxError(f.Code.RTC_ERROR, 'fatal');
-  assert.equal(handler.handle(fatal), fatal);
-  handler.handle(fatal); // same failure caught again by an outer SDK operation
-  assert.deepEqual(received, [fatal]);
-  assert.equal(f.logs.length, 0);
-  handler.setListener(null);
-  handler.handle(new f.XmaxError(f.Code.MEDIA_ERROR, 'after removal'));
-  assert.equal(received.length, 1);
-});
-
-test('error logging includes severity once and a throwing listener cannot replace the original failure', () => {
-  const f = fixture(); f.Logger.configure(f.Option.BUSINESS);
-  const { XmaxRealtimeErrorManager } = f.load('core/realtime/XmaxRealtimeErrorManager.ets');
-  const handler = new XmaxRealtimeErrorManager();
-  const recoverable = new f.XmaxError(f.Code.RTC_ERROR, 'retry').withSeverity(f.Severity.RECOVERABLE);
-  handler.handle(recoverable); handler.handle(recoverable);
+  f.Logger.configure(f.Option.ALL);
+  const error = new f.XmaxError(f.Code.RTC_ERROR, 'lost', 123, 503);
+  assert.equal(handler.handle(error), error);
+  handler.handle(error);
   assert.equal(f.logs.length, 1);
-  assert.match(f.logs[0].message, /RECOVERABLE/);
-  handler.setListener(() => { throw new Error('host callback failure'); });
-  const fatal = new f.XmaxError(f.Code.MEDIA_ERROR, 'decoder failed');
-  assert.equal(handler.handle(fatal), fatal);
-  assert.equal(f.logs.length, 3);
-  assert.match(f.logs[1].message, /FATAL/);
-  assert.match(f.logs[2].message, /host callback failure/);
+  assert.match(f.logs[0].message, /123/);
+  assert.match(f.logs[0].message, /503/);
 });
 
 test('logging defaults off for every level, filters options independently and skips lazy formatting', () => {

@@ -102,7 +102,7 @@ test('GET, POST, PUT and DELETE headers match room runtime without changing API 
   device.distributionOSVersion = 'changed'; device.productModel = 'changed';
   const { ApiService } = f.load('service/network/ApiService.ets');
   const api = new ApiService('test-key', 'https://cloud.xmax.22duck.cn/open/api/v1');
-  const body = { model: 'x2.0-sla', size: [1024, 1920] };
+  const body = { model: 'x2.0-pro', size: [1024, 1920] };
   assert.deepEqual(await api.get('/sessions'), { ok: true });
   await api.post('/sessions', body);
   await api.put('/sessions/id', body);
@@ -119,7 +119,7 @@ test('GET, POST, PUT and DELETE headers match room runtime without changing API 
     assert.equal(options.extraData, ['POST', 'PUT'].includes(options.method) ? JSON.stringify(body) : undefined);
   }
   assert.deepEqual(firstRuntime, expectedRuntime);
-  assert.deepEqual(body, { model: 'x2.0-sla', size: [1024, 1920] });
+  assert.deepEqual(body, { model: 'x2.0-pro', size: [1024, 1920] });
 });
 
 test('unavailable device properties do not prevent API requests or room events', async () => {

@@ -11,7 +11,6 @@ export {
   ModelDefinition,
   RealtimeModels
 } from './src/main/ets/core/realtime/RealtimeModel';
-export { RealtimeMediaSource } from './src/main/ets/core/realtime/RealtimeMediaSource';
 export {
   RealtimeConfiguration
 } from './src/main/ets/core/realtime/RealtimeConfiguration';
@@ -19,14 +18,9 @@ export {
   RealtimeContext
 } from './src/main/ets/service/realtime/RealtimeContext';
 export {
-  RealtimeCameraPreviewReadyListener
-} from './src/main/ets/service/realtime/RealtimeCameraPreview';
-export {
-  RealtimeErrorListener
-} from './src/main/ets/service/realtime/RealtimeError';
-export {
   RealtimeConnectionState,
-  RealtimeDisconnectionReason,
+  RealtimeReason,
+  RealtimeReasonKind,
   RealtimeState,
   RealtimeStateListener
 } from './src/main/ets/service/realtime/RealtimeState';

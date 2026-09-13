@@ -1,6 +1,6 @@
 import { XmaxError, XmaxErrorCode, XmaxErrorSeverity } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
-import { RealtimeConnectionState, RealtimeDisconnectionReason, RealtimeState, RealtimeStateListener } from '../../service/realtime/RealtimeState';
+import { RealtimeConnectionState, RealtimeReason, RealtimeState, RealtimeStateListener } from '../../service/realtime/RealtimeState';
 import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
 
 export enum RealtimeOperationKind {
@@ -118,19 +118,16 @@ class RealtimeOperation {
 }
 
 class RealtimeTermination {
-  disconnectionReason: RealtimeDisconnectionReason | undefined;
+  reason: RealtimeReason | undefined;
   target: RealtimeTerminationScope;
-  finalState: RealtimeConnectionState | undefined;
   error: XmaxError | undefined;
   sessionId: string | undefined;
   revision: number = 0;
-  errorReported: boolean = false;
   readonly operations: Set<RealtimeOperation> = new Set();
   promise: Promise<void> = Promise.resolve();
 
-  constructor(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState, error?: XmaxError) {
+  constructor(target: RealtimeTerminationScope, error?: XmaxError) {
     this.target = target;
-    this.finalState = finalState;
     this.error = error;
   }
 }
@@ -139,14 +136,17 @@ class RealtimeTermination {
 export class RealtimeCoordinator {
   private readonly errorManager: XmaxRealtimeErrorManager;
   private readonly cleanup: CleanupHandler;
+  private readonly hasLocalMedia: () => boolean;
   private state: RealtimeState = new RealtimeState(RealtimeConnectionState.IDLE);
   private stateListener: RealtimeStateListener | null = null;
   private activeOperation: RealtimeOperation | null = null;
   private termination: RealtimeTermination | null = null;
 
-  constructor(errorManager: XmaxRealtimeErrorManager, cleanup: CleanupHandler) {
+  constructor(errorManager: XmaxRealtimeErrorManager, cleanup: CleanupHandler,
+    hasLocalMedia: () => boolean = (): boolean => false) {
     this.errorManager = errorManager;
     this.cleanup = cleanup;
+    this.hasLocalMedia = hasLocalMedia;
   }
 
   get currentState(): RealtimeState {
@@ -174,6 +174,9 @@ export class RealtimeCoordinator {
     }
     const operation = new RealtimeOperation(kind, failureScope);
     this.activeOperation = operation;
+    if (this.state.reason !== undefined) {
+      this.setState(new RealtimeState(this.state.connectionState, this.state.sessionId, this.state.taskId));
+    }
     const execution: Promise<T> = this.execute(body, operation.token);
     // 只等待操作体，不等待包含清理的 run 返回值，避免取消与清理相互等待。
     operation.completion = execution.then((): void => {}, (_error: Object): void => {});
@@ -182,6 +185,7 @@ export class RealtimeCoordinator {
 
   private async execute<T>(body: (token: RealtimeOperationToken) => Promise<T>,
     token: RealtimeOperationToken): Promise<T> {
+    token.ensureCurrent();
     return await body(token);
   }
 
@@ -195,14 +199,19 @@ export class RealtimeCoordinator {
     token.ensureCurrent();
   }
 
-  terminate(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState,
-    reason?: RealtimeDisconnectionReason): Promise<void> {
-    return this.requestTermination(target, finalState, undefined, reason).promise;
+  /** 只接受当前媒体的就绪通知，迟到通知不能覆盖正在连接或关闭的状态。 */
+  localPreviewDidBecomeReady(isCurrent: () => boolean): void {
+    if (this.termination === null && this.state.connectionState === RealtimeConnectionState.PREPARING && isCurrent()) {
+      this.setState(new RealtimeState(RealtimeConnectionState.READY));
+    }
+  }
+
+  terminate(target: RealtimeTerminationScope, reason: RealtimeReason = RealtimeReason.NORMAL): Promise<void> {
+    return this.requestTermination(target, undefined, reason).promise;
   }
 
   terminateWithError(error: XmaxError, target: RealtimeTerminationScope): Promise<void> {
-    return this.requestTermination(target, RealtimeConnectionState.ERROR,
-      error.withSeverity(XmaxErrorSeverity.FATAL)).promise;
+    return this.requestTermination(target, error).promise;
   }
 
   private async finishRun<T>(execution: Promise<T>, operation: RealtimeOperation): Promise<T> {
@@ -216,8 +225,10 @@ export class RealtimeCoordinator {
       let pending: RealtimeTermination | null = operation.termination;
       if (!operation.token.isCurrent || resolved.code === XmaxErrorCode.CANCELLED || pending !== null) {
         pending = pending ?? this.requestTermination(operation.token.failureScope);
-      } else if (resolved.severity === XmaxErrorSeverity.FATAL) {
-        pending = this.requestTermination(operation.token.failureScope, RealtimeConnectionState.ERROR, resolved);
+      } else if (resolved.severity === XmaxErrorSeverity.FATAL ||
+        this.state.connectionState === RealtimeConnectionState.PREPARING) {
+        pending = this.requestTermination(Math.max(operation.token.failureScope,
+          RealtimeTerminationScope.CONNECTION), resolved);
       } else {
         this.errorManager.handle(resolved);
       }
@@ -235,8 +246,8 @@ export class RealtimeCoordinator {
     }
   }
 
-  private requestTermination(target: RealtimeTerminationScope, finalState?: RealtimeConnectionState,
-    error?: XmaxError, reason?: RealtimeDisconnectionReason): RealtimeTermination {
+  private requestTermination(target: RealtimeTerminationScope,
+    error?: XmaxError, reason?: RealtimeReason): RealtimeTermination {
     const beginsDisconnection: boolean = target >= RealtimeTerminationScope.CONNECTION &&
       (this.termination === null || this.termination.target < RealtimeTerminationScope.CONNECTION);
     let pending: RealtimeTermination;
@@ -246,27 +257,18 @@ export class RealtimeCoordinator {
         pending.target = target;
         pending.revision++;
       }
-      const mergedState: RealtimeConnectionState | undefined =
-        pending.finalState === RealtimeConnectionState.DISCONNECTED || finalState === RealtimeConnectionState.DISCONNECTED ?
-          RealtimeConnectionState.DISCONNECTED : (finalState ?? pending.finalState);
-      if (mergedState !== pending.finalState || (pending.error === undefined && error !== undefined)) {
-        pending.finalState = mergedState;
-        pending.error = pending.error ?? error;
+      if (pending.error === undefined && error !== undefined) {
+        pending.error = error;
         pending.revision++;
       }
     } else {
-      pending = new RealtimeTermination(target, finalState, error);
+      pending = new RealtimeTermination(target, error);
       this.termination = pending;
       // 先登记共享任务，再运行清理及同步状态回调。
       pending.promise = Promise.resolve().then((): Promise<void> => this.performTermination(pending));
     }
-    const resolvedReason: RealtimeDisconnectionReason | undefined = reason ??
-      (target >= RealtimeTerminationScope.CONNECTION && error === undefined ?
-        RealtimeDisconnectionReason.NORMAL : undefined);
-    if (pending.disconnectionReason === undefined && resolvedReason !== undefined) {
-      pending.disconnectionReason = resolvedReason;
-      pending.revision++;
-    }
+    pending.reason = pending.error !== undefined ? RealtimeReason.failure(pending.error) :
+      pending.reason ?? reason ?? RealtimeReason.NORMAL;
     const active: RealtimeOperation | null = this.activeOperation;
     if (active !== null && this.affects(pending.target, active.kind)) {
       if (active.termination !== pending) {
@@ -276,8 +278,7 @@ export class RealtimeCoordinator {
       active.token.invalidate(pending.error);
     }
     if (beginsDisconnection) {
-      this.setState(new RealtimeState(RealtimeConnectionState.DISCONNECTING, this.state.sessionId,
-        undefined, pending.disconnectionReason));
+      this.setState(new RealtimeState(RealtimeConnectionState.DISCONNECTING, this.state.sessionId));
     }
     return pending;
   }
@@ -300,38 +301,25 @@ export class RealtimeCoordinator {
       if (pending.revision !== revision || pending.operations.size > 0) {
         continue;
       }
-      this.setState(this.resolveFinalState(pending));
-      // 同步状态/错误监听器可能把 stop 升级成 close，升级的清理也必须完成。
-      if (pending.revision !== revision || pending.operations.size > 0) {
-        continue;
-      }
-      if (pending.error !== undefined && !pending.errorReported) {
-        pending.errorReported = true;
+      const next: RealtimeState = this.resolveFinalState(pending);
+      if (pending.error !== undefined) {
         this.errorManager.handle(pending.error);
-      }
-      if (pending.revision !== revision || pending.operations.size > 0) {
-        continue;
       }
       if (this.activeOperation?.termination === pending) {
         this.finish(this.activeOperation);
       }
       this.termination = null;
+      this.setState(next);
       return;
     }
   }
 
   private resolveFinalState(pending: RealtimeTermination): RealtimeState {
-    let connectionState: RealtimeConnectionState = this.state.connectionState;
-    if (pending.finalState !== undefined) {
-      connectionState = pending.finalState;
-    } else if (pending.target >= RealtimeTerminationScope.CONNECTION) {
-      connectionState = RealtimeConnectionState.DISCONNECTED;
-    } else if (connectionState === RealtimeConnectionState.GENERATING) {
-      connectionState = RealtimeConnectionState.CONNECTED;
-    }
-    return new RealtimeState(connectionState, pending.sessionId ?? this.state.sessionId,
-      connectionState === RealtimeConnectionState.GENERATING ? this.state.taskId : undefined,
-      connectionState === RealtimeConnectionState.DISCONNECTED ? pending.disconnectionReason : undefined);
+    const connectionState: RealtimeConnectionState = pending.target === RealtimeTerminationScope.ALL ?
+      RealtimeConnectionState.IDLE : pending.target === RealtimeTerminationScope.GENERATION &&
+        this.state.sessionId !== undefined ? RealtimeConnectionState.CONNECTED :
+        this.hasLocalMedia() ? RealtimeConnectionState.READY : RealtimeConnectionState.IDLE;
+    return new RealtimeState(connectionState, pending.sessionId ?? this.state.sessionId, undefined, pending.reason);
   }
 
   private affects(scope: RealtimeTerminationScope, kind: RealtimeOperationKind): boolean {
@@ -353,7 +341,7 @@ export class RealtimeCoordinator {
 
   private setState(next: RealtimeState): void {
     if (this.state.connectionState === next.connectionState && this.state.sessionId === next.sessionId &&
-      this.state.taskId === next.taskId && this.state.disconnectionReason === next.disconnectionReason) {
+      this.state.taskId === next.taskId && this.state.reason?.kind === next.reason?.kind && this.state.reason?.error === next.reason?.error) {
       return;
     }
     this.state = next;

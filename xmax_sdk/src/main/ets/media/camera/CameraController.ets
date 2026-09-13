@@ -22,7 +22,7 @@ import {
 import { ImageSize } from '../../service/media/ImageSize';
 import { MediaService } from '../../service/media/MediaService';
 import { MediaServicing } from '../../service/media/MediaServicing';
-import { RealtimeCameraPreviewReadyListener } from '../../service/realtime/RealtimeCameraPreview';
+import { CameraPreviewReadyHandler } from './CameraPreviewReadyHandler';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import {
@@ -57,7 +57,7 @@ export class CameraController {
   private acceptsFrames: boolean = false;
   private captureGeneration: number = 0;
 
-  private previewReadyListener: RealtimeCameraPreviewReadyListener | null = null;
+  private previewReadyListener: CameraPreviewReadyHandler | null = null;
   private hasCapturedFrame: boolean = false;
   private hasBoundPreview: boolean = false;
   private hasReportedPreviewReady: boolean = false;
@@ -86,7 +86,7 @@ export class CameraController {
 
   /** 设置摄像头预览就绪监听器。 */
   setPreviewReadyListener(
-    listener: RealtimeCameraPreviewReadyListener | null
+    listener: CameraPreviewReadyHandler | null
   ): void {
     this.previewReadyListener = listener;
     this.notifyPreviewReadyIfNeeded();
@@ -467,7 +467,7 @@ export class CameraController {
   }
 
   private notifyPreviewReadyIfNeeded(): void {
-    const listener: RealtimeCameraPreviewReadyListener | null = this.previewReadyListener;
+    const listener: CameraPreviewReadyHandler | null = this.previewReadyListener;
     if (listener === null || !this.hasCapturedFrame || !this.hasBoundPreview ||
       this.hasReportedPreviewReady) {
       return;

@@ -18,7 +18,7 @@ export class ImageSize {
         'Image width and height must be finite numbers greater than zero'
       );
     }
-    this.width = Math.max(Math.round(width), 1);
-    this.height = Math.max(Math.round(height), 1);
+    this.width = width;
+    this.height = height;
   }
 }

@@ -5,7 +5,7 @@ import {
 import { common } from '@kit.AbilityKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { systemShare } from '@kit.ShareKit';
-import { RealtimeMediaSource, RealtimeModel, XMAX_SDK_VERSION } from '@xmax/sdk';
+import { RealtimeModel, XMAX_SDK_VERSION } from '@xmax/sdk';
 import { XLabConfiguration } from '../modules/xlrealtime/config/XLabConfiguration';
 import {
   XLabModelOption,
@@ -582,11 +582,6 @@ struct Index {
     localImagePath: string = '',
     usesCustomTrajectoryRenderer: boolean = false
   ): void {
-    const source: RealtimeMediaSource = localImagePath.length > 0 ? RealtimeMediaSource.IMAGE :
-      localVideoPath.length > 0 ? RealtimeMediaSource.VIDEO : RealtimeMediaSource.CAMERA;
-    if (!this.validateMediaSource(source)) {
-      return;
-    }
     void router.pushUrl({
       url: 'pages/RealtimePlayground',
       params: {
@@ -598,7 +593,7 @@ struct Index {
   }
 
   private async presentLocalVideoPicker(): Promise<void> {
-    if (this.isPickingVideo || !this.validateMediaSource(RealtimeMediaSource.VIDEO)) {
+    if (this.isPickingVideo) {
       return;
     }
 
@@ -624,7 +619,7 @@ struct Index {
   private async presentLocalImagePicker(
     usesCustomTrajectoryRenderer: boolean = false
   ): Promise<void> {
-    if (this.isPickingImage || !this.validateMediaSource(RealtimeMediaSource.IMAGE)) {
+    if (this.isPickingImage) {
       return;
     }
 
@@ -653,18 +648,6 @@ struct Index {
 
   private showComingSoon(mode: string): void {
     promptAction.showToast({ message: `${mode}暂未开放` });
-  }
-
-  private supportsMediaSource(source: RealtimeMediaSource): boolean {
-    return XLabModelSelection.supports(source, this.selectedRealtimeModel);
-  }
-
-  private validateMediaSource(source: RealtimeMediaSource): boolean {
-    if (!this.supportsMediaSource(source)) {
-      promptAction.showToast({ message: `${this.selectedRealtimeModel} 不支持此输入来源，请切换模型` });
-      return false;
-    }
-    return true;
   }
 
   build() {
@@ -835,7 +818,6 @@ struct Index {
               this.openRealtimePlayground();
             }
           })
-            .opacity(this.supportsMediaSource(RealtimeMediaSource.CAMERA) ? 1 : 0.35)
 
           PipelineCard({
             sequence: '02',
@@ -850,7 +832,6 @@ struct Index {
               void this.presentLocalVideoPicker();
             }
           })
-            .opacity(this.supportsMediaSource(RealtimeMediaSource.VIDEO) ? 1 : 0.35)
             .margin({ top: 14 })
 
           PipelineCard({
@@ -866,7 +847,6 @@ struct Index {
               void this.presentLocalImagePicker();
             }
           })
-            .opacity(this.supportsMediaSource(RealtimeMediaSource.IMAGE) ? 1 : 0.35)
             .margin({ top: 14 })
 
           Row() {
@@ -916,7 +896,6 @@ struct Index {
               void this.presentLocalImagePicker(true);
             }
           })
-            .opacity(this.supportsMediaSource(RealtimeMediaSource.IMAGE) ? 1 : 0.35)
             .margin({ top: 14 })
 
           SdkFeatureCard({

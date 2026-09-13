@@ -13,17 +13,16 @@ function fixture(cleanup) {
   const events = [], states = [], errors = [], logs = [];
   const load = loadEts({ XmaxLogger: { XmaxLogger: { error: (...args) => logs.push(args) } } });
   const { XmaxError, XmaxErrorCode: Code, XmaxErrorSeverity: Severity } = load('foundation/errors/XmaxError.ets');
-  const { RealtimeState, RealtimeConnectionState: State, RealtimeDisconnectionReason: Reason } = load('service/realtime/RealtimeState.ets');
+  const { RealtimeState, RealtimeConnectionState: State, RealtimeReason: Reason } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeErrorManager } = load('core/realtime/XmaxRealtimeErrorManager.ets');
   const { RealtimeCoordinator, RealtimeOperationKind: Kind, RealtimeTerminationScope: Scope } =
     load('core/realtime/RealtimeCoordinator.ets');
   const handler = new XmaxRealtimeErrorManager();
-  handler.setListener(error => { events.push('error'); errors.push(error); });
   const coordinator = new RealtimeCoordinator(handler, async (scope, task) => {
     events.push(`cleanup:${scope}:${task}`);
     return cleanup?.(scope, task);
-  });
-  coordinator.setStateListener(state => { states.push(state); events.push(`state:${state.connectionState}`); });
+  }, () => true);
+  coordinator.setStateListener(state => { states.push(state); events.push(`state:${state.connectionState}`); if (state.reason?.error) { events.push('error'); errors.push(state.reason.error); } });
   return { coordinator, handler, Kind, Scope, State, Reason, RealtimeState, XmaxError, Code, Severity,
     events, states, errors, logs };
 }
@@ -37,22 +36,22 @@ test('orientation disconnection reason survives a synchronous close escalation a
   f.coordinator.setStateListener(state => {
     states.push(state);
     if (state.connectionState === f.State.DISCONNECTING) {
-      void f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
+      void f.coordinator.terminate(f.Scope.ALL);
     }
   });
-  await f.coordinator.terminate(f.Scope.CONNECTION, f.State.DISCONNECTED, f.Reason.CAMERA_ORIENTATION_CHANGED);
+  await f.coordinator.terminate(f.Scope.CONNECTION, f.Reason.ORIENTATION_CHANGED);
   assert.ok(f.events.includes(`cleanup:${f.Scope.ALL}:`));
-  assert.deepEqual(states.slice(-2).map(state => [state.connectionState, state.disconnectionReason]), [
-    [f.State.DISCONNECTING, f.Reason.CAMERA_ORIENTATION_CHANGED],
-    [f.State.DISCONNECTED, f.Reason.CAMERA_ORIENTATION_CHANGED]
+  assert.deepEqual(states.slice(-2).map(state => [state.connectionState, state.reason]), [
+    [f.State.DISCONNECTING, undefined],
+    [f.State.IDLE, f.Reason.ORIENTATION_CHANGED]
   ]);
   await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
     f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'next'), token);
   });
-  assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+  assert.equal(f.coordinator.currentState.reason, undefined);
 });
 
-test('normal disconnect and close report NORMAL, while stopped generation and ERROR have no reason', async () => {
+test('normal cleanup reports NORMAL and failed cleanup carries the original error', async () => {
   for (const scope of ['CONNECTION', 'ALL']) {
     const f = fixture();
     await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
@@ -60,20 +59,20 @@ test('normal disconnect and close report NORMAL, while stopped generation and ER
     });
     await f.coordinator.terminate(f.Scope.GENERATION);
     assert.equal(f.coordinator.currentState.connectionState, f.State.CONNECTED);
-    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
-    await f.coordinator.terminate(f.Scope[scope], f.State.DISCONNECTED);
-    assert.deepEqual(f.states.slice(-2).map(state => [state.connectionState, state.disconnectionReason]), [
-      [f.State.DISCONNECTING, f.Reason.NORMAL],
-      [f.State.DISCONNECTED, f.Reason.NORMAL]
+    assert.equal(f.coordinator.currentState.reason, f.Reason.NORMAL);
+    await f.coordinator.terminate(f.Scope[scope]);
+    assert.deepEqual(f.states.slice(-2).map(state => [state.connectionState, state.reason]), [
+      [f.State.DISCONNECTING, undefined],
+      [scope === 'ALL' ? f.State.IDLE : f.State.READY, f.Reason.NORMAL]
     ]);
     await f.coordinator.run(f.Kind.CONNECTION, f.Scope.CONNECTION, async token => {
       f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'next'), token);
     });
-    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
+    assert.equal(f.coordinator.currentState.reason, undefined);
     await f.coordinator.terminateWithError(new f.XmaxError(f.Code.TIMEOUT, 'connection failed'), f.Scope.CONNECTION);
-    assert.equal(f.coordinator.currentState.connectionState, f.State.ERROR);
-    assert.equal(f.coordinator.currentState.disconnectionReason, undefined);
-    assert.equal(f.states.at(-2).disconnectionReason, undefined);
+    assert.equal(f.coordinator.currentState.connectionState, f.State.READY);
+    assert.equal(f.coordinator.currentState.reason.error.message, 'connection failed');
+    assert.equal(f.states.at(-2).reason, undefined);
   }
 });
 
@@ -100,21 +99,21 @@ test('close invalidates stale commits and awaits non-cancellable resource creati
     await creation.promise;
     f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'old-session'), current);
   }));
-  const closing = f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
-  assert.equal(f.coordinator.terminate(f.Scope.CONNECTION, f.State.DISCONNECTED), closing);
+  const closing = f.coordinator.terminate(f.Scope.ALL);
+  assert.equal(f.coordinator.terminate(f.Scope.CONNECTION), closing);
   await settle();
   assert.equal(f.events.some(event => event.startsWith('cleanup:')), false);
   creation.resolve();
   await closing;
   assert.equal((await running).error.code, f.Code.CANCELLED);
-  assert.equal(f.coordinator.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
   assert.equal(f.states.some(state => state.connectionState === f.State.CONNECTED), false);
   assert.throws(() => f.coordinator.commit(new f.RealtimeState(f.State.GENERATING), token),
     { code: f.Code.CANCELLED });
   await f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => {});
 });
 
-test('fatal generation failure narrows cleanup, commits ERROR and then reports the original error', async () => {
+test('fatal generation failure closes the connection and reports the original error in READY', async () => {
   const f = fixture();
   const original = new f.XmaxError(f.Code.TIMEOUT, 'first frame', 1004, 504);
   await assert.rejects(f.coordinator.run(f.Kind.GENERATION, f.Scope.CONNECTION, async token => {
@@ -122,7 +121,7 @@ test('fatal generation failure narrows cleanup, commits ERROR and then reports t
     token.setFailureScope(f.Scope.GENERATION);
     throw original;
   }), error => error === original);
-  assert.deepEqual(f.events.slice(-3), [`cleanup:${f.Scope.GENERATION}:`, `state:${f.State.ERROR}`, 'error']);
+  assert.deepEqual(f.events.slice(-3), [`cleanup:${f.Scope.CONNECTION}:`, `state:${f.State.READY}`, 'error']);
   assert.deepEqual(f.errors, [original]);
   assert.equal(f.coordinator.currentState.sessionId, 'session');
 });
@@ -154,15 +153,15 @@ test('concurrent stop/disconnect/close share one task and upgrade cleanup while 
   const f = fixture(async scope => { if (scope === 0) await cleanup.promise; return 'session'; });
   const stopping = f.coordinator.terminate(f.Scope.GENERATION);
   await settle();
-  assert.equal(f.coordinator.terminate(f.Scope.CONNECTION, f.State.DISCONNECTED), stopping);
-  assert.equal(f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED), stopping);
+  assert.equal(f.coordinator.terminate(f.Scope.CONNECTION), stopping);
+  assert.equal(f.coordinator.terminate(f.Scope.ALL), stopping);
   await assert.rejects(f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => {}),
     { code: f.Code.INVALID_CONFIGURATION });
   cleanup.resolve();
   await stopping;
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
     [`cleanup:${f.Scope.GENERATION}:`, `cleanup:${f.Scope.ALL}:`]);
-  assert.equal(f.coordinator.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
   assert.equal(f.coordinator.currentState.sessionId, 'session');
   await f.coordinator.run(f.Kind.MEDIA, f.Scope.ALL, async () => {});
 });
@@ -175,30 +174,32 @@ test('a synchronous final-state listener can escalate to close without losing th
   let closing;
   f.coordinator.setStateListener(state => {
     if (state.connectionState === f.State.CONNECTED) {
-      closing = f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
-    }
-    if (state.connectionState === f.State.DISCONNECTED) {
-      f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
+      closing = f.coordinator.terminate(f.Scope.ALL);
     }
   });
   const stopping = f.coordinator.terminate(f.Scope.GENERATION);
   await stopping;
-  assert.equal(closing, stopping);
+  assert.notEqual(closing, stopping);
+  await closing;
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
     [`cleanup:${f.Scope.GENERATION}:task`, `cleanup:${f.Scope.ALL}:`]);
-  assert.equal(f.coordinator.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
 });
 
-test('fatal callback can close resources; explicit disconnect wins and error is reported once', async () => {
+test('failure state callback can close resources after internal cleanup has completed', async () => {
   const f = fixture();
   const original = new f.XmaxError(f.Code.RTC_ERROR, 'lost');
-  f.handler.setListener(error => {
-    f.errors.push(error);
-    f.coordinator.terminate(f.Scope.ALL, f.State.DISCONNECTED);
+  let closing;
+  f.coordinator.setStateListener(state => {
+    if (state.reason?.error && !closing) {
+      f.errors.push(state.reason.error);
+      closing = f.coordinator.terminate(f.Scope.ALL);
+    }
   });
   await f.coordinator.terminateWithError(original, f.Scope.GENERATION);
+  await closing;
   assert.deepEqual(f.errors, [original]);
-  assert.equal(f.coordinator.currentState.connectionState, f.State.DISCONNECTED);
+  assert.equal(f.coordinator.currentState.connectionState, f.State.IDLE);
   assert.deepEqual(f.events.filter(event => event.startsWith('cleanup:')),
     [`cleanup:${f.Scope.GENERATION}:`, `cleanup:${f.Scope.ALL}:`]);
 });
@@ -213,6 +214,6 @@ test('completed tokens cannot commit and equal states do not notify twice', asyn
     f.coordinator.commit(new f.RealtimeState(f.State.CONNECTED, 'session'), token);
   });
   assert.equal(f.states.length, 2);
-  assert.throws(() => f.coordinator.commit(new f.RealtimeState(f.State.ERROR), retained),
+  assert.throws(() => f.coordinator.commit(new f.RealtimeState(f.State.READY), retained),
     { code: f.Code.CANCELLED });
 });

@@ -385,21 +385,23 @@ input stream or starting generation.
 
 | Listener | Purpose |
 | --- | --- |
-| `setStateListener` | Observe pipeline states during real-time generation. |
-| `setErrorListener` | Handle fatal errors that prevent the realtime workflow from continuing. |
-| `setCameraPreviewReadyListener` | Notify when the initial local camera frame is ready for preview rendering. |
+| `setStateListener` | Observe preparation, preview readiness, connection, generation and failure reasons. |
 | `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
 | `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
+
+Camera preview enters `READY` after a valid frame and view binding. Disconnect
+returns to `READY` when local media remains available; closing returns to `IDLE`.
+Normal termination, orientation changes and failures are carried in `state.reason`.
 
 For example, monitor state changes and errors:
 
 ```ts
 realtime.setStateListener((state) => {
   console.info(`State: ${state.connectionState}`);
-});
-
-realtime.setErrorListener((error) => {
-  console.error(`Error: ${error.code} ${error.message}`);
+  const error = state.reason?.error;
+  if (error !== undefined) {
+    console.error(`Error: ${error.code} ${error.message}`);
+  }
 });
 ```
 

@@ -4,7 +4,7 @@ import {
   CameraPosition,
   RealtimeConfiguration,
   RealtimeConnectionState,
-  RealtimeDisconnectionReason,
+  RealtimeReasonKind,
   RealtimeContext,
   RealtimeMediaStream,
   RealtimeModels,
@@ -154,48 +154,42 @@ export class RealtimeViewModel {
       );
       connectingManager = manager;
       this.realtimeManager = manager;
-      manager.setCameraPreviewReadyListener((): void => {
-        if (this.realtimeManager === manager) {
-          this.state.isLocalPreviewLoading = false;
-        }
-      });
-      manager.setErrorListener((error: XmaxError): void => {
-        if (this.realtimeManager === manager) {
-          // 监听器只接收致命错误；具体调用失败仍在各自 catch 中处理。
-          this.state.errorMessage = error.message;
-          this.state.isGenerationStarting = false;
-          this.state.isMoxGenerationActive = false;
-          this.state.remoteVideoTrack = null;
-        }
-      });
       manager.setStateListener((state: RealtimeState): void => {
         if (this.realtimeManager !== manager) {
           return;
         }
-        if (state.disconnectionReason === RealtimeDisconnectionReason.CAMERA_ORIENTATION_CHANGED) {
-          if (state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+        const terminal: boolean = state.connectionState === RealtimeConnectionState.READY ||
+          state.connectionState === RealtimeConnectionState.IDLE;
+        if (terminal && state.reason !== undefined) {
+          if (state.reason.kind === RealtimeReasonKind.ORIENTATION_CHANGED || state.reason.error !== undefined) {
             this.generationRevision++;
             this.clearGenerationSelection();
             this.remoteStream = null;
-          } else if (state.connectionState === RealtimeConnectionState.DISCONNECTED &&
-            this.state.connectionState !== RealtimeConnectionState.DISCONNECTED) {
+          }
+          if (state.reason.error !== undefined) {
+            this.state.errorMessage = state.reason.error.message;
+          } else if (state.reason.kind === RealtimeReasonKind.ORIENTATION_CHANGED) {
             this.state.errorMessage = '';
             this.onMessage?.('屏幕方向已切换，生成已断开，请重新开始');
           }
+        }
+        this.state.isLocalPreviewLoading = state.connectionState === RealtimeConnectionState.PREPARING;
+        if (state.connectionState === RealtimeConnectionState.IDLE) {
+          this.state.localVideoTrack = null;
+          this.localStream = null;
         }
         if (state.connectionState !== RealtimeConnectionState.GENERATING) {
           this.state.remoteVideoTrack = null;
         }
         this.state.connectionState = state.connectionState;
-        if (state.connectionState === RealtimeConnectionState.GENERATING ||
-          state.connectionState === RealtimeConnectionState.DISCONNECTING ||
-          state.connectionState === RealtimeConnectionState.DISCONNECTED ||
-          state.connectionState === RealtimeConnectionState.ERROR) {
+        if (state.connectionState === RealtimeConnectionState.CONNECTING) {
+          this.state.isGenerationStarting = true;
+        }
+        if (terminal || state.connectionState === RealtimeConnectionState.GENERATING ||
+          state.connectionState === RealtimeConnectionState.DISCONNECTING) {
           this.state.isGenerationStarting = false;
         }
-        if (state.connectionState === RealtimeConnectionState.DISCONNECTING ||
-          state.connectionState === RealtimeConnectionState.DISCONNECTED ||
-          state.connectionState === RealtimeConnectionState.ERROR) {
+        if (terminal || state.connectionState === RealtimeConnectionState.DISCONNECTING) {
           this.state.isMoxGenerationActive = false;
         }
       });
@@ -325,9 +319,7 @@ export class RealtimeViewModel {
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     let closePromise: Promise<void> | null = null;
     if (manager !== null) {
-      manager.setCameraPreviewReadyListener(null);
       manager.setStateListener(null);
-      manager.setErrorListener(null);
       closePromise = manager.close();
     }
     this.realtimeManager = null;
@@ -359,7 +351,7 @@ export class RealtimeViewModel {
       await closePromise;
     }
     if (this.realtimeManager === null) {
-      this.state.connectionState = RealtimeConnectionState.DISCONNECTED;
+      this.state.connectionState = RealtimeConnectionState.IDLE;
     }
   }
 
