@@ -338,11 +338,7 @@ export class MediaSourceController implements MediaSourceControlling {
       new ImageSize(requestedFormat.width, requestedFormat.height)
     );
 
-    return new RealtimeVideoFormat(
-      targetSize.width,
-      targetSize.height,
-      requestedFormat.fps
-    );
+    return requestedFormat.resized(targetSize.width, targetSize.height);
   }
 
   /**

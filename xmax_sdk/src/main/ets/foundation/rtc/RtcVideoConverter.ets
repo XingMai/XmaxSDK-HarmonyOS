@@ -2,6 +2,7 @@ import {
   MirrorType,
   RenderMode,
   VideoBufferType,
+  VideoEncodePreference,
   VideoCanvas,
   VideoFrameData,
   VideoPixelFormat as RtcVideoPixelFormat,
@@ -18,9 +19,24 @@ import { VideoFramePlane } from '../media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../media/video/VideoPixelFormat';
 import { VideoRotation } from '../media/video/VideoRotation';
 
+import { VideoEncoderPreference } from './VideoEncodingConfiguration';
+
 const EMPTY_SEI_DATA: Uint8Array = new Uint8Array();
 
 export class RtcVideoConverter {
+  static convertEncoderPreference(preference: VideoEncoderPreference): VideoEncodePreference {
+    switch (preference) {
+      case VideoEncoderPreference.AUTO:
+        return VideoEncodePreference.kVideoEncodePreferenceBalance;
+      case VideoEncoderPreference.MAINTAIN_FRAMERATE:
+        return VideoEncodePreference.kVideoEncodePreferenceFramerate;
+      case VideoEncoderPreference.MAINTAIN_QUALITY:
+        return VideoEncodePreference.kVideoEncodePreferenceQuality;
+      default:
+        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Unsupported video encoder preference');
+    }
+  }
+
   static convertFrame(
     frame: VideoFrame,
     seiData?: Uint8Array

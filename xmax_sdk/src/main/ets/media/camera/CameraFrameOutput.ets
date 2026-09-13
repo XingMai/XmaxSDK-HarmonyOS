@@ -131,8 +131,8 @@ export class CameraFrameOutput {
     const shortSide: number = Math.min(format.width, format.height);
     const longSide: number = Math.max(format.width, format.height);
     return currentDisplay.width > currentDisplay.height ?
-      new RealtimeVideoFormat(longSide, shortSide, format.fps) :
-      new RealtimeVideoFormat(shortSide, longSide, format.fps);
+      format.resized(longSide, shortSide) :
+      format.resized(shortSide, longSide);
   }
 
   private configureNative(

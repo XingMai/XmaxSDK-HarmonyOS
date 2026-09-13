@@ -328,6 +328,33 @@ the selected model's pixel bounds and 32-pixel alignment. Use the returned track
 `videoFormat` to inspect the resolved dimensions; for example, `1024 × 1920` is
 retained for `x2.0-pro` and reduced to `800 × 1536` for `x2.0`.
 
+## Upload encoding configuration
+
+`RealtimeVideoFormat` also accepts `minimumBitrate`, `maximumBitrate` (in kbps),
+and `encoderPreference`. These settings apply to camera, video and image streams:
+
+```ts
+import { RealtimeVideoFormat, RealtimeVideoEncoderPreference } from '@xmax/sdk';
+
+const format = new RealtimeVideoFormat(
+  1024, 1920, 30,
+  1500, 6000,
+  RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE
+);
+const stream = await realtime.createLocalCameraStream(format);
+```
+
+Omit either bitrate (or pass `undefined`) to calculate that bound from the final
+upload dimensions and frame rate, using the same rules as iOS. A minimum of `0`
+disables the lower bound; an explicit maximum must be positive. The minimum must
+not exceed the maximum, including after SDK defaults are applied. Invalid
+configurations throw `INVALID_CONFIGURATION`.
+
+`AUTO` (default) balances frame rate and resolution, `MAINTAIN_FRAMERATE` prioritizes
+frame rate, and `MAINTAIN_QUALITY` prioritizes resolution. Resizing and camera
+orientation changes preserve these settings. To change encoding settings, recreate
+the local stream after disconnecting, as shown above.
+
 ## Stop and release resources
 
 ```ts

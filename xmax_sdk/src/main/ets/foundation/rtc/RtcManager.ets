@@ -25,7 +25,6 @@ import {
   UserInfo,
   VideoCanvas,
   VideoApplyRotation,
-  VideoEncodePreference,
   VideoEncoderConfig,
   VideoFrameData,
   VideoFrameInfo,
@@ -219,7 +218,7 @@ export class RtcManager implements RtcManaging {
       frame_rate: configuration.frameRate,
       min_bitrate: configuration.minimumBitrate,
       max_bitrate: configuration.maximumBitrate,
-      encoder_preference: VideoEncodePreference.kVideoEncodePreferenceFramerate
+      encoder_preference: RtcVideoConverter.convertEncoderPreference(configuration.encoderPreference)
     };
     this.checkResult(
       engine.setVideoEncoderConfig(encoderConfiguration),

@@ -41,8 +41,9 @@ function fixture(position = 'back') {
       async release() { calls.push('release output'); }
     })
   }, { size: { width: 1920, height: 1440 } }, position, () => {});
-  const format = { width: 1024, height: 1920, fps: 30 };
-  return { output, format, configurations, calls, errors,
+  const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
+  const format = new Format(1024, 1920, 30, 1500, 4000, 'MaintainQuality');
+  return { output, format, Format, configurations, calls, errors,
     rotate(value, id = 1) { displayRotation = value; listener?.(id); },
     failConfigure(value) { configureFailure = value; },
     failOff() { offFailure = true; }
@@ -55,13 +56,19 @@ test('display rotation updates native pixels in both camera orientations and swa
     const expectedAngles = position === 'front' ? [270, 0, 90, 180] : [90, 180, 270, 0];
     try {
       f.output.configure(f.format, 30);
-      for (const rotation of [1, 2, 3, 0]) f.rotate(rotation);
+      for (const rotation of [1, 2, 3, 0]) {
+        f.rotate(rotation);
+        const actual = f.output.currentVideoFormat;
+        assert.equal(actual.minimumBitrate, 1500);
+        assert.equal(actual.maximumBitrate, 4000);
+        assert.equal(actual.encoderPreference, 'MaintainQuality');
+      }
       assert.deepEqual(f.configurations, [0, 1, 2, 3, 0].map(rotation =>
         [rotation % 2 ? 1920 : 1024, rotation % 2 ? 1024 : 1920, expectedAngles[rotation], 30, 30]));
       f.rotate(0); // A display change without a new angle must not reset the pipeline.
       f.rotate(1, 2); // Another display must not reconfigure this camera.
       assert.equal(f.configurations.length, 5);
-      const updated = { width: 832, height: 1472, fps: 24 };
+      const updated = new f.Format(832, 1472, 24);
       f.output.configure(updated, 30);
       f.rotate(2);
       assert.deepEqual(f.configurations.at(-1), [832, 1472, expectedAngles[2], 24, 30]);

@@ -232,11 +232,7 @@ export class ImageSourceController implements ImageSourceControlling {
       new ImageSize(requestedFormat.width, requestedFormat.height)
     );
 
-    const resolvedFormat: RealtimeVideoFormat = new RealtimeVideoFormat(
-      targetSize.width,
-      targetSize.height,
-      requestedFormat.fps
-    );
+    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(targetSize.width, targetSize.height);
     resolvedFormat.validate();
 
     return resolvedFormat;

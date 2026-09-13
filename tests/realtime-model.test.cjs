@@ -210,3 +210,18 @@ test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () =
   selection.initialize();
   assert.equal(selected, 'x2.0-pro');
 });
+
+for (const name of ['x2.0', 'x2.0-pro']) {
+  test(`${name} camera/image/video resolved formats preserve upload encoding settings`, async () => {
+    const f = mediaFixture(), media = f.createMedia(name);
+    const expected = new f.MediaService(f.Models.realtime(name)).resolveModelInputSize(new f.Size(1024, 1920));
+    const requested = new f.Format(1024, 1920, 30, 1500, 6000, 'MaintainQuality');
+    for (const source of ['Camera', 'Image', 'Video']) {
+      const stream = source === 'Camera' ? await media.createLocalCameraStream(requested, 'front') :
+        await media[`createLocal${source}Stream`]('source', requested);
+      assert.deepEqual(stream.videoTrack.videoFormat,
+        new f.Format(expected.width, expected.height, 30, 1500, 6000, 'MaintainQuality'));
+      await media.stopLocalStream();
+    }
+  });
+}

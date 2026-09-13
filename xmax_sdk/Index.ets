@@ -38,7 +38,8 @@ export {
   RealtimePerformanceStatus
 } from './src/main/ets/service/realtime/RealtimePerformanceAlarm';
 export {
-  RealtimeVideoFormat
+  RealtimeVideoFormat,
+  RealtimeVideoEncoderPreference
 } from './src/main/ets/service/realtime/RealtimeVideoFormat';
 export {
   RealtimeVideoTrack

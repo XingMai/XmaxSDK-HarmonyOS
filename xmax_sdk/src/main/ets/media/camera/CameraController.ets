@@ -458,7 +458,7 @@ export class CameraController {
     const targetSize: ImageSize = this.mediaService.resolveModelInputSize(
       new ImageSize(videoFormat.width, videoFormat.height)
     );
-    return new RealtimeVideoFormat(targetSize.width, targetSize.height, videoFormat.fps);
+    return videoFormat.resized(targetSize.width, targetSize.height);
   }
 
   private resetPreviewReadiness(): void {

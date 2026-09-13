@@ -16,7 +16,8 @@ function fixture(extraStubs = {}) {
   });
   const { CameraFrameStatistics } = load('media/camera/CameraFrameStatistics.ets');
   const statistics = new CameraFrameStatistics();
-  const format = { width: 1024, height: 1920, fps: 30 };
+  const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
+  const format = new Format(1024, 1920, 30);
   statistics.restart();
   return { statistics, format, load, logs,
     time(value) { now = value; }, enable(value) { enabled = value; } };
