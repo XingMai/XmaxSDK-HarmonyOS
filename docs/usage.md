@@ -320,16 +320,17 @@ profiles until one supports 30 fps. If none does, it falls back to 4:3 profiles
 starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
 Native rotation and cropping still produce the model's required input dimensions.
 
-When the camera output switches between portrait and landscape during connection
-or generation startup, or during active generation, the SDK automatically
-disconnects and retains the local preview. It cancels pending operations with
+`XmaxVideoView` and `XmaxRealtimeVideoView` observe the orientation of their
+window for camera, image, and video-file input. Switching between portrait and
+landscape while `CONNECTING`, `CONNECTED`, or `GENERATING` automatically
+disconnects and retains the local preview. The SDK cancels pending operations with
 `CANCELLED`, stops the old task, and does not automatically reconnect or send the
 new orientation to the old task through `change_condition`. Frames queued with
 the previous dimensions are discarded before pushing to RTC.
 
 After cleanup, the state returns to `READY` when local media remains available,
 or `IDLE` otherwise. `state.reason` is `RealtimeReason.ORIENTATION_CHANGED` for
-camera rotation and `RealtimeReason.NORMAL` for normal cleanup. Applications can
+orientation changes and `RealtimeReason.NORMAL` for normal cleanup. Applications can
 use the existing state listener to clear pending generation intent and display a
 message; no app-level rotation listener or disconnect call is required.
 `DISCONNECTING` carries no reason. Starting a new operation clears the old reason.
@@ -342,9 +343,11 @@ realtime.setStateListener((state: RealtimeState): void => {
 });
 ```
 
-Rotation during local preview or while connected without a generation keeps the
-session and updates the output dimensions. This policy follows camera output
-orientation; rotating the UI alone does not disconnect image or video-file input.
+Rotation during local preview does not disconnect. Initial view attachment and
+rotation within the same portrait/landscape axis do not trigger disconnection.
+Camera output dimensions follow the display orientation and are synchronized
+before reconnecting; image and video-file input retain their source dimensions.
+The camera also detects capture orientation changes without an attached SDK view.
 
 `switchCamera()` changes front/back position while preserving the local track and
 its frame rate and orientation-dependent dimensions. During generation, the SDK stops the current task,

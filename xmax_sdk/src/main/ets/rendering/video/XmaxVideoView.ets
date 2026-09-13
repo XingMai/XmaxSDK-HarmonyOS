@@ -1,4 +1,5 @@
 import { image } from '@kit.ImageKit';
+import { VideoOrientationObserver } from './VideoOrientationObserver';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
@@ -33,6 +34,9 @@ export struct XmaxVideoView {
   trajectoryRenderer: TrajectoryEffectRendering =
     new DefaultTrajectoryEffectRenderer();
 
+  private readonly orientationObserver: VideoOrientationObserver = new VideoOrientationObserver();
+  private isVisible: boolean = false;
+
   // 渲染资源
   @State private viewId: string = `xmax_video_view_${nextVideoViewId++}`;
   private currentTrack?: RealtimeVideoTrack;
@@ -49,11 +53,15 @@ export struct XmaxVideoView {
   @State private videoFormat: RealtimeVideoFormat | undefined = undefined;
 
   aboutToAppear(): void {
+    this.isVisible = true;
     this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
     this.updatePreviewRatio();
+    this.observeOrientation();
   }
 
   aboutToDisappear(): void {
+    this.isVisible = false;
+    this.orientationObserver.stop();
     this.detachVideo();
   }
 
@@ -65,10 +73,19 @@ export struct XmaxVideoView {
     }
     this.detachVideo();
     this.currentTrack = track;
+    this.observeOrientation();
     this.previewFrame = undefined;
     this.updatePreviewRatio();
     // 每个轨道使用新的 Surface，旧 onLoad/onDestroy 不能影响新绑定。
     this.viewId = `xmax_video_view_${nextVideoViewId++}`;
+  }
+
+  private observeOrientation(): void {
+    this.orientationObserver.stop();
+    if (this.isVisible && this.currentTrack !== undefined) {
+      const query = this.getUIContext().getMediaQuery().matchMediaSync('(orientation: landscape)');
+      this.orientationObserver.start(this.currentTrack, query);
+    }
   }
 
   private updatePreviewRatio(): void {

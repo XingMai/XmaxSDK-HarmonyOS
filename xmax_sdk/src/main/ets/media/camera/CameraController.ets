@@ -114,6 +114,17 @@ export class CameraController {
     return this.createStream(videoFormat, position, useMicrophone);
   }
 
+  /** 在窗口转屏和建连前同步 Native 方向，不等待下一帧才更新轨道规格。 */
+  updateOrientation(): void {
+    const track = this.activeTrack;
+    const format = track?.videoFormat;
+    const output = this.frameOutput;
+    if (track !== null && format !== undefined && output !== null) {
+      output.configure(format, CAMERA_CAPTURE_FRAME_RATE);
+      this.synchronizeVideoFormat(track, output.currentVideoFormat ?? format);
+    }
+  }
+
   /** 在连接时启动 RTC 内部麦克风采集，不开启本地回放。 */
   startMicrophoneCapture(): void {
     if (!this.useMicrophone || this.isMicrophoneCapturing) {

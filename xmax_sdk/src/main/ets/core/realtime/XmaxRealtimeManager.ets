@@ -1,3 +1,4 @@
+import { RealtimeVideoTrack, setRealtimeVideoTrackOrientationHandler, updateRealtimeVideoTrackOrientation } from '../../service/realtime/RealtimeVideoTrack';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
@@ -239,6 +240,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const stream = await this.mediaController.createLocalCameraStream(videoFormat, position, useMicrophone);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(0);
         this.mediaController.setCameraPreviewReadyHandler((): void => {
           this.coordinator.localPreviewDidBecomeReady((): boolean =>
@@ -254,7 +256,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalCameraStream();
+        if (track !== null && this.mediaController.currentTrack !== track) {
+          setRealtimeVideoTrackOrientationHandler(track);
+        }
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
       });
@@ -302,6 +308,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(1);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;
@@ -314,7 +321,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalVideoStream();
+        if (track !== null && this.mediaController.currentTrack !== track) {
+          setRealtimeVideoTrackOrientationHandler(track);
+        }
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
       });
@@ -336,6 +347,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const stream = await this.mediaController.createLocalImageStream(source, videoFormat);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(0);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
         return stream;
@@ -348,7 +360,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalImageStream();
+        if (track !== null && this.mediaController.currentTrack !== track) {
+          setRealtimeVideoTrackOrientationHandler(track);
+        }
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
       });
@@ -369,8 +385,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       current.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Realtime connection is already open');
     }
+    if (!this.mediaController.owns(localStream)) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'The local stream must be created and started by this realtime manager');
+    }
+    this.mediaController.updateCameraOrientation();
+    token.ensureCurrent();
     const videoFormat: RealtimeVideoFormat | undefined = localStream.videoTrack?.videoFormat;
-    if (videoFormat === undefined || !this.mediaController.owns(localStream)) {
+    if (videoFormat === undefined) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'The local stream must be created and started by this realtime manager');
     }
@@ -392,6 +414,40 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return remoteStream;
   }
 
+  private observeLocalOrientation(stream: RealtimeMediaStream): void {
+    if (stream.videoTrack === undefined) {
+      return;
+    }
+    const track = RealtimeVideoTrack.resolve(stream.videoTrack);
+    setRealtimeVideoTrackOrientationHandler(track, (): void => {
+      if (this.mediaController.currentTrack === track && !this.coordinator.isClosing) {
+        this.disconnectForOrientationChange();
+        try {
+          this.mediaController.updateCameraOrientation();
+        } catch (error) {
+          this.handleRuntimeError(XmaxError.from(error), RealtimeTerminationScope.ALL);
+        }
+      }
+    });
+  }
+
+  /** 在新方向帧进入链路前停止旧任务，断开收尾仍由 Coordinator 统一完成。 */
+  private disconnectForOrientationChange(): void {
+    const current: RealtimeConnectionState = this.currentState.connectionState;
+    if (current === RealtimeConnectionState.DISCONNECTING) {
+      return;
+    }
+    void this.disconnect(RealtimeReason.ORIENTATION_CHANGED)
+      .catch((error: Object): void => this.logCleanupFailure('转屏后断开实时连接失败', error));
+    if (this.currentState.connectionState === RealtimeConnectionState.DISCONNECTING) {
+      try {
+        this.generationManager.reset();
+      } catch (error) {
+        this.logCleanupFailure('转屏后停止生成失败', error);
+      }
+    }
+  }
+
   private handleCameraVideoFormatChange(format: RealtimeVideoFormat): void {
     const current: RealtimeConnectionState = this.currentState.connectionState;
     if (current === RealtimeConnectionState.DISCONNECTING) {
@@ -400,18 +456,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const previous: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
     const orientationChanged: boolean = previous !== undefined &&
       (previous.width > previous.height) !== (format.width > format.height);
+    const track = this.mediaController.currentTrack;
+    if (orientationChanged && track !== null) {
+      updateRealtimeVideoTrackOrientation(track, format.width > format.height, false);
+    }
+    // 建连前主动同步只更新规格；已有连接或正在建连时才终止旧链路。
     if (orientationChanged && (current === RealtimeConnectionState.GENERATING ||
-      current === RealtimeConnectionState.CONNECTING ||
-      this.coordinator.hasOperation(RealtimeOperationKind.GENERATION) ||
-      this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH))) {
-      // 在新方向的帧进入生成链路前取消操作，不向旧任务发送尺寸更新。
-      void this.disconnect(RealtimeReason.ORIENTATION_CHANGED)
-        .catch((error: Object): void => this.logCleanupFailure('相机转屏后断开实时连接失败', error));
-      try {
-        this.generationManager.reset();
-      } catch (error) {
-        this.logCleanupFailure('相机转屏后停止生成失败', error);
-      }
+      current === RealtimeConnectionState.CONNECTED ||
+      current === RealtimeConnectionState.CONNECTING)) {
+      this.disconnectForOrientationChange();
       return;
     }
     this.generationManager.updateVideoFormat(format);
@@ -576,6 +629,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
     if (scope === RealtimeTerminationScope.ALL) {
       this.mediaController.setCameraPreviewReadyHandler(null);
+      const track = this.mediaController.currentTrack;
+      if (track !== null) {
+        setRealtimeVideoTrackOrientationHandler(track);
+      }
       try {
         await this.mediaController.stopLocalStream();
       } catch (error) {

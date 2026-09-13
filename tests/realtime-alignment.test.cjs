@@ -45,6 +45,7 @@ function managerFixture(modelName = 'x2.0-pro') {
     async setLocalAudioVolume(value) { this.volume = value; }
     start(task, format) { this.interactionTask = task; this.interactionFormat = format; }
     stop() { this.interactionTask = null; }
+    updateCameraOrientation() {}
     startMicrophoneCapture() {}
     stopMicrophoneCapture() {}
     prepareForClose() {}
@@ -509,6 +510,7 @@ test('video view rebinds a changed track, clears frames, and ignores late surfac
   f.Registry.register(a, bindingA); f.Registry.register(b, bindingB);
   const view = new XmaxVideoView(), ready = [];
   view.onVideoReadyChanged = value => ready.push(value);
+  view.getUIContext = () => ({ getMediaQuery: () => ({ matchMediaSync: () => ({ matches: false, on() {}, off() {} }) }) });
   view.track = a; view.aboutToAppear();
   const oldView = view.viewId;
   view.attachVideo(oldView);
@@ -1154,22 +1156,27 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     await restart;
     assert.deepEqual(f.calls.starts.at(-1).format, landscape);
     assert.equal(f.manager.currentState.reason, undefined);
+    f.load('service/realtime/RealtimeVideoTrack.ets')
+      .updateRealtimeVideoTrackOrientation(local.videoTrack, true, true);
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
     await f.manager.disconnect();
     assert.equal(f.manager.currentState.reason, f.Reason.NORMAL);
     await f.manager.close();
   });
 }
 
-test('SDK camera rotation keeps preview and stopped connections, and unchanged orientation keeps generation', async () => {
+test('SDK camera rotation disconnects CONNECTED sessions and leaves local preview available', async () => {
   const f = managerFixture();
   const local = await f.create();
   f.rotateCamera();
   assert.equal(f.manager.currentState.connectionState, f.State.READY);
-  const remote = await f.manager.connect(local);
+  await f.manager.connect(local);
   const portrait = f.rotateCamera();
-  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
-  assert.deepEqual(remote.videoTrack.videoFormat, portrait);
-  await f.manager.startGeneration(new f.Context('test'));
+  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  await f.manager.startGeneration(local, new f.Context('test'));
   f.rotateCamera(portrait);
   assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
   await f.manager.disconnect();
@@ -1177,7 +1184,18 @@ test('SDK camera rotation keeps preview and stopped connections, and unchanged o
   f.rotateCamera();
   assert.equal(f.calls.updates.length, count);
   assert.equal(f.manager.currentState.connectionState, f.State.READY);
-  assert.deepEqual(f.calls.closed, ['session-1']);
+  assert.deepEqual(f.calls.closed, ['session-1', 'session-2']);
+  await f.manager.close();
+});
+
+test('generation synchronizes camera dimensions before connecting without cancelling its own operation', async () => {
+  const f = managerFixture(), local = await f.create();
+  const landscape = new f.Format(1920, 1024, 30);
+  f.media.updateCameraOrientation = () => f.rotateCamera(landscape);
+  await f.manager.startGeneration(local, new f.Context('current orientation'));
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.calls.starts[0].format, landscape);
+  assert.deepEqual(f.calls.closed, []);
   await f.manager.close();
 });
 
@@ -1215,6 +1233,13 @@ test('camera applies oriented output before connect and rejects queued frames fr
     assert.equal(observed[1].width, 1024);
     kit.emit({ format: { width: 1024, height: 1920 } });
     assert.equal(events.length, 4); // No duplicate encoding/signaling for subsequent frames.
+    events.length = 0;
+    camera.updateOrientation(); // Read the current display before another frame is delivered.
+    assert.deepEqual(events, [['encode', 1920, 1024], ['signal', 1920, 1024]]);
+    assert.equal(local.videoTrack.videoFormat.width, 1920);
+    assert.equal(observed.at(-1).width, 1920);
+    camera.updateOrientation();
+    assert.equal(events.length, 2);
     assert.deepEqual(errors, []);
   } finally {
     await camera.stopLocalCameraStream();
@@ -1743,4 +1768,53 @@ for (const phase of ['CONNECTING', 'CONNECTED', 'GENERATING']) {
     assert.equal(f.calls.starts.at(-1).context.prompt, 'second');
     await vm.suspend();
   });
+}
+
+for (const source of ['Camera', 'Image', 'Video']) {
+  for (const phase of ['READY', 'CONNECTING', 'CONNECTED', 'GENERATING']) {
+    test(`${source} window rotation in ${phase} follows the common orientation disconnect policy`, async () => {
+      const f = managerFixture(), states = [];
+      const { updateRealtimeVideoTrackOrientation: rotate } = f.load('service/realtime/RealtimeVideoTrack.ets');
+      if (source !== 'Camera') {
+        f.media[`createLocal${source}Stream`] = async () => {
+          f.media.currentTrack = new f.Track('local', new f.Format(1024, 1920, 30));
+          return new f.MediaStream('local', f.media.currentTrack);
+        };
+      }
+      const local = source === 'Camera' ? await f.create() : await f.manager[`createLocal${source}Stream`]('input');
+      const format = local.videoTrack.videoFormat;
+      let gate, pending;
+      if (phase === 'CONNECTING') {
+        gate = f.holdSession();
+        pending = outcome(f.manager.startGeneration(local, new f.Context('test')));
+      } else if (phase === 'CONNECTED') {
+        await f.manager.connect(local);
+      } else if (phase === 'GENERATING') {
+        await f.manager.startGeneration(local, new f.Context('test'));
+      }
+      f.manager.setStateListener(state => states.push(state));
+      rotate(local.videoTrack, false, false);
+      assert.equal(f.manager.currentState.connectionState, f.State[phase]);
+      rotate(local.videoTrack, true, true);
+      rotate(local.videoTrack, true, true);
+      if (gate) gate.resolve();
+      await settle();
+      if (pending) assert.equal((await pending).error.code, f.Code.CANCELLED);
+      assert.equal(f.manager.currentState.connectionState, f.State.READY);
+      assert.equal(f.manager.currentState.reason, phase === 'READY' ? undefined : f.Reason.ORIENTATION_CHANGED);
+      assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, phase === 'READY' ? 0 : 1);
+      assert.equal(f.media.currentTrack, local.videoTrack);
+      assert.equal(local.videoTrack.videoFormat, format); // A window event does not resize image/video input.
+      if (phase !== 'READY') assert.deepEqual(f.calls.closed, ['session-1']);
+      await f.manager.startGeneration(local, new f.Context('next'));
+      rotate(local.videoTrack, true, true); // Repeated old orientation must not cancel a fresh task.
+      assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+      await f.manager.close();
+      const replacement = await f.create();
+      await f.manager.startGeneration(replacement, new f.Context('replacement'));
+      rotate(local.videoTrack, false, true);
+      assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+      await f.manager.close();
+    });
+  }
 }

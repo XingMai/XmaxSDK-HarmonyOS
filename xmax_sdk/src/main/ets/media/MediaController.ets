@@ -207,6 +207,13 @@ export class MediaController implements MediaControlling {
   }
 
   /** @inheritdoc */
+  updateCameraOrientation(): void {
+    if (this.activeSource?.controller === this.cameraController) {
+      this.cameraController.updateOrientation();
+    }
+  }
+
+  /** @inheritdoc */
   startMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.startMicrophoneCapture();

@@ -5,6 +5,8 @@ import { RealtimeVideoFormat } from './RealtimeVideoFormat';
 class RealtimeVideoTrackMetadata {
   videoFormat?: RealtimeVideoFormat;
   position?: CameraPosition;
+  isLandscape?: boolean;
+  orientationChangeHandler?: () => void;
 
   constructor(
     videoFormat?: RealtimeVideoFormat,
@@ -69,5 +71,29 @@ export function updateRealtimeVideoTrackFormat(track: RealtimeVideoTrack, format
   const metadata: RealtimeVideoTrackMetadata | undefined = metadataByTrack.get(RealtimeVideoTrack.resolve(track));
   if (metadata !== undefined) {
     metadata.videoFormat = format;
+  }
+}
+
+/** 仅供 SDK 为本地轨道注册窗口方向变化处理。 */
+export function setRealtimeVideoTrackOrientationHandler(track: RealtimeVideoTrack,
+  handler?: () => void): void {
+  const metadata = metadataByTrack.get(RealtimeVideoTrack.resolve(track));
+  if (metadata !== undefined) {
+    metadata.orientationChangeHandler = handler;
+    metadata.isLandscape = undefined;
+  }
+}
+
+/** 首次绑定只记录方向；同一轨道的多个视图共享方向，重复事件不再触发。 */
+export function updateRealtimeVideoTrackOrientation(track: RealtimeVideoTrack,
+  isLandscape: boolean, notify: boolean): void {
+  const metadata = metadataByTrack.get(RealtimeVideoTrack.resolve(track));
+  if (metadata === undefined) {
+    return;
+  }
+  const changed: boolean = metadata.isLandscape !== undefined && metadata.isLandscape !== isLandscape;
+  metadata.isLandscape = isLandscape;
+  if (notify && changed) {
+    metadata.orientationChangeHandler?.();
   }
 }

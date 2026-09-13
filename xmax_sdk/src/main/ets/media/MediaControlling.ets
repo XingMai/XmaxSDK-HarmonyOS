@@ -57,6 +57,9 @@ export interface MediaControlling extends InteractionControlling {
     useMicrophone?: boolean
   ): Promise<RealtimeMediaStream>;
 
+  /** 按当前显示方向同步相机采集及轨道规格；其他来源不操作。 */
+  updateCameraOrientation(): void;
+
   /** 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。 */
   startMicrophoneCapture(): void;
 

@@ -51,6 +51,7 @@ function fixture(t, timingOptions = {}) {
     start(id) { this.task = id; }
     stop() { this.task = null; }
     setLocalAudioPreviewEnabled(enabled) { this.previewAudio = enabled; }
+    updateCameraOrientation() {}
     startMicrophoneCapture() {}
     stopMicrophoneCapture() {}
     prepareForClose() {}
