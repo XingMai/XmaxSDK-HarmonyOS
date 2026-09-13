@@ -23,7 +23,7 @@ export class XLabModelSelection {
     ),
     new XLabModelOption(
       RealtimeModel.X2_0_PRO,
-      'X2.0 Pro',
+      'X2.0-PRO',
       'RealtimeModel.X2_0_PRO'
     )
   ];
