@@ -204,7 +204,7 @@ struct ModelRegistryCard {
         .width('100%')
         .height(56)
         .padding({ left: 10, right: 8 })
-        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : '#06FFFFFF')
+        .backgroundColor(this.selectedModel === option.model ? '#108EF0C8' : Color.Transparent)
         .border({ width: this.selectedModel === option.model ? 1 : 0, color: '#298EF0C8' })
         .borderRadius(10)
         .onClick((): void => {
