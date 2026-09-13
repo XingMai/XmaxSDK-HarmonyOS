@@ -13,8 +13,8 @@ import {
   XLabModelSelection
 } from '../modules/xlrealtime/config/XLabModelSelection';
 
-// 与 iOS FeedTypography.visualScale 保持一致；菜单使用原生菜单字号。
-const FEED_FONT_SCALE: number = 1.15;
+// 首页统一字体倍率；菜单使用原生菜单字号。
+const FEED_FONT_SCALE: number = 1.05;
 
 @Component
 struct ConsoleTag {
