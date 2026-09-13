@@ -579,20 +579,35 @@ struct Index {
   }
 
   @Builder
+  private languageMenuHeader() {
+    Text('语言 / Language')
+      .fontSize(13)
+      .fontColor('#B3FFFFFF')
+      .padding({ top: 6, bottom: 6 })
+  }
+
+  @Builder
   private languageMenu() {
     Menu() {
-      MenuItemGroup({ header: '语言 / Language' }) {
+      MenuItemGroup({ header: this.languageMenuHeader }) {
         ForEach([XLabLanguage.SYSTEM, XLabLanguage.CHINESE, XLabLanguage.ENGLISH], (language: XLabLanguage) => {
           MenuItem({ content: this.languageTitle(language) })
             .selected(this.selectedLanguage === language)
-            .selectIcon(true)
-            .contentFontColor(this.selectedLanguage === language ? '#8EF0C8' : '#FFFFFF')
+            .selectIcon($r('app.media.language_checkmark'))
+            .contentFont({ size: 16 })
+            .contentFontColor('#FFFFFF')
+            .backgroundColor(Color.Transparent)
             .onClick((): void => {
               XLabLocalization.setLanguage(language);
             })
         })
       }
     }
+    .width(224)
+    .fontColor('#FFFFFF')
+    .backgroundColor('#2C2C2E')
+    .backgroundBlurStyle(BlurStyle.NONE)
+    .borderRadius(14)
   }
 
   private selectRealtimeModel(model: RealtimeModel): void {
@@ -778,7 +793,9 @@ struct Index {
             .accessibilityText(`${this.text('language_title')}: ${this.languageTitle(this.selectedLanguage)}`)
             .bindMenu(this.languageMenu, {
               placement: Placement.BottomRight,
-              backgroundColor: '#20242C'
+              backgroundColor: '#2C2C2E',
+              backgroundBlurStyle: BlurStyle.NONE,
+              borderRadius: 14
             })
           }
           .width('100%')
