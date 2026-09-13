@@ -14,7 +14,7 @@ import {
 } from '../modules/xlrealtime/config/XLabModelSelection';
 
 // 首页统一字体倍率；菜单使用原生菜单字号。
-const FEED_FONT_SCALE: number = 0.95;
+const FEED_FONT_SCALE: number = 1.0;
 
 @Component
 struct ConsoleTag {
