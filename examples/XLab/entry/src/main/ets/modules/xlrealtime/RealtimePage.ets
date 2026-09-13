@@ -449,10 +449,20 @@ export struct RealtimePage {
           .onClick((): void => {
             void this.switchCamera();
           })
+          RealtimeAudioControlsView({
+            state: this.state,
+            isCamera: true,
+            onOpenVolumeMenu: (): void => this.viewModel.refreshAudioVolumes(),
+            onRemoteVolumeChanged: (volume: number): void => {
+              void this.viewModel.setRemoteAudioVolume(volume);
+            }
+          })
+            .position({ right: 8, top: 76 })
         } else {
           if (!this.hasLocalImage()) {
             RealtimeAudioControlsView({
               state: this.state,
+              onOpenVolumeMenu: (): void => this.viewModel.refreshAudioVolumes(),
               onLocalVolumeChanged: (volume: number): void => {
                 void this.viewModel.setLocalAudioVolume(volume);
               },

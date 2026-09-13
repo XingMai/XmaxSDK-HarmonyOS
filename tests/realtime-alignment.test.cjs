@@ -918,9 +918,10 @@ test('XLab applies remembered volumes before local playback and restores both af
   assert.equal(f.stream.volume, 0.8);
 });
 
-test('either XLab slider unmutes both channels and restores the other remembered volume', async () => {
+test('either XLab video slider unmutes both channels and restores the other remembered volume', async () => {
   const f = exampleFixture(), vm = f.viewModel;
-  await vm.connect({});
+  f.media.createLocalVideoStream = async () => new f.MediaStream('local');
+  await vm.connect({}, 'video.mp4');
   await vm.setAudioMuted(true);
   await vm.setLocalAudioVolume(0.2);
   assert.equal(vm.state.isAudioMuted, false);
@@ -1671,3 +1672,39 @@ for (const action of ['disconnect', 'close', 'failure']) {
     await f.manager.close();
   });
 }
+
+
+test('XLab camera volume menu reads SDK defaults and preserves the selected volume after suspension', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  vm.refreshAudioVolumes();
+  assert.equal(vm.state.remoteAudioVolume, 0);
+  await vm.setRemoteAudioVolume(0.65);
+  assert.equal(f.manager.remoteAudioVolume, 0.65);
+  await vm.suspend();
+  await vm.resume({});
+  vm.refreshAudioVolumes();
+  assert.equal(vm.state.remoteAudioVolume, 0.65);
+  assert.equal(f.manager.remoteAudioVolume, 0.65);
+  await f.manager.setRemoteAudioVolume(0.3);
+  vm.refreshAudioVolumes();
+  assert.equal(vm.state.remoteAudioVolume, 0.3);
+  await vm.setAudioMuted(true);
+  vm.refreshAudioVolumes();
+  assert.equal(vm.state.remoteAudioVolume, 0.3);
+  await vm.setAudioMuted(false);
+  assert.equal(f.manager.remoteAudioVolume, 0.3);
+  await vm.suspend();
+});
+
+test('XLab follows camera/video defaults when no remote volume has been selected', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  assert.equal(vm.state.remoteAudioVolume, 0);
+  await vm.suspend();
+  f.media.createLocalVideoStream = async () => new f.MediaStream('local');
+  await vm.connect({}, 'video.mp4');
+  assert.equal(vm.state.remoteAudioVolume, 1);
+  assert.equal(f.manager.remoteAudioVolume, 1);
+  await vm.suspend();
+});

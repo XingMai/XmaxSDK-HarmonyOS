@@ -3,6 +3,8 @@ import { RealtimeViewState } from '../model/RealtimeViewState';
 @Component
 export struct RealtimeAudioControlsView {
   @ObjectLink state: RealtimeViewState;
+  @Prop isCamera: boolean = false;
+  onOpenVolumeMenu: () => void = (): void => {};
   onLocalVolumeChanged: (volume: number) => void = (_volume: number): void => {};
   onRemoteVolumeChanged: (volume: number) => void = (_volume: number): void => {};
   onMuteChanged: (muted: boolean) => void = (_muted: boolean): void => {};
@@ -43,11 +45,13 @@ export struct RealtimeAudioControlsView {
   @Builder
   private volumeMenu() {
     Column({ space: 8 }) {
-      this.volumeSlider('本地音量', true, this.onLocalVolumeChanged)
+      if (!this.isCamera) {
+        this.volumeSlider('本地音量', true, this.onLocalVolumeChanged)
+      }
       this.volumeSlider('远端音量', false, this.onRemoteVolumeChanged)
     }
     .width(260)
-    .height(144)
+    .height(this.isCamera ? 82 : 144)
     .padding(14)
     .justifyContent(FlexAlign.SpaceBetween)
     .backgroundColor($r('app.color.realtime_volume_background'))
@@ -76,17 +80,20 @@ export struct RealtimeAudioControlsView {
       Button({ type: ButtonType.Normal }) {
         this.actionContent(true)
       }
-      .width(44)
+      .width(this.isCamera ? 58 : 44)
       .height(58)
       .padding(0)
       .backgroundColor(Color.Transparent)
       .accessibilityText('调整音量')
       .onClick((): void => {
+        if (!this.isVolumeMenuVisible) {
+          this.onOpenVolumeMenu();
+        }
         this.isVolumeMenuVisible = !this.isVolumeMenuVisible;
       })
       .bindPopup(this.isVolumeMenuVisible, {
         builder: this.volumeMenu,
-        placement: Placement.Bottom,
+        placement: this.isCamera ? Placement.Left : Placement.Bottom,
         popupColor: $r('app.color.realtime_volume_background'),
         backgroundBlurStyle: BlurStyle.NONE,
         radius: 14,
@@ -95,20 +102,22 @@ export struct RealtimeAudioControlsView {
         }
       })
 
-      Button({ type: ButtonType.Normal }) {
-        this.actionContent(false)
+      if (!this.isCamera) {
+        Button({ type: ButtonType.Normal }) {
+          this.actionContent(false)
+        }
+        .width(44)
+        .height(58)
+        .padding(0)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText(this.state.isAudioMuted ? '开启声音' : '关闭声音')
+        .accessibilityDescription(this.state.isAudioMuted ? '已静音' : '已开启')
+        .onClick((): void => {
+          this.onMuteChanged(!this.state.isAudioMuted);
+        })
       }
-      .width(44)
-      .height(58)
-      .padding(0)
-      .backgroundColor(Color.Transparent)
-      .accessibilityText(this.state.isAudioMuted ? '开启声音' : '关闭声音')
-      .accessibilityDescription(this.state.isAudioMuted ? '已静音' : '已开启')
-      .onClick((): void => {
-        this.onMuteChanged(!this.state.isAudioMuted);
-      })
     }
-    .width(88)
+    .width(this.isCamera ? 58 : 88)
     .height(58)
   }
 }

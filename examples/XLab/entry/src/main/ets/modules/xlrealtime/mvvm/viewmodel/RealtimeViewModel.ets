@@ -53,6 +53,7 @@ export class RealtimeViewModel {
   private localStream: RealtimeMediaStream | null = null;
   private remoteStream: RealtimeMediaStream | null = null;
   private connecting: boolean = false;
+  private hasRemoteAudioVolumeSelection: boolean = false;
   private switchingCamera: boolean = false;
   private changingLocalMedia: boolean = false;
   private generationUpdating: boolean = false;
@@ -72,6 +73,23 @@ export class RealtimeViewModel {
     this.referenceUploader = uploader;
   }
 
+  /** 打开弹窗时读取实际音量；静音期间保留取消静音所需的音量。 */
+  refreshAudioVolumes(): void {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    if (manager !== null && !this.state.isAudioMuted) {
+      this.state.localAudioVolume = manager.localAudioVolume;
+      this.state.remoteAudioVolume = manager.remoteAudioVolume;
+    }
+  }
+
+  /** 新建输入后读取 SDK 默认值，用户已经调整过时恢复其设置。 */
+  private async restoreRemoteAudioVolume(manager: XmaxRealtimeManaging): Promise<void> {
+    if (!this.hasRemoteAudioVolumeSelection) {
+      this.state.remoteAudioVolume = manager.remoteAudioVolume;
+    }
+    await this.applyRemoteAudioVolume();
+  }
+
   async setAudioMuted(muted: boolean): Promise<void> {
     this.state.isAudioMuted = muted;
     await Promise.all([this.applyLocalAudioVolume(), this.applyRemoteAudioVolume()]);
@@ -88,6 +106,7 @@ export class RealtimeViewModel {
   }
 
   async setRemoteAudioVolume(volume: number): Promise<void> {
+    this.hasRemoteAudioVolumeSelection = true;
     this.state.remoteAudioVolume = volume;
     const wasMuted: boolean = this.state.isAudioMuted;
     this.state.isAudioMuted = false;
@@ -206,12 +225,9 @@ export class RealtimeViewModel {
       if (this.realtimeManager !== manager) {
         return;
       }
-      // SDK 创建视频流后会恢复远端默认音量，再应用用户的音量和静音设置。
-      if (localVideoPath.length > 0 && localImagePath.length === 0) {
-        await this.applyRemoteAudioVolume();
-        if (this.realtimeManager !== manager) {
-          return;
-        }
+      await this.restoreRemoteAudioVolume(manager);
+      if (this.realtimeManager !== manager) {
+        return;
       }
       this.localStream = localStream;
       this.state.localVideoTrack = localStream.videoTrack ?? null;
@@ -701,11 +717,9 @@ export class RealtimeViewModel {
       if (this.realtimeManager !== manager) {
         return;
       }
-      if (!isImage) {
-        await this.applyRemoteAudioVolume();
-        if (this.realtimeManager !== manager) {
-          return;
-        }
+      await this.restoreRemoteAudioVolume(manager);
+      if (this.realtimeManager !== manager) {
+        return;
       }
 
       this.localStream = stream;
