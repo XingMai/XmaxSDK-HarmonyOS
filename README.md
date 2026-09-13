@@ -9,7 +9,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-We present XmaxSDK, a native HarmonyOS SDK that provides access to Xmax's real-time interactive video generation models. XmaxSDK implements an end-to-end pipeline that covers media acquisition, video communication, frame-by-frame generation, and in-app rendering, making it easy for developers to leverage low-latency, cost-efficiency and high-fidelity video transformations into creative applications.
+We introduce XmaxSDK, a native HarmonyOS SDK designed for real-time interactive video generation via Xmax models. XmaxSDK implements an end-to-end pipeline covering media acquisition, video streaming, frame-by-frame generation, and on-device rendering, enabling developers to seamlessly integrate low-latency, high-fidelity video transformations into creative applications at a much lower cost than alternative solutions.
 
 <p align="center"><img src="./docs/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./docs/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./docs/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
