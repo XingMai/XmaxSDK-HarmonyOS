@@ -306,7 +306,8 @@ class NativeFrameReceiver {
     OH_ImageNative* image = nullptr;
     if (OH_ImageReceiverNative_ReadLatestImage(
         receiver_, &image) != IMAGE_SUCCESS || image == nullptr) {
-      ReportError("获取 Native 相机帧失败");
+      // A failed read does not imply the camera stream has failed.
+      // Drop this frame and wait for the next notification.
       return;
     }
 

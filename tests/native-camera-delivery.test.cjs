@@ -89,3 +89,65 @@ int main() {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('native camera read failure drops one frame without reporting a media error', () => {
+  const cpp = path.resolve(__dirname, '../xmax_sdk/src/main/cpp');
+  const source = fs.readFileSync(path.join(cpp, 'native_frame_receiver.cpp'), 'utf8');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xmax-camera-read-'));
+  try {
+    const harness = path.join(directory, 'read.cpp');
+    const executable = path.join(directory, 'read');
+    fs.writeFileSync(harness, `
+#include <cassert>
+#include <exception>
+#include <mutex>
+#include <string>
+struct OutputConfiguration {};
+struct OH_ImageNative {};
+constexpr int IMAGE_SUCCESS = 0;
+int readResult = 0;
+bool hasImage = true;
+int releases = 0;
+OH_ImageNative frame;
+int OH_ImageReceiverNative_ReadLatestImage(void*, OH_ImageNative** image) {
+  *image = hasImage ? &frame : nullptr;
+  return readResult;
+}
+int OH_ImageNative_Release(OH_ImageNative*) { ++releases; return IMAGE_SUCCESS; }
+class ReceiverHarness {
+ public:
+  ${definition(source, '  void ProcessFrame() {')}
+  bool ShouldProcessFrame(const OutputConfiguration&) { return true; }
+  void ProcessImage(OH_ImageNative*, const OutputConfiguration&) { ++processed; }
+  void ReportError(const std::string&) { ++errors; }
+  std::mutex configurationMutex_;
+  OutputConfiguration configuration_;
+  void* receiver_ = nullptr;
+  int processed = 0;
+  int errors = 0;
+};
+int main() {
+  ReceiverHarness receiver;
+  readResult = 1;
+  receiver.ProcessFrame();
+  assert(receiver.processed == 0 && receiver.errors == 0 && releases == 0);
+  readResult = IMAGE_SUCCESS;
+  hasImage = false;
+  receiver.ProcessFrame();
+  assert(receiver.processed == 0 && receiver.errors == 0 && releases == 0);
+  hasImage = true;
+  receiver.ProcessFrame();
+  assert(receiver.processed == 1 && receiver.errors == 0 && releases == 1);
+}
+`);
+    const compile = spawnSync(process.env.CXX || 'clang++', [
+      '-std=c++17', '-O2', '-pthread', '-fsanitize=address,undefined',
+      harness, '-o', executable
+    ], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.error?.message || compile.stderr);
+    const result = spawnSync(executable, [], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
