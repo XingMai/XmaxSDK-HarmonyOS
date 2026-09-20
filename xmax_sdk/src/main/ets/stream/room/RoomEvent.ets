@@ -15,6 +15,7 @@ class GenerationParameters {
   size: number[];
   prompt: string;
   ref_image_path?: string;
+  detection: boolean;
 
   constructor(
     videoFormat: RealtimeVideoFormat,
@@ -25,6 +26,7 @@ class GenerationParameters {
     if (context.referencePath !== undefined) {
       this.ref_image_path = context.referencePath;
     }
+    this.detection = context.faceDetection ?? false;
   }
 }
 

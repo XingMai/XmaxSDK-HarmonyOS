@@ -161,6 +161,11 @@ export class RealtimeCoordinator {
     return this.activeOperation?.kind === kind;
   }
 
+  /** @returns 是否有任意操作正在进行。 */
+  hasActiveOperation(): boolean {
+    return this.activeOperation !== null;
+  }
+
   setStateListener(listener: RealtimeStateListener | null): void {
     this.stateListener = listener;
     this.notifyStateListener(this.state);

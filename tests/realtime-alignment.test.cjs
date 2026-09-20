@@ -1110,10 +1110,22 @@ for (const action of ['failure', 'orientation change']) {
       f.rotateCamera();
     }
     await settle(); await settle();
+    if (action !== 'failure') {
+      // 转屏不走 change_condition：确认放行后自检漂移，终止错误方向任务并按最新方向重建。
+      assert.equal(vm.state.isGenerationStarting, true);
+      assert.equal(f.calls.updates.length, 0);
+      f.stream.confirmation?.resolve();
+      await settle();
+      f.runSwitchDelay();
+      await settle();
+      assert.equal(f.calls.starts.length, 3);
+      f.stream.confirmation?.resolve();
+      await settle();
+    }
     assert.equal(vm.state.isGenerationStarting, false);
-    assert.equal(vm.state.selectedReferenceId, '');
+    assert.equal(vm.state.selectedReferenceId, action === 'failure' ? '' : 'second');
     assert.equal(f.calls.sessions.length, 2);
-    assert.equal(f.calls.starts.length, 2);
+    assert.equal(f.calls.starts.length, action === 'failure' ? 2 : 3);
     assert.equal(vm.state.errorMessage, action === 'failure' ? 'replacement failed' : '');
     await vm.suspend();
   });
@@ -1142,7 +1154,7 @@ test('XLab orientation changes leave idle local preview and disconnected media a
 });
 
 for (const phase of ['connecting', 'starting', 'generating']) {
-  test(`XLab orientation change disconnects while ${phase}, retains preview and requires manual restart`, async () => {
+  test(`XLab orientation change while ${phase} keeps the session and restores generation automatically`, async () => {
     const f = exampleFixture(), messages = [];
     f.viewModel.onMessage = message => messages.push(message);
     await f.viewModel.connect({});
@@ -1156,39 +1168,51 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     assert.equal(f.manager.currentState.connectionState,
       phase === 'connecting' ? f.State.CONNECTING : phase === 'starting' ? f.State.CONNECTED : f.State.GENERATING);
     f.rotateCamera();
-    const disconnecting = f.manager.disconnect();
-    f.rotateCamera(); // Rapid rotations must not duplicate cleanup or toast.
+    f.rotateCamera(); // Rapid rotations must not duplicate the restart.
     gate?.resolve();
-    await disconnecting;
     await settle();
-    assert.equal(f.manager.currentState.connectionState, f.State.READY);
-    assert.deepEqual(f.calls.closed, ['session-1']);
+    if (phase === 'generating') {
+      // 停止旧任务但保留会话，延时后以缓存条件自动重启；重建期间保持 loading。
+      assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+      assert.equal(f.viewModel.state.isGenerationStarting, true);
+      assert.equal(f.calls.starts.length, 1);
+      f.runSwitchDelay();
+      await settle();
+      assert.equal(f.calls.starts.length, 2);
+      assert.equal(f.calls.starts.at(-1).context.prompt, 'before rotation');
+    } else {
+      f.stream.confirmation?.resolve();
+      await settle();
+      assert.equal(f.calls.starts.length, 1);
+    }
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
     assert.equal(f.calls.sessions.length, 1);
-    assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
+    assert.deepEqual(f.calls.closed, []);
+    assert.deepEqual(messages, []);
     assert.equal(f.viewModel.state.localVideoTrack, local);
     assert.equal(f.media.currentTrack, local);
-    assert.equal(f.viewModel.state.remoteVideoTrack, null);
+    assert.ok(f.viewModel.state.remoteVideoTrack);
     assert.equal(f.viewModel.state.isGenerationStarting, false);
     assert.equal(f.viewModel.state.isMoxGenerationActive, false);
     assert.equal(f.viewModel.state.errorMessage, '');
-    assert.deepEqual(messages, ['屏幕方向已切换，已断开实时连接，请重新开始生成']);
-    f.rotateCamera();
-    assert.equal(messages.length, 1);
+    assert.equal(f.viewModel.state.selectedReferenceId, '');
 
-    const retryGate = f.holdSession();
-    f.viewModel.submitPrompt('after rotation');
-    await settle();
-    assert.equal(f.viewModel.state.connectionState, f.State.CONNECTING);
-    assert.equal(f.viewModel.state.isGenerationStarting, true);
-    retryGate.resolve();
-    await settle();
-    f.stream.confirmation?.resolve();
-    await settle();
-    assert.equal(f.calls.sessions.length, 2);
-    assert.equal(f.calls.starts.at(-1).context.prompt, 'after rotation');
+    f.rotateCamera(); // 回到竖屏同样自动重启，不打断预览。
+    await settle(); // 停止操作落地后才会调度重启定时器。
+    if (f.manager.currentState.connectionState === f.State.CONNECTED) {
+      assert.equal(f.viewModel.state.isGenerationStarting, true); // 重建期间保持 loading。
+      f.runSwitchDelay();
+      await settle();
+      if (phase === 'starting') {
+        // 确认等待期 loading 不中断，直到放行后进入 GENERATING。
+        assert.equal(f.viewModel.state.isGenerationStarting, true);
+      }
+      f.stream.confirmation?.resolve(); // starting 阶段持有确认，需要手动放行重启后的任务。
+      await settle();
+    }
     assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
-    assert.equal(f.viewModel.state.localVideoTrack, local);
-    assert.ok(f.viewModel.state.remoteVideoTrack);
+    assert.equal(f.viewModel.state.isGenerationStarting, false);
+    assert.deepEqual(messages, []);
     await f.viewModel.disconnect();
   });
 }
@@ -1215,7 +1239,7 @@ test('XLab cancellation after connecting closes the session and retains local pr
 
 
 for (const phase of ['connecting', 'starting', 'generating']) {
-  test(`SDK camera rotation disconnects while ${phase} without an app orientation listener`, async () => {
+  test(`SDK camera rotation while ${phase} keeps the connection without an app orientation listener`, async () => {
     const f = managerFixture(), states = [], errors = [];
     f.manager.setStateListener(state => { states.push(state); if (state.reason?.error) errors.push(state.reason.error); });
     const local = await f.create();
@@ -1223,65 +1247,290 @@ for (const phase of ['connecting', 'starting', 'generating']) {
     if (phase === 'starting') f.holdGeneration();
     const operation = phase === 'connecting' ? f.manager.connect(local) :
       f.manager.startGeneration(local, new f.Context('before rotation'));
-    const result = operation.then(value => ({ value }), error => ({ error }));
+    const result = outcome(operation);
     await settle();
     if (phase === 'generating') assert.ok((await result).value);
     const landscape = f.rotateCamera();
-    assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
-    assert.equal(f.manager.currentState.reason, undefined);
-    assert.equal(f.stream.currentGenerationTaskId, '');
-    f.rotateCamera(); // No duplicate termination when the direction changes again during cleanup.
+    if (phase === 'generating') {
+      // 生成中：停止任务、保留连接并排队重启，状态短暂回到 CONNECTED。
+      assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+      assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+      assert.equal(f.calls.stops.filter(task => task.length > 0).length, 1);
+      assert.deepEqual(f.calls.closed, []);
+      f.rotateCamera(landscape); // 重启期间重复或同方向的转屏事件不叠加。
+      assert.equal(f.calls.stops.filter(task => task.length > 0).length, 1);
+      await settle(); // 停止操作落地后才会调度重启定时器。
+      f.runSwitchDelay();
+    }
     gate?.resolve();
-    if (phase !== 'generating') assert.equal((await result).error.code, f.Code.CANCELLED);
-    await settle();
-    assert.equal(f.manager.currentState.connectionState, f.State.READY);
-    assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
-    assert.deepEqual(f.calls.closed, ['session-1']);
+    if (phase === 'starting') {
+      // 确认等待期转屏不走 change_condition；确认放行后自检漂移，终止并按最新方向重建。
+      assert.deepEqual(f.calls.updates, []);
+      f.stream.confirmation?.resolve();
+      assert.ok(!(await result).error, 'rotation must not cancel the in-flight operation');
+      await settle();
+      assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+      f.runSwitchDelay();
+      await settle();
+      f.stream.confirmation?.resolve();
+      await settle();
+    } else {
+      assert.ok(!(await result).error, 'rotation must not cancel the in-flight operation');
+      await settle();
+    }
+    assert.equal(f.manager.currentState.connectionState,
+      phase === 'connecting' ? f.State.CONNECTED : f.State.GENERATING);
+    assert.deepEqual(f.calls.closed, []);
     assert.equal(f.calls.sessions.length, 1);
-    assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 1);
-    assert.deepEqual(f.calls.updates, []);
-    assert.equal(f.media.currentTrack, local.videoTrack);
-    assert.equal(f.media.interactionTask, null);
+    assert.equal(f.calls.starts.length, phase === 'connecting' ? 0 : 2);
     assert.deepEqual(errors, []);
-    assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, 1);
-    assert.equal(states.filter(state => state.connectionState === f.State.READY && state.reason === f.Reason.ORIENTATION_CHANGED).length, 1);
+    assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, 0);
+    assert.equal(f.media.currentTrack, local.videoTrack);
+    if (phase !== 'connecting') {
+      assert.equal(f.calls.starts.at(-1).context.prompt, 'before rotation');
+      assert.deepEqual(f.calls.starts.at(-1).format, landscape);
+      assert.equal(f.manager.currentState.reason, undefined);
+      assert.equal(f.media.interactionTask, f.stream.currentGenerationTaskId);
+    }
 
-    f.rotateCamera(landscape);
-    const restart = f.manager.startGeneration(local, new f.Context('after rotation'));
-    await settle();
-    f.stream.confirmation?.resolve();
-    await restart;
-    assert.deepEqual(f.calls.starts.at(-1).format, landscape);
-    assert.equal(f.manager.currentState.reason, undefined);
-    f.load('service/realtime/RealtimeVideoTrack.ets')
-      .updateRealtimeVideoTrackOrientation(local.videoTrack, true, true);
-    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+    if (phase === 'connecting') {
+      await f.manager.startGeneration(local, new f.Context('after rotation'));
+      assert.deepEqual(f.calls.starts.at(-1).format, landscape);
+    }
     await f.manager.disconnect();
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
     assert.equal(f.manager.currentState.reason, f.Reason.NORMAL);
+    assert.deepEqual(f.calls.closed, ['session-1']);
     await f.manager.close();
   });
 }
 
-test('SDK camera rotation disconnects CONNECTED sessions and leaves local preview available', async () => {
+test('SDK rapid double rotation restarts generation once with the latest capture format', async () => {
+  const f = managerFixture(), errors = [];
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('double rotation'));
+  const landscape = f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  const portrait = f.rotateCamera(); // 延时窗口内转回竖屏：不叠加第二次重启。
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.stops.filter(task => task.length > 0).length, 1);
+  assert.equal(f.calls.starts.length, 1);
+  await settle(); // 停止操作落地后才会调度重启定时器。
+  f.runSwitchDelay();
+  await settle();
+  // 唯一一次重启用最新的竖屏规格和缓存条件。
+  assert.equal(f.calls.starts.length, 2);
+  assert.deepEqual(f.calls.starts.at(-1).format, portrait);
+  assert.equal(f.calls.starts.at(-1).context.prompt, 'double rotation');
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.manager.currentState.reason, undefined);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.calls.sessions.length, 1);
+  assert.deepEqual(errors, []);
+
+  // 重启完成后再次转屏仍可正常工作。
+  const again = f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  await settle(); // 停止操作落地后才会调度重启定时器。
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.length, 3);
+  assert.deepEqual(f.calls.starts.at(-1).format, again);
+  assert.deepEqual(f.calls.starts.at(-1).format, landscape);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.calls.closed, []);
+  await f.manager.close();
+});
+
+test('SDK rotation during the restart confirmation terminates and resubmits with the latest orientation', async () => {
+  const f = managerFixture();
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('test'));
+  f.rotateCamera();
+  await settle(); // 停止操作落地后才会调度重启定时器。
+  f.holdGeneration();
+  f.runSwitchDelay();
+  await settle();
+  // 重启的新任务已发出但未确认，此时仍在 CONNECTED。
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.starts.length, 2);
+  const portrait = f.rotateCamera(); // 确认等待期转回竖屏：change_condition 不能改尺寸，确认后再次终止重建。
+  assert.equal(f.calls.stops.filter(task => task.length > 0).length, 1);
+  assert.equal(f.calls.starts.length, 2);
+  assert.deepEqual(f.calls.updates, []);
+  f.stream.confirmation?.resolve();
+  await settle();
+  // 方向漂移仍存在：终止刚确认的横屏任务，再次回到 CONNECTED 排队重启。
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.stops.filter(task => task.length > 0).length, 2);
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.length, 3);
+  f.stream.confirmation?.resolve();
+  await settle();
+  // 最终任务使用最新的竖屏规格，会话与连接始终保留。
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.calls.starts.at(-1).format, portrait);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.calls.sessions.length, 1);
+  await f.manager.close();
+});
+
+test('SDK startGeneration during the orientation restart window applies immediately and supersedes the pending restart', async () => {
+  const f = managerFixture(), errors = [];
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('original'));
+  const landscape = f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  await settle(); // 停止操作在微任务内落地；真实点击是宏任务，必然在此之后。
+  // 重启等待窗口不占用协调器：用户提交新条件立即按最新方向生效，不被拒绝。
+  await f.manager.startGeneration(new f.Context('new reference'));
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.calls.starts.length, 2);
+  assert.deepEqual(f.calls.starts.at(-1).format, landscape);
+  assert.equal(f.calls.starts.at(-1).context.prompt, 'new reference');
+  // 挂起的重启接力时漂移已消失，自动作废，不会用旧条件覆盖用户的提交。
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.length, 2);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.calls.sessions.length, 1);
+  assert.deepEqual(errors, []);
+  await f.manager.close();
+});
+
+test('XLab reference selection during the orientation restart window applies without a conflict error', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await settle();
+  vm.state.selectedCategoryId = 'free';
+  vm.submitPrompt('before rotation');
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  f.rotateCamera();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  await settle(); // 停止操作在微任务内落地；真实点击是宏任务，必然在此之后。
+  // 重启等待窗口内选择参考图：走正常生成流程立即生效，不再报并发冲突。
+  vm.selectReference(referenceItem('chosen'));
+  await settle(); await settle();
+  assert.equal(vm.state.errorMessage, '');
+  assert.equal(vm.state.selectedReferenceId, 'chosen');
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.calls.starts.length, 2);
+  assert.equal(f.calls.starts.at(-1).context.referencePath, 'https://example.invalid/chosen.jpg');
+  // 挂起的转屏重启已作废：定时器触发后不再用缓存条件重复 start。
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.length, 2);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(vm.state.isGenerationStarting, false);
+  await vm.disconnect();
+});
+
+test('SDK startGeneration during the orientation restart confirmation joins the pending task via change_condition', async () => {
+  const f = managerFixture(), errors = [];
+  f.manager.setStateListener(state => { if (state.reason?.error) errors.push(state.reason.error); });
+  const local = await f.create();
+  await f.manager.startGeneration(local, new f.Context('original'));
+  const landscape = f.rotateCamera();
+  await settle();
+  f.holdGeneration();
+  f.runSwitchDelay();
+  await settle();
+  // 重启的 start 已发出、等待确认，仍在 CONNECTED。
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.equal(f.calls.starts.length, 2);
+  // 确认等待期用户提交新条件：不重发 start，经 change_condition 并入当前重启任务。
+  const joined = f.manager.startGeneration(new f.Context('new reference'));
+  await settle();
+  assert.equal(f.calls.starts.length, 2);
+  assert.equal(f.calls.updates.length, 1);
+  assert.equal(f.calls.updates[0].context.prompt, 'new reference');
+  assert.deepEqual(f.calls.updates[0].format, landscape);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  // 确认放行后，调用随重启一起完成，后续重建也使用并入后的缓存条件。
+  f.stream.confirmation?.resolve();
+  await joined;
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(errors, []);
+  f.rotateCamera();
+  await settle();
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.length, 3);
+  assert.equal(f.calls.starts.at(-1).context.prompt, 'new reference');
+  f.stream.confirmation?.resolve();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.calls.closed, []);
+  assert.equal(f.calls.sessions.length, 1);
+  await f.manager.close();
+});
+
+test('XLab reference selection during the orientation restart confirmation joins without a conflict error', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await settle();
+  vm.state.selectedCategoryId = 'free';
+  vm.submitPrompt('before rotation');
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  f.rotateCamera();
+  await settle();
+  f.holdGeneration();
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  // 重启确认等待期选择参考图：经 change_condition 并入重启任务，不报并发冲突。
+  vm.selectReference(referenceItem('chosen'));
+  await settle(); await settle();
+  assert.equal(vm.state.errorMessage, '');
+  assert.equal(f.calls.starts.length, 2);
+  assert.equal(f.calls.updates.length, 1);
+  assert.equal(f.calls.updates[0].context.referencePath, 'https://example.invalid/chosen.jpg');
+  // 确认放行后进入 GENERATING，参考图选择生效。
+  f.stream.confirmation?.resolve();
+  await settle(); await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(vm.state.selectedReferenceId, 'chosen');
+  assert.equal(vm.state.isGenerationStarting, false);
+  assert.ok(vm.state.remoteVideoTrack);
+  await vm.disconnect();
+});
+
+test('SDK camera rotation keeps CONNECTED sessions and leaves local preview available', async () => {
   const f = managerFixture();
   const local = await f.create();
   f.rotateCamera();
   assert.equal(f.manager.currentState.connectionState, f.State.READY);
   await f.manager.connect(local);
   const portrait = f.rotateCamera();
-  assert.equal(f.manager.currentState.connectionState, f.State.DISCONNECTING);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
   await settle();
-  assert.equal(f.manager.currentState.connectionState, f.State.READY);
-  assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  assert.deepEqual(f.calls.closed, []);
   await f.manager.startGeneration(local, new f.Context('test'));
-  f.rotateCamera(portrait);
+  assert.deepEqual(f.calls.starts.at(-1).format, portrait);
+  f.rotateCamera(portrait); // 同方向重复帧不触发重启。
   assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.calls.starts.length, 1);
+  f.rotateCamera(); // 生成中翻转：保留连接自动重启。
+  assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+  await settle(); // 停止操作落地后才会调度重启定时器。
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.calls.starts.length, 2);
+  assert.deepEqual(f.calls.closed, []);
   await f.manager.disconnect();
-  const count = f.calls.updates.length;
-  f.rotateCamera();
-  assert.equal(f.calls.updates.length, count);
   assert.equal(f.manager.currentState.connectionState, f.State.READY);
-  assert.deepEqual(f.calls.closed, ['session-1', 'session-2']);
+  assert.deepEqual(f.calls.closed, ['session-1']);
   await f.manager.close();
 });
 
@@ -1869,7 +2118,7 @@ for (const phase of ['CONNECTING', 'CONNECTED', 'GENERATING']) {
 
 for (const source of ['Camera', 'Image', 'Video']) {
   for (const phase of ['READY', 'CONNECTING', 'CONNECTED', 'GENERATING']) {
-    test(`${source} window rotation in ${phase} follows the common orientation disconnect policy`, async () => {
+    test(`${source} window rotation in ${phase} follows the connection-preserving restart policy`, async () => {
       const f = managerFixture(), states = [];
       const { updateRealtimeVideoTrackOrientation: rotate } = f.load('service/realtime/RealtimeVideoTrack.ets');
       if (source !== 'Camera') {
@@ -1877,9 +2126,11 @@ for (const source of ['Camera', 'Image', 'Video']) {
           f.media.currentTrack = new f.Track('local', new f.Format(1024, 1920, 30));
           return new f.MediaStream('local', f.media.currentTrack);
         };
+      } else {
+        // 窗口转屏时相机采集输出随显示方向翻转。
+        f.media.updateCameraOrientation = () => f.rotateCamera();
       }
       const local = source === 'Camera' ? await f.create() : await f.manager[`createLocal${source}Stream`]('input');
-      const format = local.videoTrack.videoFormat;
       let gate, pending;
       if (phase === 'CONNECTING') {
         gate = f.holdSession();
@@ -1893,23 +2144,47 @@ for (const source of ['Camera', 'Image', 'Video']) {
       rotate(local.videoTrack, false, false);
       assert.equal(f.manager.currentState.connectionState, f.State[phase]);
       rotate(local.videoTrack, true, true);
-      rotate(local.videoTrack, true, true);
-      if (gate) gate.resolve();
+      rotate(local.videoTrack, true, true); // Repeated events must not stack restarts.
+      gate?.resolve();
       await settle();
-      if (pending) assert.equal((await pending).error.code, f.Code.CANCELLED);
-      assert.equal(f.manager.currentState.connectionState, f.State.READY);
-      assert.equal(f.manager.currentState.reason, phase === 'READY' ? undefined : f.Reason.ORIENTATION_CHANGED);
-      assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, phase === 'READY' ? 0 : 1);
+      const restarts = source === 'Camera' && phase === 'GENERATING';
+      if (restarts) {
+        // 相机生成中：停止任务、保留连接，延时后以缓存条件重启。
+        assert.equal(f.manager.currentState.connectionState, f.State.CONNECTED);
+        assert.equal(f.manager.currentState.reason, f.Reason.ORIENTATION_CHANGED);
+        assert.equal(f.calls.starts.length, 1);
+        f.runSwitchDelay();
+        await settle();
+        assert.equal(f.calls.starts.length, 2);
+        assert.equal(f.calls.starts.at(-1).context.prompt, 'test');
+      }
+      if (pending) {
+        // 连接中的生成请求继续完成，不再因转屏取消。
+        assert.ok((await pending).value);
+      }
+      await settle();
+      assert.equal(states.filter(state => state.connectionState === f.State.DISCONNECTING).length, 0);
+      assert.deepEqual(f.calls.closed, []);
       assert.equal(f.media.currentTrack, local.videoTrack);
-      assert.equal(local.videoTrack.videoFormat, format); // A window event does not resize image/video input.
-      if (phase !== 'READY') assert.deepEqual(f.calls.closed, ['session-1']);
-      await f.manager.startGeneration(local, new f.Context('next'));
-      rotate(local.videoTrack, true, true); // Repeated old orientation must not cancel a fresh task.
-      assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+      assert.equal(f.manager.currentState.connectionState,
+        phase === 'READY' ? f.State.READY :
+        phase === 'CONNECTED' ? f.State.CONNECTED : f.State.GENERATING);
+
+      if (phase !== 'READY' && phase !== 'GENERATING') {
+        await f.manager.startGeneration(local, new f.Context('next'));
+        assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+      }
+      rotate(local.videoTrack, true, true); // A repeated same-orientation event stays quiet.
+      if (source === 'Camera' && phase !== 'READY') {
+        assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+      } else {
+        assert.equal(f.manager.currentState.connectionState,
+          phase === 'READY' ? f.State.READY : f.State.GENERATING);
+      }
       await f.manager.close();
       const replacement = await f.create();
       await f.manager.startGeneration(replacement, new f.Context('replacement'));
-      rotate(local.videoTrack, false, true);
+      rotate(local.videoTrack, false, true); // Events from a replaced track stay quiet.
       assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
       await f.manager.close();
     });

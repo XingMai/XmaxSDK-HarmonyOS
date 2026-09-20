@@ -78,7 +78,8 @@ test('OS information falls back to the full OS name if distribution information 
 test('all room events include the same top-level runtime and preserve SLA size and business fields', () => {
   const f = fixture(), task = 'task-test?os=harmonyos', user = 'user';
   const context = new f.Context('prompt', 'reference.png');
-  const params = { model: 'default', size: [1024, 1920], prompt: 'prompt', ref_image_path: 'reference.png' };
+  const params = { model: 'default', size: [1024, 1920], prompt: 'prompt', ref_image_path: 'reference.png',
+    detection: false };
   const cases = [
     [f.RoomEvent.start(user, task, f.format, context), { event: 'start', params, user_id: user, uid: task }],
     [f.RoomEvent.changeCondition(user, task, f.format, context),
@@ -93,6 +94,9 @@ test('all room events include the same top-level runtime and preserve SLA size a
   }
   const noReference = JSON.parse(f.RoomEvent.start(user, task, f.format, new f.Context('prompt')));
   assert.equal(Object.hasOwn(noReference.params, 'ref_image_path'), false);
+  assert.equal(noReference.params.detection, false);
+  const withDetection = JSON.parse(f.RoomEvent.start(user, task, f.format, new f.Context('prompt', undefined, true)));
+  assert.equal(withDetection.params.detection, true);
 });
 
 test('GET, POST, PUT and DELETE headers match room runtime without changing API bodies', async () => {

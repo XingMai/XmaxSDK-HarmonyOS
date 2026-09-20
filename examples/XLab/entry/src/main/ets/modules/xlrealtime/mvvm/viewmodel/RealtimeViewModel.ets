@@ -200,10 +200,18 @@ export class RealtimeViewModel {
         }
         if (state.connectionState !== RealtimeConnectionState.GENERATING) {
           this.state.remoteVideoTrack = null;
+        } else if (this.state.remoteVideoTrack === null) {
+          // SDK 内部重启生成（如转屏）后恢复远端画面；连接保留时远端轨道仍然有效。
+          this.state.remoteVideoTrack = this.remoteStream?.videoTrack ?? null;
         }
         this.state.connectionState = state.connectionState;
         if (state.connectionState === RealtimeConnectionState.CONNECTING) {
           this.pendingGenerationRestart = false;
+          this.state.isGenerationStarting = true;
+        }
+        if (state.connectionState === RealtimeConnectionState.CONNECTED &&
+          state.reason?.kind === RealtimeReasonKind.ORIENTATION_CHANGED) {
+          // 转屏触发的重建期间保持 loading，直到重新生成确认进入 GENERATING。
           this.state.isGenerationStarting = true;
         }
         if (state.connectionState === RealtimeConnectionState.GENERATING ||
@@ -649,8 +657,11 @@ export class RealtimeViewModel {
             if (manager.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
               this.state.isGenerationStarting = true;
             }
+            // 摄像头输入开启人脸检测；图片和视频输入保持关闭。
+            const isCameraInput: boolean =
+              this.localImagePath.length === 0 && this.localVideoPath.length === 0;
             const remoteStream: RealtimeMediaStream = await manager.startGeneration(
-              localStream, new RealtimeContext(prompt, referencePath)
+              localStream, new RealtimeContext(prompt, referencePath, isCameraInput)
             );
             if (this.realtimeManager === manager && revision === this.generationRevision) {
               this.remoteStream = remoteStream;

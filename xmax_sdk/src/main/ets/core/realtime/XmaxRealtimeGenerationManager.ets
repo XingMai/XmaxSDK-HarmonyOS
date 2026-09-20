@@ -81,7 +81,8 @@ export class XmaxRealtimeGenerationManager {
       ensureCurrent();
 
       this.mediaController.start(taskId, this.startingVideoFormat ?? videoFormat);
-      this.currentContext = resolvedContext;
+      // 确认等待期可能并入了新条件，与 startingVideoFormat 一样以等待期内的最新值为准。
+      this.currentContext = this.startingContext ?? resolvedContext;
       return taskId;
     } catch (error) {
       try {
@@ -135,7 +136,12 @@ export class XmaxRealtimeGenerationManager {
       videoFormat,
       context
     );
-    this.currentContext = context;
+    // 等待确认中的启动以 startingContext 为准，确认时统一落地，避免覆盖新条件。
+    if (this.startingContext !== null) {
+      this.startingContext = context;
+    } else {
+      this.currentContext = context;
+    }
   }
 
   /**

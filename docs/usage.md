@@ -337,39 +337,51 @@ starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
 Native rotation and cropping still produce the model's required input dimensions.
 
 `XmaxVideoView` and `XmaxRealtimeVideoView` observe the orientation of their
-window for camera, image, and video-file input. Switching between portrait and
-landscape while `CONNECTING`, `CONNECTED`, or `GENERATING` automatically
-disconnects and retains the local preview. The SDK cancels pending operations with
-`CANCELLED`, stops the old task, and does not automatically reconnect or send the
-new orientation to the old task through `change_condition`. Frames queued with
-the previous dimensions are discarded before pushing to RTC.
+window. When camera input flips between portrait and landscape during
+`GENERATING`, the SDK stops the current generation task while keeping the RTC
+connection and remote track, waits 500 ms for capture to settle, then restarts
+generation with the latest successful context — the same policy as
+`switchCamera()`. The state briefly returns to `CONNECTED` with
+`state.reason` set to `RealtimeReason.ORIENTATION_CHANGED` and becomes
+`GENERATING` again once the restarted task is confirmed. The settle wait does
+not occupy the operation channel: calling `startGeneration` with new conditions
+(for example a new reference image) during the window takes effect immediately
+with the latest capture dimensions, and the pending restart is discarded. While
+the restarted task is awaiting confirmation, new conditions are merged into it
+through `change_condition` — dimensions are already correct at that point, and
+`change_condition` can update everything else — so the call follows the restart
+to completion instead of failing with a concurrent-operation error. If
+the device rotates again while the restart is awaiting confirmation, the SDK
+terminates the mismatched task and resubmits until the submitted orientation
+matches capture. Frames queued with the previous dimensions are discarded
+before pushing to RTC.
 
-After cleanup, the state returns to `READY` when local media remains available,
-or `IDLE` otherwise. `state.reason` is `RealtimeReason.ORIENTATION_CHANGED` for
-orientation changes and `RealtimeReason.NORMAL` for normal cleanup. Applications can
-use the existing state listener to clear pending generation intent and display a
-message; no app-level rotation listener or disconnect call is required.
-`DISCONNECTING` carries no reason. Starting a new operation clears the old reason.
+Rotation while `CONNECTING` or `CONNECTED` no longer cancels the in-flight
+operation: the connection completes and the new dimensions are applied by the
+next generation start. If the device rotates while a start is awaiting
+confirmation, the confirmed task still carries the stale dimensions —
+`change_condition` cannot resize a task — so the SDK terminates it and
+resubmits with the latest orientation, briefly returning to `CONNECTED` with
+`RealtimeReason.ORIENTATION_CHANGED` just like a rotation during `GENERATING`.
+Only resolution changes within the same portrait/landscape axis use
+`change_condition`-style updates. Rotation during local preview only updates
+the capture dimensions, and rotation within the same axis or from a replaced
+track is ignored. Image and video-file input retain their source dimensions
+and are not interrupted by window rotation. The camera also detects capture
+orientation changes without an attached SDK view.
 
 ```ts
 realtime.setStateListener((state: RealtimeState): void => {
   if (state.reason?.kind === RealtimeReasonKind.ORIENTATION_CHANGED) {
-    // Show an app-specific message asking the user to start again.
+    // Generation is restarting automatically with the preserved connection.
   }
 });
 ```
 
-Rotation during local preview does not disconnect. Initial view attachment and
-rotation within the same portrait/landscape axis do not trigger disconnection.
-Camera output dimensions follow the display orientation and are synchronized
-before reconnecting; image and video-file input retain their source dimensions.
-The camera also detects capture orientation changes without an attached SDK view.
-
 To keep a fixed capture ratio regardless of window rotation, pass
 `observeDisplayChange: false` when creating the camera stream. The SDK then
 skips display-orientation listening: rotating the window neither flips the
-capture dimensions and rotation nor disconnects an ongoing session with
-`ORIENTATION_CHANGED`.
+capture dimensions and rotation nor restarts generation.
 
 ```ts
 const fixedStream = await realtime.createLocalCameraStream(

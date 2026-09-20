@@ -67,6 +67,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   private readonly timing: RealtimeTiming = new RealtimeTiming();
 
+  /** 转屏重启的采集稳定等待定时器挂起标志，避免重复调度。 */
+  private orientationRestartPending: boolean = false;
+
+  /** 转屏重启重新提交的操作句柄；非空时用户新条件并入该任务而不是新建操作。 */
+  private orientationRestartCompletion: Promise<void> | null = null;
+
+  /** 当前生成任务提交时使用的视频格式，用于发现确认等待期的方向漂移。 */
+  private lastSubmittedFormat: RealtimeVideoFormat | undefined = undefined;
+
   // 生命周期协调
   private readonly coordinator: RealtimeCoordinator;
 
@@ -271,7 +280,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 切换摄像头，生成中切换时保留连接并恢复当前生成条件。 */
   switchCamera(): Promise<RealtimeMediaStream> {
-    return this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, null,
+    const operation: Promise<RealtimeMediaStream> = this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
         const current: RealtimeState = this.currentState;
         const wasGenerating: boolean = current.connectionState === RealtimeConnectionState.GENERATING;
@@ -296,6 +305,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         return stream;
       });
+    return operation.finally((): void => {
+      // 切换的确认等待期转屏时，收尾自检方向漂移并按需重建。
+      this.restartGenerationIfOrientationDrifted();
+    });
   }
 
   /** 从本地视频文件创建并启动媒体流，使用当前模型的输入规则。 */
@@ -424,31 +437,151 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const track = RealtimeVideoTrack.resolve(stream.videoTrack);
     setRealtimeVideoTrackOrientationHandler(track, (): void => {
       if (this.mediaController.currentTrack === track && !this.coordinator.isClosing) {
-        this.disconnectForOrientationChange();
-        try {
-          this.mediaController.updateCameraOrientation();
-        } catch (error) {
-          this.handleRuntimeError(XmaxError.from(error), RealtimeTerminationScope.ALL);
-        }
+        this.handleLocalOrientationChange();
       }
     });
   }
 
-  /** 在新方向帧进入链路前停止旧任务，断开收尾仍由 Coordinator 统一完成。 */
-  private disconnectForOrientationChange(): void {
-    const current: RealtimeConnectionState = this.currentState.connectionState;
-    if (current === RealtimeConnectionState.DISCONNECTING) {
+  /** 转屏先同步 Native 方向；相机尺寸翻转后经帧格式变化入口重启生成，其他来源不受影响。 */
+  private handleLocalOrientationChange(): void {
+    try {
+      this.mediaController.updateCameraOrientation();
+    } catch (error) {
+      this.handleRuntimeError(XmaxError.from(error), RealtimeTerminationScope.ALL);
+    }
+  }
+
+  /**
+   * 转屏重启第一步：检测到方向漂移时用一个短操作停止任务、保留连接并提交 CONNECTED，
+   * 随即释放协调器，采集稳定等待由定时器接力。change_condition 无法修改尺寸，方向翻转必须重建任务。
+   */
+  private restartGenerationIfOrientationDrifted(format?: RealtimeVideoFormat): void {
+    // 协调器被用户操作占用时跳过，其收尾的漂移自检会兜底重新触发。
+    if (this.orientationRestartPending || this.coordinator.hasActiveOperation() ||
+      !this.hasOrientationDrift(format)) {
       return;
     }
-    void this.disconnect(RealtimeReason.ORIENTATION_CHANGED)
-      .catch((error: Object): void => this.logCleanupFailure("转屏后断开实时连接失败 (Failed to Disconnect after Orientation Change)", error));
-    if (this.currentState.connectionState === RealtimeConnectionState.DISCONNECTING) {
-      try {
-        this.generationManager.reset();
-      } catch (error) {
-        this.logCleanupFailure("转屏后停止生成失败 (Failed to Stop Generation after Orientation Change)", error);
+    const sessionId: string = this.currentState.sessionId ?? '';
+    let stopped: boolean = false;
+    const operation: Promise<void | RealtimeMediaStream> = this.coordinator.run(
+      RealtimeOperationKind.GENERATION, null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        token.setFailureScope(RealtimeTerminationScope.CONNECTION);
+        this.renderController.stopRemoteVideoFrameDelivery();
+        this.generationManager.stop(this.currentState.taskId ?? '');
+        this.restoreLocalAudioPreview();
+        this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTED,
+          sessionId, undefined, RealtimeReason.ORIENTATION_CHANGED), token);
+        stopped = true;
+      });
+    void operation.catch((error: Object): void => {
+      const resolved: XmaxError = XmaxError.from(error);
+      if (resolved.code !== XmaxErrorCode.CANCELLED) {
+        this.logCleanupFailure("转屏后停止生成失败 (Failed to Stop Generation after Orientation Change)", resolved);
       }
+    }).finally((): void => {
+      // 只有停止成功落地才等待重启；被取消时由终止流程或后续自检接管。
+      if (stopped) {
+        this.scheduleOrientationRestart();
+      }
+    });
+  }
+
+  /**
+   * 在协调器外等待采集稳定。等待窗口不占用协调器，用户操作（如更换参考图）可随时插入；
+   * 用户提交会刷新提交格式，使挂起的重启在接力时因漂移消失而自动作废。
+   */
+  private scheduleOrientationRestart(): void {
+    if (this.orientationRestartPending || this.coordinator.isClosing) {
+      return;
     }
+    this.orientationRestartPending = true;
+    setTimeout((): void => {
+      this.orientationRestartPending = false;
+      this.resumeOrientationRestart();
+    }, 500);
+  }
+
+  /**
+   * 转屏重启第二步：延时结束后按最新状态接力。仍停在 CONNECTED 且协调器空闲时，
+   * 用最新采集格式和缓存条件重新 start；完成后自检漂移，确认等待期又转屏则重新走停止流程。
+   */
+  private resumeOrientationRestart(): void {
+    if (this.coordinator.isClosing) {
+      return;
+    }
+    if (this.currentState.connectionState !== RealtimeConnectionState.CONNECTED ||
+      this.connectionManager.currentSessionId.length === 0 ||
+      this.coordinator.hasActiveOperation()) {
+      // 已被用户操作接管或连接已断开；GENERATING 下仍有漂移时重新走停止流程，其余由用户操作收尾兜底。
+      this.restartGenerationIfOrientationDrifted();
+      return;
+    }
+    const operation: Promise<void> = this.coordinator.run(
+      RealtimeOperationKind.GENERATION, null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        token.setFailureScope(RealtimeTerminationScope.CONNECTION);
+        await this.performStartGeneration(undefined, token);
+      });
+    this.orientationRestartCompletion = operation;
+    void operation.catch((error: Object): void => {
+      const resolved: XmaxError = XmaxError.from(error);
+      if (resolved.code !== XmaxErrorCode.CANCELLED) {
+        this.logCleanupFailure("转屏后重启生成失败 (Failed to Restart Generation after Orientation Change)", resolved);
+      }
+    }).finally((): void => {
+      this.orientationRestartCompletion = null;
+      this.restartGenerationIfOrientationDrifted();
+    });
+  }
+
+  /**
+   * 转屏重启的重新提交进行中时，用户新条件经 change_condition 并入该任务并跟随其完成：
+   * 条件允许更新，尺寸已由重启保证为最新方向，无需打断重启。不在重启提交窗口时返回空值。
+   */
+  private tryJoinOrientationRestart(input: RealtimeContext | RealtimeMediaStream | undefined,
+    context: RealtimeContext | undefined): Promise<void | RealtimeMediaStream> | null {
+    const completion: Promise<void> | null = this.orientationRestartCompletion;
+    if (completion === null ||
+      (input instanceof RealtimeMediaStream && !this.mediaController.owns(input))) {
+      return null;
+    }
+    const taskId: string = this.streamController.currentGenerationTaskId;
+    const videoFormat: RealtimeVideoFormat | undefined =
+      this.lastSubmittedFormat ?? this.mediaController.currentVideoFormat;
+    if (taskId.length === 0 || videoFormat === undefined ||
+      this.connectionManager.currentSessionId.length === 0) {
+      return null;
+    }
+    const newContext: RealtimeContext | undefined =
+      input instanceof RealtimeMediaStream ? context : input;
+    this.generationManager.update(taskId, videoFormat, newContext);
+    if (input instanceof RealtimeMediaStream) {
+      return completion.then((): RealtimeMediaStream => {
+        const remoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
+        if (remoteStream === null) {
+          throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Realtime connection has no remote stream');
+        }
+        return remoteStream;
+      });
+    }
+    return completion;
+  }
+
+  /**
+   * 已提交生成任务的方向与当前采集方向不一致时为漂移，需要终止并重建任务。
+   * 帧格式回调先于轨道格式更新触发，事件入口需显式传入新格式。
+   */
+  private hasOrientationDrift(format?: RealtimeVideoFormat): boolean {
+    if (this.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
+      return false;
+    }
+    const submitted: RealtimeVideoFormat | undefined = this.lastSubmittedFormat;
+    const current: RealtimeVideoFormat | undefined = format ?? this.mediaController.currentVideoFormat;
+    if (submitted === undefined || current === undefined) {
+      return false;
+    }
+    return (submitted.width > submitted.height) !== (current.width > current.height);
   }
 
   private handleCameraVideoFormatChange(format: RealtimeVideoFormat): void {
@@ -462,15 +595,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const track = this.mediaController.currentTrack;
     if (orientationChanged && track !== null) {
       updateRealtimeVideoTrackOrientation(track, format.width > format.height, false);
+      // 无视图绑定时靠帧尺寸变化发现转屏；change_condition 无法修改尺寸，方向翻转必须终止并重建任务。
+      this.restartGenerationIfOrientationDrifted(format);
+    } else {
+      // 同方向的分辨率变化仍走 change_condition 更新。
+      this.generationManager.updateVideoFormat(format);
     }
-    // 建连前主动同步只更新规格；已有连接或正在建连时才终止旧链路。
-    if (orientationChanged && (current === RealtimeConnectionState.GENERATING ||
-      current === RealtimeConnectionState.CONNECTED ||
-      current === RealtimeConnectionState.CONNECTING)) {
-      this.disconnectForOrientationChange();
-      return;
-    }
-    this.generationManager.updateVideoFormat(format);
     this.connectionManager.updateVideoFormat(format);
   }
 
@@ -512,6 +642,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext): Promise<RealtimeMediaStream>;
   startGeneration(input?: RealtimeContext | RealtimeMediaStream,
     context?: RealtimeContext): Promise<void | RealtimeMediaStream> {
+    // 转屏重启的重新提交进行中时，新条件直接并入该任务，不与内部重启竞争操作权。
+    const joined: Promise<void | RealtimeMediaStream> | null = this.tryJoinOrientationRestart(input, context);
+    if (joined !== null) {
+      return joined;
+    }
     let measurement: RealtimeTimingRun | null = null;
     const operation = this.coordinator.run<void | RealtimeMediaStream>(RealtimeOperationKind.GENERATION, null,
       async (token: RealtimeOperationToken): Promise<void | RealtimeMediaStream> => {
@@ -532,6 +667,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       // Coordinator 已完成取消或错误清理；使用该操作的记录，避免影响较新的重试。
       this.timing.finishFailure(error, measurement);
       throw XmaxError.from(error);
+    }).finally((): void => {
+      // 首次 start 确认等待期转屏时操作占用中无法立即重启；收尾后自检方向漂移。
+      this.restartGenerationIfOrientationDrifted();
     });
   }
 
@@ -582,6 +720,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.generationManager.validateContext(context);
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.mediaController.setLocalAudioPreviewEnabled(false);
+    // 记录本次提交方向，用于发现确认等待期的转屏漂移；update 分支不改尺寸无需记录。
+    this.lastSubmittedFormat = videoFormat;
     try {
       const taskId: string = await this.generationManager.start(videoFormat, context,
         (): void => token.ensureCurrent(),
