@@ -840,6 +840,7 @@ export class RealtimeViewModel {
     if (localImagePath.length > 0) {
       return manager.createLocalImageStream(localImagePath);
     }
+
     if (localVideoPath.length > 0) {
       return manager.createLocalVideoStream(localVideoPath);
     }
@@ -847,7 +848,8 @@ export class RealtimeViewModel {
     return manager.createLocalCameraStream(
       manager.options.model.defaultCameraVideoFormat,
       CameraPosition.FRONT,
-      true
+      true,
+      false
     );
   }
 
