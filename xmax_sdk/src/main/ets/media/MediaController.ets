@@ -192,17 +192,19 @@ export class MediaController implements MediaControlling {
    * @param videoFormat 相机流使用的视频输出格式。
    * @param position 初始摄像头位置。
    * @param useMicrophone 是否使用麦克风；创建时检查权限，连接时启动采集。
+   * @param observeDisplayChange 是否监听屏幕变化；false 时转屏不切换采集比例与方向。
    * @returns 创建完成后的本地相机媒体流。
    */
   createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition,
-    useMicrophone: boolean = false
+    useMicrophone: boolean = false,
+    observeDisplayChange: boolean = true
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
       this.cameraController,
       (): Promise<RealtimeMediaStream> =>
-        this.cameraController.createLocalCameraStream(videoFormat, position, useMicrophone)
+        this.cameraController.createLocalCameraStream(videoFormat, position, useMicrophone, observeDisplayChange)
     );
   }
 

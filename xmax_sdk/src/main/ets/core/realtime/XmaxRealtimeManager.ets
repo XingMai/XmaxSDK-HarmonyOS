@@ -227,7 +227,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat = this.options.model.defaultCameraVideoFormat,
     position: CameraPosition = CameraPosition.FRONT,
-    useMicrophone: boolean = false
+    useMicrophone: boolean = false,
+    observeDisplayChange: boolean = true
   ): Promise<RealtimeMediaStream> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
@@ -237,10 +238,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.PREPARING), token);
-        const stream = await this.mediaController.createLocalCameraStream(videoFormat, position, useMicrophone);
+        const stream = await this.mediaController.createLocalCameraStream(videoFormat, position, useMicrophone, observeDisplayChange);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
-        this.observeLocalOrientation(stream);
+        if (observeDisplayChange) {
+          this.observeLocalOrientation(stream);
+        }
         this.streamController.setRemoteAudioVolume(0);
         this.mediaController.setCameraPreviewReadyHandler((): void => {
           this.coordinator.localPreviewDidBecomeReady((): boolean =>

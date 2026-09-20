@@ -129,3 +129,22 @@ test('front camera landscape correction applies on startup in either landscape d
     }
   }
 });
+
+// Disabling display observation must skip listener registration and keep the startup format on rotation.
+test('configure with display observation disabled ignores rotation and never registers a listener', async () => {
+  const f = fixture();
+  try {
+    f.output.configure(f.format, 30, false);
+    f.rotate(1); // No listener registered; rotation must not reconfigure the pipeline.
+    f.rotate(2);
+    assert.equal(f.calls.filter(call => call === 'on').length, 0);
+    assert.deepEqual(f.configurations, [[1024, 1920, 90, 30, 30]]);
+    // A one-time reconfigure still adapts to the display current at that moment.
+    f.output.configure(f.format, 30, false);
+    assert.deepEqual(f.configurations.at(-1), [1024, 1920, 270, 30, 30]);
+    assert.equal(f.calls.filter(call => call === 'on').length, 0);
+  } finally {
+    await f.output.release();
+  }
+  assert.equal(f.calls.filter(call => call === 'off').length, 0);
+});

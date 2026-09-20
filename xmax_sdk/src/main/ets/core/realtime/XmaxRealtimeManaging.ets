@@ -84,12 +84,14 @@ export interface XmaxRealtimeManaging {
    * @param videoFormat 本地视频格式；省略时使用当前模型默认相机规格。
    * @param position 初始相机位置；未传入时使用前置相机。
    * @param useMicrophone 是否启用麦克风，默认 false；创建时申请权限，连接时开始采集，断开时停止。
+   * @param observeDisplayChange 是否监听屏幕变化，默认 true；false 时转屏不切换采集比例与方向，也不会因转屏断开生成。
    * @returns 本地媒体流。
    */
   createLocalCameraStream(
     videoFormat?: RealtimeVideoFormat,
     position?: CameraPosition,
-    useMicrophone?: boolean
+    useMicrophone?: boolean,
+    observeDisplayChange?: boolean
   ): Promise<RealtimeMediaStream>;
 
   /**

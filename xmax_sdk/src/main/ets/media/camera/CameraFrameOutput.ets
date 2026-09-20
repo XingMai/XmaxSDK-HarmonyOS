@@ -92,12 +92,13 @@ export class CameraFrameOutput {
 
   configure(
     videoFormat: RealtimeVideoFormat,
-    captureFrameRate: number
+    captureFrameRate: number,
+    observeDisplayChange: boolean = true
   ): void {
     if (this.isReleased) {
       return;
     }
-    if (!this.isListeningForDisplayChanges) {
+    if (observeDisplayChange && !this.isListeningForDisplayChanges) {
       display.on('change', this.displayChangeListener);
       this.isListeningForDisplayChanges = true;
     }

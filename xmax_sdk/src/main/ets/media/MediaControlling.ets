@@ -49,12 +49,14 @@ export interface MediaControlling extends InteractionControlling {
    * @param videoFormat 相机采集与 RTC 编码使用的视频格式。
    * @param position 首次启用的摄像头位置。
    * @param useMicrophone 是否使用麦克风；默认 false，创建时检查权限，连接时开始采集。
+   * @param observeDisplayChange 是否监听屏幕变化；默认 true，false 时转屏不切换采集比例与方向。
    * @returns 包含本地相机视频轨道的媒体流。
    */
   createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition,
-    useMicrophone?: boolean
+    useMicrophone?: boolean,
+    observeDisplayChange?: boolean
   ): Promise<RealtimeMediaStream>;
 
   /** 按当前显示方向同步相机采集及轨道规格；其他来源不操作。 */

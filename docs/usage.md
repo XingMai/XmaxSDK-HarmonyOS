@@ -365,6 +365,18 @@ Camera output dimensions follow the display orientation and are synchronized
 before reconnecting; image and video-file input retain their source dimensions.
 The camera also detects capture orientation changes without an attached SDK view.
 
+To keep a fixed capture ratio regardless of window rotation, pass
+`observeDisplayChange: false` when creating the camera stream. The SDK then
+skips display-orientation listening: rotating the window neither flips the
+capture dimensions and rotation nor disconnects an ongoing session with
+`ORIENTATION_CHANGED`.
+
+```ts
+const fixedStream = await realtime.createLocalCameraStream(
+  undefined, CameraPosition.FRONT, false, false
+);
+```
+
 `switchCamera()` changes front/back position while preserving the local track and
 its frame rate and orientation-dependent dimensions. During generation, the SDK stops the current task,
 switches cameras, waits 500 ms for capture to settle, then starts a new task with

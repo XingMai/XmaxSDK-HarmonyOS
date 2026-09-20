@@ -55,6 +55,7 @@ export class CameraController {
   private activeTrack: RealtimeVideoTrack | null = null;
   private acceptsFrames: boolean = false;
   private storedUseMicrophone: boolean = false;
+  private observeDisplayChange: boolean = true;
   private isMicrophoneCapturing: boolean = false;
   private captureGeneration: number = 0;
 
@@ -102,7 +103,8 @@ export class CameraController {
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition,
-    useMicrophone: boolean = false
+    useMicrophone: boolean = false,
+    observeDisplayChange: boolean = true
   ): Promise<RealtimeMediaStream> {
     if (this.activeTrack !== null || this.captureSession !== null) {
       throw new XmaxError(
@@ -111,7 +113,7 @@ export class CameraController {
       );
     }
 
-    return this.createStream(videoFormat, position, useMicrophone);
+    return this.createStream(videoFormat, position, useMicrophone, observeDisplayChange);
   }
 
   /** 在窗口转屏和建连前同步 Native 方向，不等待下一帧才更新轨道规格。 */
@@ -120,7 +122,7 @@ export class CameraController {
     const format = track?.videoFormat;
     const output = this.frameOutput;
     if (track !== null && format !== undefined && output !== null) {
-      output.configure(format, CAMERA_CAPTURE_FRAME_RATE);
+      output.configure(format, CAMERA_CAPTURE_FRAME_RATE, this.observeDisplayChange);
       this.synchronizeVideoFormat(track, output.currentVideoFormat ?? format);
     }
   }
@@ -210,10 +212,12 @@ export class CameraController {
   private async createStream(
     videoFormat: RealtimeVideoFormat,
     position: CameraPosition,
-    useMicrophone: boolean = false
+    useMicrophone: boolean = false,
+    observeDisplayChange: boolean = true
   ): Promise<RealtimeMediaStream> {
     const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(videoFormat);
     const track = new RealtimeVideoTrack('video0', resolvedFormat, position);
+    this.observeDisplayChange = observeDisplayChange;
 
     try {
       await this.permissionManager.ensureCameraPermission();
@@ -295,7 +299,7 @@ export class CameraController {
         output.output.setFrameRate(CAMERA_CAPTURE_FRAME_RATE, CAMERA_CAPTURE_FRAME_RATE);
         operation = `Start CameraKit capture (${dimensions})`;
         await this.captureSession!.start();
-        output.configure(videoFormat, CAMERA_CAPTURE_FRAME_RATE);
+        output.configure(videoFormat, CAMERA_CAPTURE_FRAME_RATE, this.observeDisplayChange);
         const outputFormat: RealtimeVideoFormat = output.currentVideoFormat ?? videoFormat;
 
         XmaxLogger.debug(
