@@ -848,8 +848,7 @@ export class RealtimeViewModel {
     return manager.createLocalCameraStream(
       manager.options.model.defaultCameraVideoFormat,
       CameraPosition.FRONT,
-      true,
-      false
+      true
     );
   }
 
