@@ -184,11 +184,18 @@ export class RtcManager implements RtcManaging {
       if (lease !== null) {
         const engine: RTCEngine = lease.engine;
         try {
-          this.offEngineEventSafely((): void => engine.off('onSEIMessageReceived'), 'onSEIMessageReceived');
-          this.offEngineEventSafely((): void => engine.off('onFirstRemoteVideoFrameRendered'),
-            'onFirstRemoteVideoFrameRendered');
-          this.offEngineEventSafely((): void => engine.off('onRemoteVideoFrame'), 'onRemoteVideoFrame');
-          this.offEngineEventSafely((): void => engine.off('onPerformanceAlarms'), 'onPerformanceAlarms');
+          this.offEngineEventSafely((): void => {
+            engine.off('onSEIMessageReceived');
+          }, 'onSEIMessageReceived');
+          this.offEngineEventSafely((): void => {
+            engine.off('onFirstRemoteVideoFrameRendered');
+          }, 'onFirstRemoteVideoFrameRendered');
+          this.offEngineEventSafely((): void => {
+            engine.off('onRemoteVideoFrame');
+          }, 'onRemoteVideoFrame');
+          this.offEngineEventSafely((): void => {
+            engine.off('onPerformanceAlarms');
+          }, 'onPerformanceAlarms');
         } finally {
           await RtcEngineManager.release(lease);
         }
