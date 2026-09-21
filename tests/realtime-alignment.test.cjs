@@ -27,7 +27,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function managerFixture(modelName = 'x2.0-pro') {
+function managerFixture(modelName = 'x2.0-sla') {
   const calls = { sessions: [], closed: [], starts: [], updates: [], stops: [], audio: [], switches: 0 };
   const timers = [];
   let sessionGate = null, autoConfirm = true, holdPreview = false, media, stream, api;
@@ -134,7 +134,7 @@ function managerFixture(modelName = 'x2.0-pro') {
 }
 
 test('default camera formats follow the manager model and reach generation signaling unchanged', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-pro', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1024, 1920, 30]]) {
     const f = managerFixture(name);
     const local = await f.manager.createLocalCameraStream(undefined, 'back');
     assert.deepEqual(local.videoTrack.videoFormat, new f.Format(width, height, fps));
@@ -146,7 +146,7 @@ test('default camera formats follow the manager model and reach generation signa
   }
 });
 
-for (const name of ['x2.0', 'x2.0-pro']) {
+for (const name of ['x2.0', 'x2.0-sla']) {
   test(`${name} admits image and video input and forwards optional formats to media preparation`, async () => {
     const f = managerFixture(name), calls = [];
     for (const method of ['createLocalImageStream', 'createLocalVideoStream']) {
@@ -212,7 +212,7 @@ test('one-call generation connects on demand, reuses its remote track and suppor
   const first = await f.manager.startGeneration(local, context);
   const second = await f.manager.startGeneration(local, new f.Context('updated'));
   assert.equal(second.videoTrack, first.videoTrack);
-  assert.deepEqual(f.calls.sessions, ['x2.0-pro']);
+  assert.deepEqual(f.calls.sessions, ['x2.0-sla']);
   assert.equal(f.calls.starts.length, 1);
   assert.equal(f.calls.updates[0].context.prompt, 'updated');
   assert.equal(f.calls.starts[0].format, local.videoTrack.videoFormat);
@@ -223,7 +223,7 @@ test('one-call generation connects on demand, reuses its remote track and suppor
   const reconnected = await f.manager.connect(local);
   assert.notEqual(reconnected.videoTrack, first.videoTrack);
   assert.equal(await f.manager.startGeneration(new f.Context('explicit connection')), undefined);
-  assert.deepEqual(f.calls.sessions, ['x2.0-pro', 'x2.0-pro']);
+  assert.deepEqual(f.calls.sessions, ['x2.0-sla', 'x2.0-sla']);
   await f.manager.close();
 });
 
@@ -623,7 +623,7 @@ test('camera controller uses CameraKit external frames and preserves its track w
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame(frame) { pushedFrames.push(frame); }
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   let readyCount = 0;
   camera.setPreviewReadyListener(() => readyCount++);
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
@@ -680,7 +680,7 @@ test('camera capture falls back to the largest compatible 4:3 profile when 16:9 
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame() {}
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
 
   await camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30),
@@ -749,7 +749,7 @@ function cameraFailureFixture(options = {}, rtcError) {
     bindLocalVideo() {}, unbindLocalVideo() {}
   }, { setVideoEncoderConfig() {}, pushLocalVideoFrame() {} },
   new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-pro')));
+    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   return { camera, calls, start: () => camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
 }
@@ -856,7 +856,7 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unpublish 
   assert.equal(handlers.has('onFirstRemoteVideoFrameRendered'), false);
 });
 
-function exampleFixture(modelName = 'x2.0-pro') {
+function exampleFixture(modelName = 'x2.0-sla') {
   const f = managerFixture(modelName);
   let nextManager = f.manager;
   const load = loadEts({ ...platform,
@@ -871,7 +871,7 @@ function exampleFixture(modelName = 'x2.0-pro') {
       XmaxClient: class { createRealtimeManager() { return nextManager; } }
     },
     XLabConfiguration: { XLabConfiguration: { currentApiKey: () => 'test-only' } },
-    XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-pro' } },
+    XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-sla' } },
     ReferenceDataSource: { ReferenceDataSource: { categories: () => [] } }
   }, { Observed: value => value });
   const path = require('node:path');
@@ -883,7 +883,7 @@ function exampleFixture(modelName = 'x2.0-pro') {
 }
 
 test('XLab uses model camera defaults for both models without an interpolation size override', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-pro', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1024, 1920, 30]]) {
     const f = exampleFixture(name);
     await f.viewModel.connect({});
     await settle();
@@ -1561,7 +1561,7 @@ test('camera applies oriented output before connect and rejects queued frames fr
   }, {
     setVideoEncoderConfig: format => events.push(['encode', format.width, format.height]),
     pushLocalVideoFrame: frame => events.push(['push', frame.format.width, frame.format.height])
-  }, new MediaService(RealtimeModels.realtime('x2.0-pro')), error => errors.push(error),
+  }, new MediaService(RealtimeModels.realtime('x2.0-sla')), error => errors.push(error),
   format => events.push(['signal', format.width, format.height]));
   const local = await camera.createLocalCameraStream(new Format(1024, 1920, 30), 'front');
   try {

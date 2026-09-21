@@ -71,34 +71,34 @@ Camera, video and image inputs are available for both models.
 | Model | Input resolution rules | Default FPS | Default camera |
 | --- | --- | --- | --- |
 | `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 30 | 832 × 1472 |
-| `x2.0-pro` | Exactly 1024 × 1920 or 1920 × 1024 | 30 | 1024 × 1920 |
+| `x2.0-sla` | Exactly 1024 × 1920 or 1920 × 1024 | 30 | 1024 × 1920 |
 
 ```ts
 import { ImageSize } from '@xmax/sdk';
 
-const model = RealtimeModels.realtime(RealtimeModel.X2_0_PRO);
+const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
 const supportedResolutions = model.resolutionBuckets;
 const realtime = client.createRealtimeManager(new RealtimeConfiguration(model));
 const localStream = await realtime.createLocalCameraStream();
 
-const mediaService = client.createMediaService(RealtimeModel.X2_0_PRO);
+const mediaService = client.createMediaService(RealtimeModel.X2_0_SLA);
 const inputSize = mediaService.resolveModelInputSize(new ImageSize(1024, 1920));
 ```
 
 A nonempty `resolutionBuckets` list requires an exact width/height match.
-Unsupported Pro dimensions reject with `INVALID_CONFIGURATION`; the SDK does not
+Unsupported SLA dimensions reject with `INVALID_CONFIGURATION`; the SDK does not
 round or resize them to a supported bucket. An empty list, as in `x2.0`, uses
 pixel bounds and alignment to calculate the input size.
 
 `createMediaService()` defaults to `x2.0`; pass the model when calculating sizes
 for another model. These rules apply to camera, image and video preparation.
 Image and video inputs use their display dimensions unless an explicit
-`RealtimeVideoFormat` is supplied; for Pro, supply a supported output format when
+`RealtimeVideoFormat` is supplied; for SLA, supply a supported output format when
 the source dimensions do not match a bucket. CameraKit raw capture can still use
 16:9 profiles; the fixed-resolution rule applies to the prepared model input.
 
-The former `x2.0-sla` model is replaced by `x2.0-pro`. XLab migrates a saved SLA
-selection to Pro and keeps all three media entries available.
+The former `x2.0-pro` model is replaced by `x2.0-sla`. XLab migrates a saved Pro
+selection to SLA and keeps all three media entries available.
 
 ## Service environments
 
@@ -427,7 +427,7 @@ this.remoteVideoTrack = resizedRemoteStream.videoTrack;
 The old local stream is no longer valid after stopping it. Input dimensions follow
 the selected model's pixel bounds and 32-pixel alignment. Use the returned track's
 `videoFormat` to inspect the resolved dimensions; for example, `1024 × 1920` is
-retained for `x2.0-pro` and reduced to `800 × 1536` for `x2.0`.
+retained for `x2.0-sla` and reduced to `800 × 1536` for `x2.0`.
 
 ## Upload encoding configuration
 

@@ -21,7 +21,7 @@ test('model defaults and resolution buckets match iOS without media-source restr
   const f = fixture();
   for (const [name, buckets, maximum, fps, width, height] of [
     [f.Model.X2_0, [], 1280000, 30, 832, 1472],
-    [f.Model.X2_0_PRO, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920]
+    [f.Model.X2_0_SLA, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920]
   ]) {
     const model = f.Models.realtime(name);
     assert.equal(model.name, name);
@@ -35,13 +35,13 @@ test('model defaults and resolution buckets match iOS without media-source restr
     assert.deepEqual(model.resolutionBuckets.map(size => [size.width, size.height]), buckets);
     assert.equal(model.supportedMediaSources, undefined);
   }
-  for (const name of ['unknown-model', 'x2.0-sla']) {
+  for (const name of ['unknown-model', 'x2.0-pro']) {
     assert.throws(() => f.Models.realtime(name), { code: 'INVALID_CONFIGURATION' });
   }
 });
 
 test('Pro accepts only exact buckets in either orientation without rounding or resizing', () => {
-  const f = fixture(), service = new f.MediaService(f.Models.realtime(f.Model.X2_0_PRO));
+  const f = fixture(), service = new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA));
   for (const [width, height] of [[1024, 1920], [1920, 1024]]) {
     const size = new f.Size(width, height);
     assert.deepEqual(service.resolveModelInputSize(size), size);
@@ -51,7 +51,7 @@ test('Pro accepts only exact buckets in either orientation without rounding or r
     assert.throws(() => service.resolveModelInputSize(new f.Size(width, height)), { code: 'INVALID_CONFIGURATION' });
   }
   assert.throws(() => service.resolveModelInputSize(new f.Size(1920, 1080)), error => {
-    assert.match(error.message, /x2.0-pro/);
+    assert.match(error.message, /x2.0-sla/);
     assert.match(error.message, /1024×1920, 1920×1024/);
     return true;
   });
@@ -78,7 +78,7 @@ test('models without fixed buckets resolve aligned input sizes within pixel boun
   assert.equal(x2.model.name, f.Model.X2_0);
   assert.deepEqual(x2.resolveModelInputSize(new f.Size(799, 751)), new f.Size(800, 768));
   assert.deepEqual(x2.resolveModelInputSize(new f.Size(1130, 1130)), new f.Size(1120, 1120));
-  const pro = new f.MediaService(f.Models.realtime(f.Model.X2_0_PRO));
+  const pro = new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA));
   assert.deepEqual(pro.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
   assert.deepEqual(x2.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(800, 1536));
   assert.throws(() => x2.resolveModelInputSize(new f.Size(1e308, 1e308)), { code: 'INVALID_CONFIGURATION' });
@@ -91,7 +91,7 @@ test('the public media-service factory accepts a model and defaults to x2.0', ()
   const { XmaxClient } = f.load('core/XmaxClient.ets');
   const client = new XmaxClient({ apiKey: 'test-only', loggerOptions: 0 });
   assert.equal(client.createMediaService().model.name, f.Model.X2_0);
-  const service = client.createMediaService(f.Model.X2_0_PRO);
+  const service = client.createMediaService(f.Model.X2_0_SLA);
   assert.deepEqual(service.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
 });
 
@@ -138,7 +138,7 @@ function mediaFixture() {
   } };
 }
 
-for (const name of ['x2.0', 'x2.0-pro']) {
+for (const name of ['x2.0', 'x2.0-sla']) {
   test(`shared ${name} rules reach camera capture, image frames and rotated video playback`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const model = f.Models.realtime(name), service = new f.MediaService(model);
@@ -176,13 +176,13 @@ test('Pro rejects unsupported camera input before permission or capture, and rej
     PermissionManager: { PermissionManager: class { async ensureCameraPermission() { calls.push('permission'); } } }
   });
   const { CameraController } = f.load('media/camera/CameraController.ets');
-  const camera = new CameraController({}, {}, {}, new f.MediaService(f.Models.realtime(f.Model.X2_0_PRO)));
+  const camera = new CameraController({}, {}, {}, new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA)));
   await assert.rejects(camera.createLocalCameraStream(new f.Format(1920, 1080, 30), 'front'),
     { code: 'INVALID_CONFIGURATION' });
   assert.deepEqual(calls, []);
   assert.equal(camera.currentTrack, null);
   for (const source of ['Image', 'Video']) {
-    const mf = mediaFixture(), media = mf.createMedia('x2.0-pro');
+    const mf = mediaFixture(), media = mf.createMedia('x2.0-sla');
     await assert.rejects(media[`createLocal${source}Stream`]('source', new mf.Format(1920, 1080, 30)),
       { code: 'INVALID_CONFIGURATION' });
     assert.equal(media.currentTrack, null);
@@ -200,18 +200,18 @@ test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () =
   });
   const { XLabModelSelection: selection } = load(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/config/XLabModelSelection.ets'));
-  assert.deepEqual(selection.OPTIONS.map(option => option.model), ['x2.0', 'x2.0-pro']);
-  for (const [saved, expected] of [['x2.0', 'x2.0'], ['x2.0-pro', 'x2.0-pro'],
-    ['x2.0-sla', 'x2.0-pro'], ['unknown', 'x2.0'], [undefined, 'x2.0']]) {
+  assert.deepEqual(selection.OPTIONS.map(option => option.model), ['x2.0', 'x2.0-sla']);
+  for (const [saved, expected] of [['x2.0', 'x2.0'], ['x2.0-sla', 'x2.0-sla'],
+    ['x2.0-sla', 'x2.0-sla'], ['unknown', 'x2.0'], [undefined, 'x2.0']]) {
     selected = saved;
     assert.equal(selection.current(), expected);
   }
-  selected = 'x2.0-sla';
+  selected = 'x2.0-pro';
   selection.initialize();
-  assert.equal(selected, 'x2.0-pro');
+  assert.equal(selected, 'x2.0-sla');
 });
 
-for (const name of ['x2.0', 'x2.0-pro']) {
+for (const name of ['x2.0', 'x2.0-sla']) {
   test(`${name} camera/image/video resolved formats preserve upload encoding settings`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const expected = new f.MediaService(f.Models.realtime(name)).resolveModelInputSize(new f.Size(1024, 1920));

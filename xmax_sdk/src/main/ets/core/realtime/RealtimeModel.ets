@@ -7,7 +7,7 @@ export enum RealtimeModel {
 
   X2_0 = 'x2.0',
 
-  X2_0_PRO = 'x2.0-pro'
+  X2_0_SLA = 'x2.0-sla'
 }
 
 /** 实时模型的名称、输入能力与默认媒体规格。 */
@@ -21,7 +21,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return [];
-      case RealtimeModel.X2_0_PRO:
+      case RealtimeModel.X2_0_SLA:
         return [
           new ImageSize(1024, 1920),
           new ImageSize(1920, 1024)
@@ -37,7 +37,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return 1280000;
-      case RealtimeModel.X2_0_PRO:
+      case RealtimeModel.X2_0_SLA:
         return 2100000;
     }
   }
@@ -50,7 +50,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return 30;
-      case RealtimeModel.X2_0_PRO:
+      case RealtimeModel.X2_0_SLA:
         return 30;
     }
   }
@@ -60,7 +60,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return new RealtimeVideoFormat(832, 1472, this.defaultFrameRate);
-      case RealtimeModel.X2_0_PRO:
+      case RealtimeModel.X2_0_SLA:
         return new RealtimeVideoFormat(1024, 1920, this.defaultFrameRate);
     }
   }
@@ -71,7 +71,7 @@ export class ModelDefinition {
    * @param name 服务端识别的模型名称。
    */
   constructor(name: RealtimeModel) {
-    if (name !== RealtimeModel.X2_0 && name !== RealtimeModel.X2_0_PRO) {
+    if (name !== RealtimeModel.X2_0 && name !== RealtimeModel.X2_0_SLA) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, `Unsupported realtime model: ${name}`);
     }
     this.name = name;

@@ -22,9 +22,9 @@ export class XLabModelSelection {
       'RealtimeModel.X2_0'
     ),
     new XLabModelOption(
-      RealtimeModel.X2_0_PRO,
-      'X2.0-PRO',
-      'RealtimeModel.X2_0_PRO'
+      RealtimeModel.X2_0_SLA,
+      'X2.0-SLA',
+      'RealtimeModel.X2_0_SLA'
     )
   ];
 
@@ -33,8 +33,8 @@ export class XLabModelSelection {
       XLabModelSelection.STORAGE_KEY,
       XLabModelSelection.DEFAULT_MODEL
     );
-    if (AppStorage.get<string>(XLabModelSelection.STORAGE_KEY) === 'x2.0-sla') {
-      AppStorage.set<string>(XLabModelSelection.STORAGE_KEY, RealtimeModel.X2_0_PRO);
+    if (AppStorage.get<string>(XLabModelSelection.STORAGE_KEY) === 'x2.0-pro') {
+      AppStorage.set<string>(XLabModelSelection.STORAGE_KEY, RealtimeModel.X2_0_SLA);
     }
   }
 
@@ -42,9 +42,9 @@ export class XLabModelSelection {
     const selectedModel: string | undefined = AppStorage.get<string>(
       XLabModelSelection.STORAGE_KEY
     );
-    // 旧版本保存的 SLA 选择迁移到 Pro。
-    if (selectedModel === RealtimeModel.X2_0_PRO || selectedModel === 'x2.0-sla') {
-      return RealtimeModel.X2_0_PRO;
+    // 旧版本保存的 Pro 选择迁移到 SLA。
+    if (selectedModel === RealtimeModel.X2_0_SLA || selectedModel === 'x2.0-pro') {
+      return RealtimeModel.X2_0_SLA;
     }
     return XLabModelSelection.DEFAULT_MODEL;
   }

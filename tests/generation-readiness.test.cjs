@@ -95,7 +95,7 @@ function fixture(t, timingOptions = {}) {
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
-  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-pro') }, {});
+  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-sla') }, {});
   manager.setStateListener(state => { events.push(`state:${state.connectionState}`); if (state.reason?.error) errors.push(state.reason.error); });
   const remote = new RemoteStream('room', 'bot');
   t.after(async () => { await manager.close(); assert.equal(timers.size, 0); });
@@ -377,7 +377,7 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
       VideoSinkMirrorType: { kVideoSinkMirrorTypeOFF: 2 }
     },
     RtcEngineManager: { RtcEngineManager: { async acquire() { return { engine }; }, async release() {} } },
-    RtcStatsLogger: { RtcStatsLogger: {} }, XmaxLogger: { XmaxLogger: { info() {} } }
+    RtcStatsLogger: { RtcStatsLogger: {} }, XmaxLogger: { XmaxLogger: { info() {}, debug() {} } }
   });
   const { RtcManager } = load('foundation/rtc/RtcManager.ets');
   const { RemoteStream } = load('foundation/rtc/RemoteStream.ets');
