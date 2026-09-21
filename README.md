@@ -187,7 +187,7 @@ official OHPM Registry; both archives must therefore be integrated manually.
 
 Download the following files:
 
-- [`xmaxsdk-1.0.8.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.8/xmaxsdk-1.0.8.har)
+- [`xmaxsdk-1.0.9.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.9/xmaxsdk-1.0.9.har)
   from the XmaxSDK GitHub Release
 - The VolcEngine RTC HAR from the
   [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof?from=from_copylink)
@@ -195,7 +195,7 @@ Download the following files:
 Add both files to the application module's `libs` directory:
 
 ```text
-entry/libs/xmaxsdk-1.0.8.har
+entry/libs/xmaxsdk-1.0.9.har
 entry/libs/VolcEngineRTCToB-Release.har
 ```
 
@@ -204,7 +204,7 @@ Declare XmaxSDK in the module-level `oh-package.json5`:
 ```json5
 {
   "dependencies": {
-    "@xmax/sdk": "file:./libs/xmaxsdk-1.0.8.har"
+    "@xmax/sdk": "file:./libs/xmaxsdk-1.0.9.har"
   }
 }
 ```
