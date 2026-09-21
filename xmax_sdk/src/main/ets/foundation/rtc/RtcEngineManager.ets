@@ -168,7 +168,16 @@ export class RtcEngineManager {
    * @returns Engine 销毁完成后的 Promise。
    */
   private static async destroy(engine: RTCEngine): Promise<void> {
-    const result: number = await engine.destroyRTCEngine();
+    // 厂商 SDK 状态异常时可能直接抛异常而非返回错误码，统一转换为 XmaxError。
+    let result: number;
+    try {
+      result = await engine.destroyRTCEngine();
+    } catch (error) {
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        `destroyRTCEngine threw: ${XmaxError.from(error).message}`
+      );
+    }
     if (result < 0) {
       throw new XmaxError(
         XmaxErrorCode.RTC_ERROR,

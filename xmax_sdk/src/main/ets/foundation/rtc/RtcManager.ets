@@ -184,14 +184,27 @@ export class RtcManager implements RtcManaging {
       if (lease !== null) {
         const engine: RTCEngine = lease.engine;
         try {
-          engine.off('onSEIMessageReceived');
-          engine.off('onFirstRemoteVideoFrameRendered');
-          engine.off('onRemoteVideoFrame');
-          engine.off('onPerformanceAlarms');
+          this.offEngineEventSafely((): void => engine.off('onSEIMessageReceived'), 'onSEIMessageReceived');
+          this.offEngineEventSafely((): void => engine.off('onFirstRemoteVideoFrameRendered'),
+            'onFirstRemoteVideoFrameRendered');
+          this.offEngineEventSafely((): void => engine.off('onRemoteVideoFrame'), 'onRemoteVideoFrame');
+          this.offEngineEventSafely((): void => engine.off('onPerformanceAlarms'), 'onPerformanceAlarms');
         } finally {
           await RtcEngineManager.release(lease);
         }
       }
+    }
+  }
+
+  /** 单个事件解绑失败只记日志，不影响其余解绑和引擎释放。 */
+  private offEngineEventSafely(action: () => void, eventName: string): void {
+    try {
+      action();
+    } catch (error) {
+      XmaxLogger.error(
+        `${XmaxLogger.localized("解绑 RTC 事件失败 (Failed to Unbind RTC Event)\n└─ 事件：", "Failed to Unbind RTC Event\n└─ Event: ")}${eventName}${XmaxLogger.localized("\n└─ 原因：", "\n└─ Reason: ")}${XmaxError.from(error).message}`,
+        'RTC'
+      );
     }
   }
 
