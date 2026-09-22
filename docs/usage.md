@@ -256,9 +256,11 @@ const localStream = await realtime.createLocalVideoStream(videoPath, undefined, 
 played. Stopping, replacing the file, or closing the manager does not count as
 natural completion. Looping videos do not report `ENDED` on each cycle.
 
-The SDK retains the last picture and continues sending the final input frame and
-silent audio; the generation session remains active. This callback describes the
-local file, not completion of cloud processing. Pause, resume, and toggle reject
+The SDK stops local playback and audio/video frame submission, retaining the last
+local picture. Remote results already in flight continue to render; the SDK does
+not freeze the remote view on completion. An active generation task remains in
+`GENERATING` until explicitly stopped or the session state changes. This callback
+describes the local file, not completion of cloud processing. Pause, resume, and toggle reject
 after `ENDED`; to replay, disconnect if needed, stop the local video stream, and
 create it again.
 

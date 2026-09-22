@@ -136,8 +136,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (this.coordinator.isClosing || this.localVideoPlaybackState !== LocalVideoPlaybackState.ENDED) {
           return;
         }
-        // 只定格显示，不结束云端生成；渲染层会丢弃换源或退出后的截图。
-        void this.renderController.freezeRemoteVideo();
+        // 本地播放结束不改变生成会话，远端继续渲染在途结果。
         this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.ENDED);
       }
     );
@@ -399,7 +398,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         token.ensureCurrent();
         await this.renderController.resumeRemoteVideo();
         token.ensureCurrent();
-        this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PLAYING);
+        if (this.localVideoPlaybackState === LocalVideoPlaybackState.PLAYING) {
+          this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PLAYING);
+        }
       });
   }
 
@@ -791,8 +792,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.ensureCurrent();
       await token.wait(this.renderController.waitUntilRemoteFrameReady());
       token.ensureCurrent();
-      if (this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE ||
-        this.localVideoPlaybackState === LocalVideoPlaybackState.ENDED) {
+      if (this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE) {
         await token.wait(this.renderController.freezeRemoteVideo());
         token.ensureCurrent();
       }

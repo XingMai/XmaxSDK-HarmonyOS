@@ -124,7 +124,7 @@ export interface XmaxRealtimeManaging {
    *
    * @param filePath 本地视频文件路径。
    * @param videoFormat 期望的视频输出格式；未传入时按文件显示尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
-   * @param loop 是否循环播放，默认 true；false 时自然结束通知 ENDED，不自动断开生成会话。
+   * @param loop 是否循环播放，默认 true；false 时自然结束停止音视频推帧并通知 ENDED，不自动停止生成或断开会话。
    * @returns 可用于建立实时连接的本地媒体流。
    * @throws 输出尺寸不符合模型规则时返回 INVALID_CONFIGURATION 错误。
    */

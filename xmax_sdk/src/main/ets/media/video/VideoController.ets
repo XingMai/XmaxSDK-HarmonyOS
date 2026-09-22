@@ -111,7 +111,8 @@ export class VideoController {
           return;
         }
         this.currentPlaybackState = LocalVideoPlaybackState.ENDED;
-        this.startFrozenPublishing();
+        this.acceptsFrames = false;
+        this.stopFrozenPublishing();
         videoEndedListener();
       }
     );
@@ -238,10 +239,11 @@ export class VideoController {
     }
 
     this.stopFrozenPublishing();
+    this.currentPlaybackState = LocalVideoPlaybackState.PLAYING;
     try {
       this.mediaSourceController.resume();
-      this.currentPlaybackState = LocalVideoPlaybackState.PLAYING;
     } catch (error) {
+      this.currentPlaybackState = LocalVideoPlaybackState.PAUSE;
       this.startFrozenPublishing();
       throw XmaxError.from(error);
     }
@@ -309,7 +311,8 @@ export class VideoController {
       this.currentPlaybackState = this.mediaSourceController.hasEnded ?
         LocalVideoPlaybackState.ENDED : LocalVideoPlaybackState.PLAYING;
       if (this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
-        this.startFrozenPublishing();
+        this.acceptsFrames = false;
+        this.stopFrozenPublishing();
       }
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);

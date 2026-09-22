@@ -33,8 +33,9 @@ function managerFixture(modelName = 'x2.0-sla') {
   let sessionGate = null, autoConfirm = true, holdPreview = false, media, stream, api;
   let Track, Format, MediaStream, XmaxError, Code, CameraPosition, updatePosition;
   class FakeMedia {
-    constructor(_context, _rtc, _stream, _error, _service, formatListener) {
+    constructor(_context, _rtc, _stream, _error, _service, formatListener, endedListener) {
       media = this; this.currentTrack = null; this.hasAudio = true; this.formatListener = formatListener; this.onError = _error;
+      this.endedListener = endedListener;
     }
     get currentVideoFormat() { return this.currentTrack?.videoFormat; }
     async createLocalCameraStream(format, position) {
@@ -104,6 +105,7 @@ function managerFixture(modelName = 'x2.0-sla') {
       registerRemoteTrack() {} resetRemoteTrack() {} failRemoteFrameWait() {}
       stopRemoteVideoFrameDelivery() {} setRemoteVideoFrameListener() {}
       async waitUntilRemoteFrameReady() {}
+      async freezeRemoteVideo() { calls.freezes = (calls.freezes ?? 0) + 1; }
     } }
   }, { setTimeout: callback => { timers.push(callback); return timers.length; } });
   ({ RealtimeVideoTrack: Track, updateRealtimeVideoTrackPosition: updatePosition } = load('service/realtime/RealtimeVideoTrack.ets'));
@@ -131,6 +133,48 @@ function managerFixture(modelName = 'x2.0-sla') {
     holdPreview() { holdPreview = true; },
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
+}
+
+for (const endDuringStart of [false, true]) {
+  test(`video completion keeps generation active without freezing remote output (during start: ${endDuringStart})`, async () => {
+    const f = managerFixture();
+    const { LocalVideoPlaybackState: Playback } = f.load('service/realtime/LocalVideoPlaybackState.ets');
+    f.media.createLocalVideoStream = async () => {
+      f.media.currentTrack = new f.Track('video0', new f.Format(832, 1472, 30));
+      f.media.localVideoPlaybackState = Playback.PLAYING;
+      return new f.MediaStream('local', f.media.currentTrack);
+    };
+    const playbackStates = [];
+    f.manager.setLocalVideoPlaybackStateListener(state => playbackStates.push(state));
+    const local = await f.manager.createLocalVideoStream('once.mp4', undefined, false);
+    const complete = () => {
+      f.media.localVideoPlaybackState = Playback.ENDED;
+      f.media.endedListener();
+    };
+    if (endDuringStart) {
+      f.holdGeneration();
+      const starting = f.manager.startGeneration(local, new f.Context('test'));
+      await settle();
+      complete();
+      assert.equal(f.calls.starts.length, 1);
+      f.calls.starts[0].gate.resolve();
+      await starting;
+    } else {
+      await f.manager.startGeneration(local, new f.Context('test'));
+      const previousState = f.manager.currentState;
+      complete();
+      assert.equal(f.manager.currentState, previousState);
+    }
+    assert.deepEqual(playbackStates, [Playback.PLAYING, Playback.ENDED]);
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+    assert.equal(f.manager.currentState.taskId, f.calls.starts[0].task);
+    assert.equal(f.stream.currentGenerationTaskId, f.calls.starts[0].task);
+    assert.equal(f.calls.freezes ?? 0, 0);
+    // Starting a session clears the previous (empty) task; EOF must not stop the active one.
+    assert.deepEqual(f.calls.stops.filter(task => task.length > 0), []);
+    assert.deepEqual(f.calls.closed, []);
+    await f.manager.close();
+  });
 }
 
 test('default camera formats follow the manager model and reach generation signaling unchanged', async () => {

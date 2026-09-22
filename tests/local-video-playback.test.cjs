@@ -44,7 +44,10 @@ test('manager controls playback and notifies listeners without a video view', as
       return new Stream('local', this.currentTrack);
     }
     async pauseLocalVideoStream() { this.localVideoPlaybackState = State.PAUSE; }
-    resumeLocalVideoStream() { this.localVideoPlaybackState = State.PLAYING; }
+    resumeLocalVideoStream() {
+      this.localVideoPlaybackState = this.endOnResume ? State.ENDED : State.PLAYING;
+      if (this.endOnResume) this.ended();
+    }
     async stopLocalVideoStream() {
       this.currentTrack = null;
       this.localVideoPlaybackState = undefined;
@@ -110,8 +113,10 @@ test('manager controls playback and notifies listeners without a video view', as
   manager.setLocalVideoPlaybackStateListener(state => completionStates.push(state));
   await manager.createLocalVideoStream('once.mp4', undefined, false);
   assert.equal(media.loop, false);
+  const renderingBeforeEnd = [...renderCalls];
   media.localVideoPlaybackState = State.ENDED;
   media.ended();
+  assert.deepEqual(renderCalls, renderingBeforeEnd);
   assert.deepEqual(completionStates, [State.PLAYING, State.ENDED]);
   assert.equal(manager.currentState.connectionState, RealtimeConnectionState.READY);
   await assert.rejects(manager.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
@@ -124,6 +129,16 @@ test('manager controls playback and notifies listeners without a video view', as
   assert.equal(manager.currentState.connectionState, RealtimeConnectionState.IDLE);
   await assert.rejects(manager.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
 
+  const resumeStates = [];
+  manager.setLocalVideoPlaybackStateListener(state => resumeStates.push(state));
+  await manager.createLocalVideoStream('ends-on-resume.mp4', undefined, false);
+  await manager.pauseLocalVideoStream();
+  media.endOnResume = true;
+  await manager.resumeLocalVideoStream();
+  assert.deepEqual(resumeStates, [State.PLAYING, State.PAUSE, State.ENDED]);
+  assert.equal(renderCalls.at(-1), 'resume');
+  await manager.stopLocalVideoStream();
+
   manager.setLocalVideoPlaybackStateListener(state => { throw new Error(`Consumer failed: ${state}`); });
   await manager.createLocalVideoStream('another-video.mp4');
   await manager.pauseLocalVideoStream();
@@ -134,6 +149,9 @@ test('manager controls playback and notifies listeners without a video view', as
 test('video pause freezes source position while publishing repeated video and silent audio', async () => {
   let nowUs = 2_000_000;
   let source;
+  let endOnStart = false;
+  let timerId = 0;
+  const timers = new Map();
   class FakeMediaSourceController {
     constructor(_service, _audio, videoListener, audioListener, _error, ended) {
       this.ended = ended;
@@ -149,9 +167,15 @@ test('video pause freezes source position while publishing repeated video and si
       this.loop = loop;
       return { videoFormat: { width: 2, height: 2, fps: 30 }, hasAudio: true };
     }
-    async start() {}
+    async start() {
+      this.hasEnded = endOnStart;
+      if (endOnStart) this.ended();
+    }
     async pause() { this.pauseCalls++; }
-    resume() { this.resumeCalls++; }
+    resume() {
+      this.resumeCalls++;
+      if (this.endOnResume) this.ended();
+    }
     async stop() {}
     setLocalAudioPreviewEnabled() {}
     get localAudioVolume() { return this.volume; }
@@ -197,6 +221,9 @@ test('video pause freezes source position while publishing repeated video and si
         unregister: track => renderBindings.delete(track)
       }
     }
+  }, {
+    setInterval: callback => { timers.set(++timerId, callback); return timerId; },
+    clearInterval: id => timers.delete(id)
   });
   const { VideoController } = load('media/video/VideoController.ets');
   const { BufferVideoFrame } = load('foundation/media/video/BufferVideoFrame.ets');
@@ -231,18 +258,48 @@ test('video pause freezes source position while publishing repeated video and si
   assert.ok(videoFrames.at(-1).timestampUs > frame.timestampUs);
   assert.ok(audioFrames.length >= 2);
   assert.ok(audioFrames.at(-1).data.every(value => value === 0));
+  assert.equal(timers.size, 2);
+  const queuedTimers = [...timers.values()];
 
   controller.resumeLocalVideoStream();
   assert.equal(source.resumeCalls, 1);
   assert.equal(controller.playbackState, State.PLAYING);
+  const countsBeforeEnd = [videoFrames.length, audioFrames.length];
   source.ended();
   source.ended();
   assert.equal(controller.playbackState, State.ENDED);
   assert.equal(endedCount, 1);
-  assert.equal(videoFrames.at(-1).planes[0].data, pixels);
-  assert.ok(audioFrames.at(-1).data.every(value => value === 0));
+  assert.equal(timers.size, 0);
+  source.videoListener(frame);
+  source.audioListener(new AudioFrame(new Uint8Array([1, 2]), nowUs));
+  queuedTimers.forEach(callback => callback());
+  assert.deepEqual([videoFrames.length, audioFrames.length], countsBeforeEnd);
+  assert.equal(controller.currentTrack !== null, true);
+  assert.equal(renderBindings.size, 1);
   assert.throws(() => controller.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
   await controller.stopLocalVideoStream();
   source.ended();
   assert.equal(endedCount, 1);
+
+  // EOF deferred while paused may be delivered synchronously on resume.
+  await controller.createLocalVideoStream('ends-on-resume.mp4', undefined, false);
+  source.videoListener(frame);
+  await controller.pauseLocalVideoStream();
+  source.endOnResume = true;
+  controller.resumeLocalVideoStream();
+  assert.equal(controller.playbackState, State.ENDED);
+  assert.equal(timers.size, 0);
+  assert.equal(endedCount, 2);
+  await controller.stopLocalVideoStream();
+
+  // A very short file can complete before stream creation returns.
+  endOnStart = true;
+  await controller.createLocalVideoStream('short.mp4', undefined, false);
+  assert.equal(controller.playbackState, State.ENDED);
+  const shortCounts = [videoFrames.length, audioFrames.length];
+  source.videoListener(frame);
+  source.audioListener(new AudioFrame(new Uint8Array([1, 2]), nowUs));
+  assert.deepEqual([videoFrames.length, audioFrames.length], shortCounts);
+  assert.equal(timers.size, 0);
+  await controller.stopLocalVideoStream();
 });

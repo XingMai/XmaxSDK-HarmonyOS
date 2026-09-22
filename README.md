@@ -382,6 +382,9 @@ video; the generation task remains active. See the
 Videos loop by default. Pass `false` as the third argument to
 `createLocalVideoStream(videoPath, undefined, false)` to play once and receive
 `LocalVideoPlaybackState.ENDED` through the same listener on natural completion.
+Local playback and audio/video frame submission then stop, while in-flight remote
+results continue to render. This does not stop the generation task or disconnect
+the session; an active task remains in `GENERATING`.
 
 <br>
 
