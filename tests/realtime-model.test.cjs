@@ -158,7 +158,7 @@ for (const name of ['x2.0', 'x2.0-sla']) {
           assert.deepEqual(f.calls.at(-1), ['image', expected.width, expected.height]);
         } else {
           assert.deepEqual(f.calls.at(-1), ['video', 'source', 90, expected.width, expected.height,
-            fps ?? model.defaultFrameRate]);
+            fps ?? model.defaultFrameRate, true]);
         }
         await media.stopLocalStream();
         assert.equal(f.intervals.size, 0);
