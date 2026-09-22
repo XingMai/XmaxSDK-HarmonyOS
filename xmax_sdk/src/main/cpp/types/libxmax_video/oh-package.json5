@@ -1,6 +1,6 @@
 {
   "name": "libxmax_video.so",
   "types": "./index.d.ts",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Xmax video frame conversion"
 }
