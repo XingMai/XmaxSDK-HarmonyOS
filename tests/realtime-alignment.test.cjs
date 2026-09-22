@@ -965,6 +965,25 @@ test('XLab temporarily plays each selected video once and shows a completion toa
   assert.deepEqual(messages, ['视频播放结束']);
 });
 
+test('XLab ignores video taps after completion without calling SDK playback controls or showing errors', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel, messages = [];
+  vm.onMessage = message => messages.push(message);
+  await vm.connect({}, 'video.mp4');
+  f.media.localVideoPlaybackState = f.Playback.ENDED;
+  f.manager.localVideoPlaybackStateListener(f.Playback.ENDED);
+  let toggleCalls = 0;
+  f.manager.toggleLocalVideoStreamPlayback = async () => {
+    toggleCalls++;
+    throw new Error('Playback already ended');
+  };
+  await vm.toggleLocalVideoPlayback();
+  await vm.toggleLocalVideoPlayback();
+  assert.equal(toggleCalls, 0);
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.ENDED);
+  assert.deepEqual(messages, ['视频播放结束']);
+  await vm.disconnect();
+});
+
 test('XLab video taps pause and resume through the SDK callback without starting generation', async () => {
   const f = exampleVideoPlaybackFixture(), vm = f.viewModel;
   await vm.connect({}, 'video.mp4');

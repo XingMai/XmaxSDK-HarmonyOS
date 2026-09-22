@@ -151,7 +151,8 @@ export class RealtimeViewModel {
     if (manager === null || this.localVideoPath.length === 0 || this.localImagePath.length > 0 ||
       this.localStream === null || this.connecting || this.changingLocalMedia ||
       this.changingVideoPlayback || this.state.isGenerationStarting ||
-      manager.localVideoPlaybackState === undefined) {
+      manager.localVideoPlaybackState === undefined ||
+      manager.localVideoPlaybackState === LocalVideoPlaybackState.ENDED) {
       return;
     }
     this.changingVideoPlayback = true;
