@@ -202,6 +202,9 @@ export class RealtimeViewModel {
       manager.setLocalVideoPlaybackStateListener((state: LocalVideoPlaybackState): void => {
         if (this.realtimeManager === manager) {
           this.state.localVideoPlaybackState = state;
+          if (state === LocalVideoPlaybackState.ENDED) {
+            this.onMessage?.(XLabLocalization.text('video_playback_ended'));
+          }
         }
       });
       manager.setStateListener((state: RealtimeState): void => {
@@ -358,7 +361,8 @@ export class RealtimeViewModel {
         manager: XmaxRealtimeManaging,
         resolvedPath: string
       ): Promise<RealtimeMediaStream> =>
-        manager.createLocalVideoStream(resolvedPath)
+        // 临时验证单次播放与 ENDED 回调。
+        manager.createLocalVideoStream(resolvedPath, undefined, false)
     );
   }
 
@@ -888,7 +892,8 @@ export class RealtimeViewModel {
     }
 
     if (localVideoPath.length > 0) {
-      return manager.createLocalVideoStream(localVideoPath);
+      // 临时验证单次播放与 ENDED 回调。
+      return manager.createLocalVideoStream(localVideoPath, undefined, false);
     }
 
     return manager.createLocalCameraStream(

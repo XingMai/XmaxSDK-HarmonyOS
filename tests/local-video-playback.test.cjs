@@ -27,14 +27,18 @@ test('media timeline keeps loop anchors stationary while paused', () => {
 
 test('manager controls playback and notifies listeners without a video view', async () => {
   let Track, Stream, State;
+  let media;
   const renderCalls = [];
   class FakeMediaController {
-    constructor() {
+    constructor(_context, _rtc, _stream, _error, _service, _format, ended) {
+      media = this;
+      this.ended = ended;
       this.currentTrack = null;
       this.localVideoPlaybackState = undefined;
     }
     setCameraPreviewReadyHandler() {}
-    async createLocalVideoStream() {
+    async createLocalVideoStream(_path, _format, loop) {
+      this.loop = loop;
       this.currentTrack = new Track('video0');
       this.localVideoPlaybackState = State.PLAYING;
       return new Stream('local', this.currentTrack);
@@ -82,6 +86,7 @@ test('manager controls playback and notifies listeners without a video view', as
   await assert.rejects(manager.pauseLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
 
   await manager.createLocalVideoStream('video.mp4');
+  assert.equal(media.loop, true);
   assert.deepEqual(states, [State.PLAYING]);
   await manager.toggleLocalVideoStreamPlayback();
   assert.equal(manager.localVideoPlaybackState, State.PAUSE);
@@ -101,6 +106,20 @@ test('manager controls playback and notifies listeners without a video view', as
   await manager.resumeLocalVideoStream();
   assert.equal(replacementStates.length, 2);
   await manager.stopLocalVideoStream();
+  const completionStates = [];
+  manager.setLocalVideoPlaybackStateListener(state => completionStates.push(state));
+  await manager.createLocalVideoStream('once.mp4', undefined, false);
+  assert.equal(media.loop, false);
+  media.localVideoPlaybackState = State.ENDED;
+  media.ended();
+  assert.deepEqual(completionStates, [State.PLAYING, State.ENDED]);
+  assert.equal(manager.currentState.connectionState, RealtimeConnectionState.READY);
+  await assert.rejects(manager.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(manager.pauseLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
+  await assert.rejects(manager.toggleLocalVideoStreamPlayback(), { code: 'INVALID_CONFIGURATION' });
+  manager.setLocalVideoPlaybackStateListener(state => { completionStates.push(state); });
+  assert.equal(completionStates.at(-1), State.ENDED);
+  await manager.stopLocalVideoStream();
   assert.equal(manager.localVideoPlaybackState, undefined);
   assert.equal(manager.currentState.connectionState, RealtimeConnectionState.IDLE);
   await assert.rejects(manager.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
@@ -116,7 +135,8 @@ test('video pause freezes source position while publishing repeated video and si
   let nowUs = 2_000_000;
   let source;
   class FakeMediaSourceController {
-    constructor(_service, _audio, videoListener, audioListener) {
+    constructor(_service, _audio, videoListener, audioListener, _error, ended) {
+      this.ended = ended;
       this.videoListener = videoListener;
       this.audioListener = audioListener;
       this.hasAudio = true;
@@ -125,7 +145,10 @@ test('video pause freezes source position while publishing repeated video and si
       this.resumeCalls = 0;
       source = this;
     }
-    async prepare() { return { videoFormat: { width: 2, height: 2, fps: 30 }, hasAudio: true }; }
+    async prepare(_path, _format, loop) {
+      this.loop = loop;
+      return { videoFormat: { width: 2, height: 2, fps: 30 }, hasAudio: true };
+    }
     async start() {}
     async pause() { this.pauseCalls++; }
     resume() { this.resumeCalls++; }
@@ -183,8 +206,11 @@ test('video pause freezes source position while publishing repeated video and si
   const { VideoRotation } = load('foundation/media/video/VideoRotation.ets');
   const { AudioFrame } = load('foundation/media/audio/AudioFrame.ets');
   const { LocalVideoPlaybackState: State } = load('service/realtime/LocalVideoPlaybackState.ets');
-  const controller = new VideoController({}, rtc, streamController, error => { throw error; });
-  await controller.createLocalVideoStream('video.mp4');
+  let endedCount = 0;
+  const controller = new VideoController({}, rtc, streamController, error => { throw error; }, undefined,
+    () => { endedCount++; });
+  await controller.createLocalVideoStream('video.mp4', undefined, false);
+  assert.equal(source.loop, false);
 
   const pixels = new ArrayBuffer(6);
   const frame = new BufferVideoFrame(
@@ -209,5 +235,14 @@ test('video pause freezes source position while publishing repeated video and si
   controller.resumeLocalVideoStream();
   assert.equal(source.resumeCalls, 1);
   assert.equal(controller.playbackState, State.PLAYING);
+  source.ended();
+  source.ended();
+  assert.equal(controller.playbackState, State.ENDED);
+  assert.equal(endedCount, 1);
+  assert.equal(videoFrames.at(-1).planes[0].data, pixels);
+  assert.ok(audioFrames.at(-1).data.every(value => value === 0));
+  assert.throws(() => controller.resumeLocalVideoStream(), { code: 'INVALID_CONFIGURATION' });
   await controller.stopLocalVideoStream();
+  source.ended();
+  assert.equal(endedCount, 1);
 });

@@ -473,6 +473,10 @@
       "value": "IMAGE / VIDEO"
     },
     {
+      "name": "video_playback_ended",
+      "value": "Video playback finished"
+    },
+    {
       "name": "storage_success",
       "value": "SUCCESS"
     }

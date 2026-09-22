@@ -77,7 +77,8 @@ export class MediaController implements MediaControlling {
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void,
     mediaService: MediaServicing = new MediaService(),
-    cameraFormatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {}
+    cameraFormatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {},
+    videoEndedListener: () => void = (): void => {}
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -108,7 +109,8 @@ export class MediaController implements MediaControlling {
       rtcManager,
       streamController,
       errorListener,
-      mediaService
+      mediaService,
+      videoEndedListener
     );
   }
 
@@ -257,12 +259,13 @@ export class MediaController implements MediaControlling {
    */
   createLocalVideoStream(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop: boolean = true
   ): Promise<RealtimeMediaStream> {
     return this.createSource(
       this.videoController,
       (): Promise<RealtimeMediaStream> =>
-        this.videoController.createLocalVideoStream(filePath, videoFormat)
+        this.videoController.createLocalVideoStream(filePath, videoFormat, loop)
     );
   }
 

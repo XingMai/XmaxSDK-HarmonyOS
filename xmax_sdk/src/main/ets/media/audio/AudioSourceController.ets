@@ -27,6 +27,10 @@ export class AudioSourceController implements AudioSourceControlling {
   private loopIndex: number = 0;
   private isPaused: boolean = false;
   private pendingEndOfStream: boolean = false;
+  private loop: boolean = true;
+  private hasEnded: boolean = false;
+  private sourceVersion: number = 0;
+  private readonly endedListener: () => void;
 
   /**
    * 创建音频源 Controller。
@@ -36,10 +40,12 @@ export class AudioSourceController implements AudioSourceControlling {
    */
   constructor(
     frameListener: AudioSourceFrameListener,
-    errorListener: AudioSourceErrorListener
+    errorListener: AudioSourceErrorListener,
+    endedListener: () => void = (): void => {}
   ) {
     this.frameListener = frameListener;
     this.errorListener = errorListener;
+    this.endedListener = endedListener;
   }
 
   /**
@@ -48,7 +54,7 @@ export class AudioSourceController implements AudioSourceControlling {
    * @param filePath 本地媒体文件路径。
    * @returns 无返回值。
    */
-  configure(filePath: string): void {
+  configure(filePath: string, loop: boolean = true): void {
     if (this.decoder !== null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -57,6 +63,7 @@ export class AudioSourceController implements AudioSourceControlling {
     }
 
     this.filePath = filePath;
+    this.loop = loop;
   }
 
   /**
@@ -80,6 +87,8 @@ export class AudioSourceController implements AudioSourceControlling {
     }
 
     this.timeline = timeline;
+    this.sourceVersion++;
+    this.hasEnded = false;
     this.loopIndex = 0;
     this.isPaused = false;
     this.pendingEndOfStream = false;
@@ -88,6 +97,9 @@ export class AudioSourceController implements AudioSourceControlling {
 
   /** @inheritdoc */
   pause(): void {
+    if (this.hasEnded) {
+      return;
+    }
     if (this.isPaused) {
       return;
     }
@@ -104,6 +116,9 @@ export class AudioSourceController implements AudioSourceControlling {
 
   /** @inheritdoc */
   resume(pausedDurationUs: number): void {
+    if (this.hasEnded) {
+      return;
+    }
     if (!this.isPaused) {
       return;
     }
@@ -128,6 +143,8 @@ export class AudioSourceController implements AudioSourceControlling {
    * @returns 无返回值。
    */
   stop(): void {
+    this.sourceVersion++;
+    this.hasEnded = false;
     this.releaseDecoder();
     this.filePath = '';
     this.timeline = null;
@@ -151,6 +168,7 @@ export class AudioSourceController implements AudioSourceControlling {
     }
 
     const loopIndex: number = this.loopIndex;
+    const version: number = this.sourceVersion;
     return new AudioFileFrameDecoder(
       this.filePath,
       timeline.playbackAnchorForLoop(loopIndex),
@@ -158,15 +176,19 @@ export class AudioSourceController implements AudioSourceControlling {
       timeline.cycleDurationUs,
       new AudioSourceDecoderListener(
         (frame: AudioFrame): void => {
-          if (!this.isPaused) {
+          if (version === this.sourceVersion && !this.isPaused && !this.hasEnded) {
             this.frameListener(frame);
           }
         },
         (): void => {
-          this.handleEndOfStream(loopIndex);
+          if (version === this.sourceVersion) {
+            this.handleEndOfStream(loopIndex);
+          }
         },
         (message: string): void => {
-          this.errorListener(message);
+          if (version === this.sourceVersion) {
+            this.errorListener(message);
+          }
         }
       )
     );
@@ -180,7 +202,7 @@ export class AudioSourceController implements AudioSourceControlling {
    */
   private handleEndOfStream(loopIndex: number): void {
     const endedDecoder: AudioFileFrameDecoder | null = this.decoder;
-    if (endedDecoder === null || loopIndex !== this.loopIndex) {
+    if (endedDecoder === null || loopIndex !== this.loopIndex || this.hasEnded) {
       return;
     }
     if (this.isPaused) {
@@ -192,9 +214,18 @@ export class AudioSourceController implements AudioSourceControlling {
       if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
         return;
       }
+      if (this.isPaused) {
+        this.pendingEndOfStream = true;
+        return;
+      }
 
       this.decoder = null;
       this.releaseDecoderInstance(endedDecoder);
+      if (!this.loop) {
+        this.hasEnded = true;
+        this.endedListener();
+        return;
+      }
       this.loopIndex++;
 
       try {

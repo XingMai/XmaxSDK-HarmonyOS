@@ -10,6 +10,9 @@ export interface MediaSourceControlling {
   /** 当前媒体文件是否包含可用音轨。 */
   readonly hasAudio: boolean;
 
+  /** 当前文件已自然结束，且本地尾音已排空。 */
+  readonly hasEnded: boolean;
+
   /**
    * 准备本地媒体文件和输出格式。
    *
@@ -19,7 +22,8 @@ export interface MediaSourceControlling {
    */
   prepare(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop?: boolean
   ): Promise<MediaSourceConfiguration>;
 
   /**

@@ -39,6 +39,9 @@ export interface AudioManaging {
    */
   flush(): Promise<void>;
 
+  /** 等待已提交的本地音频播放完，不清空尾部音频。 */
+  drain(): Promise<void>;
+
   /**
    * 停止本地音频播放并释放资源。
    *

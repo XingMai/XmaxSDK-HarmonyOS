@@ -23,7 +23,8 @@ export interface VideoSourceControlling {
     rotation: VideoRotation,
     outputWidth: number,
     outputHeight: number,
-    frameRate: number
+    frameRate: number,
+    loop?: boolean
   ): void;
 
   /**

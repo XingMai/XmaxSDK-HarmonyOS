@@ -1,7 +1,8 @@
 /** 本地视频文件流的播放状态。 */
 export enum LocalVideoPlaybackState {
   PLAYING = 'playing',
-  PAUSE = 'pause'
+  PAUSE = 'pause',
+  ENDED = 'ended'
 }
 
 /** 本地视频文件流播放状态监听器。 */

@@ -863,6 +863,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
     '@xmax/sdk': {
       CameraPosition: { FRONT: 'front' }, RealtimeConnectionState: f.State,
+      LocalVideoPlaybackState: f.load('service/realtime/LocalVideoPlaybackState.ets').LocalVideoPlaybackState,
       RealtimeReasonKind: f.ReasonKind,
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
@@ -885,7 +886,8 @@ function exampleFixture(modelName = 'x2.0-sla') {
 function exampleVideoPlaybackFixture() {
   const f = exampleFixture();
   const { LocalVideoPlaybackState: Playback } = f.load('service/realtime/LocalVideoPlaybackState.ets');
-  f.media.createLocalVideoStream = async () => {
+  f.media.createLocalVideoStream = async (_path, _format, loop) => {
+    f.media.loop = loop;
     f.media.currentTrack = new f.Track('file-video', new f.Format(832, 1472, 24));
     f.media.localVideoPlaybackState = Playback.PLAYING;
     return new f.MediaStream('local', f.media.currentTrack);
@@ -900,6 +902,24 @@ function exampleVideoPlaybackFixture() {
   f.manager.renderController.resumeRemoteVideo = async () => {};
   return { ...f, Playback };
 }
+
+test('XLab temporarily plays each selected video once and shows a completion toast', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel, messages = [];
+  vm.onMessage = message => messages.push(message);
+  await vm.connect({}, 'video.mp4');
+  assert.equal(f.media.loop, false);
+  assert.deepEqual(messages, []);
+  f.manager.localVideoPlaybackStateListener(f.Playback.ENDED);
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.ENDED);
+  assert.deepEqual(messages, ['视频播放结束']);
+  await vm.changeLocalVideo('next.mp4');
+  assert.equal(f.media.loop, false);
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  const oldListener = f.manager.localVideoPlaybackStateListener;
+  await vm.disconnect();
+  oldListener(f.Playback.ENDED);
+  assert.deepEqual(messages, ['视频播放结束']);
+});
 
 test('XLab video taps pause and resume through the SDK callback without starting generation', async () => {
   const f = exampleVideoPlaybackFixture(), vm = f.viewModel;

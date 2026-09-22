@@ -473,6 +473,10 @@
       "value": "图片 / 视频"
     },
     {
+      "name": "video_playback_ended",
+      "value": "视频播放结束"
+    },
+    {
       "name": "storage_success",
       "value": "成功"
     }

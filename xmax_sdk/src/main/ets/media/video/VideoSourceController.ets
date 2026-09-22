@@ -43,6 +43,10 @@ export class VideoSourceController implements VideoSourceControlling {
   private lastSourceTimestampUs: number = -1;
   private isPaused: boolean = false;
   private pendingEndOfStream: boolean = false;
+  private loop: boolean = true;
+  private hasEnded: boolean = false;
+  private sourceVersion: number = 0;
+  private readonly endedListener: () => void;
 
   /**
    * 创建视频源 Controller。
@@ -52,10 +56,12 @@ export class VideoSourceController implements VideoSourceControlling {
    */
   constructor(
     frameListener: VideoSourceFrameListener,
-    errorListener: VideoSourceErrorListener
+    errorListener: VideoSourceErrorListener,
+    endedListener: () => void = (): void => {}
   ) {
     this.frameListener = frameListener;
     this.errorListener = errorListener;
+    this.endedListener = endedListener;
   }
 
   /**
@@ -73,7 +79,8 @@ export class VideoSourceController implements VideoSourceControlling {
     rotation: VideoRotation,
     outputWidth: number,
     outputHeight: number,
-    frameRate: number
+    frameRate: number,
+    loop: boolean = true
   ): void {
     if (this.decoder !== null || this.decoderReleasePromise !== null) {
       throw new XmaxError(
@@ -83,6 +90,7 @@ export class VideoSourceController implements VideoSourceControlling {
     }
 
     this.filePath = filePath;
+    this.loop = loop;
     this.sourceRotation = rotation;
     this.outputWidth = outputWidth;
     this.outputHeight = outputHeight;
@@ -111,6 +119,8 @@ export class VideoSourceController implements VideoSourceControlling {
     }
 
     this.timeline = timeline;
+    this.sourceVersion++;
+    this.hasEnded = false;
     this.loopIndex = 0;
     this.isPaused = false;
     this.pendingEndOfStream = false;
@@ -120,6 +130,9 @@ export class VideoSourceController implements VideoSourceControlling {
 
   /** @inheritdoc */
   pause(): void {
+    if (this.hasEnded) {
+      return;
+    }
     if (this.isPaused) {
       return;
     }
@@ -136,6 +149,9 @@ export class VideoSourceController implements VideoSourceControlling {
 
   /** @inheritdoc */
   resume(pausedDurationUs: number): void {
+    if (this.hasEnded) {
+      return;
+    }
     if (!this.isPaused) {
       return;
     }
@@ -160,6 +176,8 @@ export class VideoSourceController implements VideoSourceControlling {
    * @returns 解码器释放完成后的 Promise。
    */
   async stop(): Promise<void> {
+    this.sourceVersion++;
+    this.hasEnded = false;
     const releasePromise: Promise<void> = this.releaseDecoder();
     this.filePath = '';
     this.sourceRotation = VideoRotation.ROTATION_0;
@@ -189,6 +207,7 @@ export class VideoSourceController implements VideoSourceControlling {
     }
 
     const loopIndex: number = this.loopIndex;
+    const version: number = this.sourceVersion;
     return new VideoFileFrameDecoder(
       this.filePath,
       this.sourceRotation,
@@ -197,13 +216,19 @@ export class VideoSourceController implements VideoSourceControlling {
       this.frameIntervalUs,
       new VideoSourceDecoderListener(
         (frame: VideoFileDecodedFrame): void => {
-          this.handleFrame(frame);
+          if (version === this.sourceVersion && !this.hasEnded) {
+            this.handleFrame(frame);
+          }
         },
         (): void => {
-          this.handleEndOfStream(loopIndex);
+          if (version === this.sourceVersion) {
+            this.handleEndOfStream(loopIndex);
+          }
         },
         (message: string): void => {
-          this.errorListener(message);
+          if (version === this.sourceVersion) {
+            this.errorListener(message);
+          }
         }
       ),
       timeline.playbackAnchorForLoop(loopIndex),
@@ -264,7 +289,7 @@ export class VideoSourceController implements VideoSourceControlling {
    */
   private handleEndOfStream(loopIndex: number): void {
     const endedDecoder: VideoFileFrameDecoder | null = this.decoder;
-    if (endedDecoder === null || loopIndex !== this.loopIndex) {
+    if (endedDecoder === null || loopIndex !== this.loopIndex || this.hasEnded) {
       return;
     }
     if (this.isPaused) {
@@ -291,9 +316,22 @@ export class VideoSourceController implements VideoSourceControlling {
     if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
       return;
     }
+    if (this.isPaused) {
+      this.pendingEndOfStream = true;
+      return;
+    }
+    const version: number = this.sourceVersion;
+    if (!this.loop) {
+      this.hasEnded = true;
+      await this.releaseDecoder();
+      if (version === this.sourceVersion) {
+        this.endedListener();
+      }
+      return;
+    }
 
     await this.releaseDecoder();
-    if (this.decoder !== null || this.filePath.length === 0 ||
+    if (version !== this.sourceVersion || this.decoder !== null || this.filePath.length === 0 ||
       this.timeline === null || loopIndex !== this.loopIndex) {
       return;
     }

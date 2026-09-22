@@ -15,7 +15,7 @@ function audioFixture() {
   const audio = {
     AudioSamplingRate: { SAMPLE_RATE_48000: 48000 }, AudioChannel: { CHANNEL_1: 1 },
     AudioSampleFormat: { SAMPLE_FORMAT_S16LE: 1 }, AudioEncodingType: { ENCODING_TYPE_RAW: 1 },
-    StreamUsage: { STREAM_USAGE_MOVIE: 1 }, AudioDataCallbackResult: { VALID: 0 },
+    StreamUsage: { STREAM_USAGE_MOVIE: 1 }, AudioDataCallbackResult: { VALID: 0, INVALID: -1 },
     async createAudioRenderer() {
       const renderer = {
         volume: null, released: false,
@@ -30,7 +30,8 @@ function audioFixture() {
         async start() { events.push(['start', this.volume]); },
         async stop() { events.push(['stop']); },
         async release() { this.released = true; events.push(['release']); },
-        async flush() {}
+        async flush() {},
+        async drain() { events.push(['drain']); }
       };
       renderers.push(renderer);
       return renderer;
@@ -41,6 +42,40 @@ function audioFixture() {
   const { AudioManager } = load('foundation/media/audio/AudioManager.ets');
   return { audio: new AudioManager(), renderers, events, stubs };
 }
+
+test('natural completion drains the app queue before the platform audio buffer', async () => {
+  const f = audioFixture();
+  await f.audio.start();
+  f.audio.write({ data: new Uint8Array([1, 2, 3, 4]) });
+  const pending = f.audio.drain();
+  await settle();
+  assert.equal(f.events.some(event => event[0] === 'drain'), false);
+  const first = new ArrayBuffer(2), last = new ArrayBuffer(2);
+  f.renderers[0].writeData(first);
+  await settle();
+  assert.equal(f.events.some(event => event[0] === 'drain'), false);
+  f.renderers[0].writeData(last);
+  assert.equal(f.renderers[0].writeData(new ArrayBuffer(2)), -1);
+  await pending;
+  assert.deepEqual([...new Uint8Array(first)], [1, 2]);
+  assert.deepEqual([...new Uint8Array(last)], [3, 4]);
+  assert.deepEqual(f.events.at(-1), ['drain']);
+  await f.audio.stop();
+});
+
+test('stopping or disabling preview releases a pending drain without touching a released renderer', async () => {
+  for (const action of ['stop', 'mute']) {
+    const f = audioFixture();
+    await f.audio.start();
+    f.audio.write({ data: new Uint8Array([1, 2]) });
+    const pending = f.audio.drain();
+    if (action === 'stop') await f.audio.stop();
+    else f.audio.setPlaybackEnabled(false);
+    await pending;
+    assert.equal(f.events.some(event => event[0] === 'drain'), false);
+    await f.audio.stop();
+  }
+});
 
 test('local volume defaults to 45%, caches before playback and survives replacement', async () => {
   const f = audioFixture();

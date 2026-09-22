@@ -226,7 +226,7 @@ Register a manager listener to update your controls when playback changes:
 
 ```ts
 realtime.setLocalVideoPlaybackStateListener((state): void => {
-  console.info(`Local video playback: ${state}`); // "playing" or "pause"
+  console.info(`Local video playback: ${state}`); // "playing", "pause", or "ended"
 });
 
 // Remove the listener when it is no longer needed.
@@ -237,6 +237,30 @@ realtime.setLocalVideoPlaybackStateListener(null);
 no local video file stream. Registering a listener immediately reports the current
 state if a video file stream exists. Camera and image streams do not support these
 playback operations.
+
+### Play a video once
+
+Videos loop by default. Pass `false` as the third argument to play a file once:
+
+```ts
+realtime.setLocalVideoPlaybackStateListener((state): void => {
+  if (state === LocalVideoPlaybackState.ENDED) {
+    // Local video and audio playback have finished.
+  }
+});
+
+const localStream = await realtime.createLocalVideoStream(videoPath, undefined, false);
+```
+
+`ENDED` is reported once after both tracks finish and buffered local audio has
+played. Stopping, replacing the file, or closing the manager does not count as
+natural completion. Looping videos do not report `ENDED` on each cycle.
+
+The SDK retains the last picture and continues sending the final input frame and
+silent audio; the generation session remains active. This callback describes the
+local file, not completion of cloud processing. Pause, resume, and toggle reject
+after `ENDED`; to replay, disconnect if needed, stop the local video stream, and
+create it again.
 
 While paused, the SDK holds the file's playback position, continues publishing
 the last input frame and silent audio with advancing timestamps, and overlays a

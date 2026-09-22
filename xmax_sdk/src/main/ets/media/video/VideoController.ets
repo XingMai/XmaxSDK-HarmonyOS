@@ -73,7 +73,8 @@ export class VideoController {
     rtcManager: RtcManaging,
     streamController: StreamControlling,
     errorListener: (error: XmaxError) => void,
-    mediaService: MediaServicing = new MediaService()
+    mediaService: MediaServicing = new MediaService(),
+    videoEndedListener: () => void = (): void => {}
   ) {
     // 基础层组件
     this.rtcManager = rtcManager;
@@ -103,6 +104,15 @@ export class VideoController {
           XmaxErrorCode.MEDIA_ERROR,
           message
         ));
+      },
+      (): void => {
+        if (!this.acceptsFrames || this.activeTrack === null ||
+          this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
+          return;
+        }
+        this.currentPlaybackState = LocalVideoPlaybackState.ENDED;
+        this.startFrozenPublishing();
+        videoEndedListener();
       }
     );
   }
@@ -131,7 +141,8 @@ export class VideoController {
    */
   async createLocalVideoStream(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop: boolean = true
   ): Promise<RealtimeMediaStream> {
     if (this.activeTrack !== null) {
       throw new XmaxError(
@@ -142,7 +153,8 @@ export class VideoController {
 
     return this.createStream(
       filePath,
-      videoFormat
+      videoFormat,
+      loop
     );
   }
 
@@ -193,7 +205,8 @@ export class VideoController {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PAUSE) {
       return;
     }
-    if (this.activeTrack === null || this.currentPlaybackState === undefined) {
+    if (this.activeTrack === null || this.currentPlaybackState === undefined ||
+      this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Create a local video stream before pausing it'
@@ -216,7 +229,8 @@ export class VideoController {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PLAYING) {
       return;
     }
-    if (this.activeTrack === null || this.currentPlaybackState === undefined) {
+    if (this.activeTrack === null || this.currentPlaybackState === undefined ||
+      this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Create a local video stream before resuming it'
@@ -262,7 +276,8 @@ export class VideoController {
    */
   private async createStream(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop: boolean = true
   ): Promise<RealtimeMediaStream> {
     let track: RealtimeVideoTrack | null = null;
 
@@ -271,7 +286,8 @@ export class VideoController {
       const sourceConfiguration: MediaSourceConfiguration =
         await this.mediaSourceController.prepare(
           filePath,
-          videoFormat
+          videoFormat,
+          loop
         );
       const resolvedFormat: RealtimeVideoFormat = sourceConfiguration.videoFormat;
       track = new RealtimeVideoTrack('video0', resolvedFormat);
@@ -290,7 +306,11 @@ export class VideoController {
       this.acceptsFrames = true;
       await this.mediaSourceController.start();
       this.activeTrack = track;
-      this.currentPlaybackState = LocalVideoPlaybackState.PLAYING;
+      this.currentPlaybackState = this.mediaSourceController.hasEnded ?
+        LocalVideoPlaybackState.ENDED : LocalVideoPlaybackState.PLAYING;
+      if (this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
+        this.startFrozenPublishing();
+      }
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);
     } catch (error) {

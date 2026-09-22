@@ -75,6 +75,13 @@ export class MediaSourceController implements MediaSourceControlling {
   private metadata: MediaSourceMetadata | null = null;
   private timeline: MediaTimeline | null = null;
   private isPaused: boolean = false;
+  private videoEnded: boolean = false;
+  private audioEnded: boolean = false;
+  private completionPending: boolean = false;
+  private completionNotified: boolean = false;
+  private playbackVersion: number = 0;
+  private readonly endedListener: () => void;
+  private readonly errorListener: VideoSourceErrorListener;
 
   /**
    * 创建媒体源 Controller。
@@ -90,25 +97,36 @@ export class MediaSourceController implements MediaSourceControlling {
     audioManager: AudioManaging,
     videoFrameListener: VideoSourceFrameListener,
     audioFrameListener: MediaSourceAudioFrameListener,
-    errorListener: VideoSourceErrorListener
+    errorListener: VideoSourceErrorListener,
+    endedListener: () => void = (): void => {}
   ) {
     // 基础层组件
     this.audioManager = audioManager;
 
     // 服务层组件
     this.mediaService = mediaService;
+    this.endedListener = endedListener;
+    this.errorListener = errorListener;
 
     // 媒体层组件
     this.videoSourceController = new VideoSourceController(
       videoFrameListener,
-      errorListener
+      errorListener,
+      (): void => {
+        this.videoEnded = true;
+        void this.finishPlaybackIfEnded();
+      }
     );
     this.audioSourceController = new AudioSourceController(
       (frame: AudioFrame): void => {
         this.audioManager.write(frame);
         audioFrameListener(frame);
       },
-      errorListener
+      errorListener,
+      (): void => {
+        this.audioEnded = true;
+        void this.finishPlaybackIfEnded();
+      }
     );
   }
 
@@ -121,6 +139,10 @@ export class MediaSourceController implements MediaSourceControlling {
     return this.metadata?.hasAudio ?? false;
   }
 
+  get hasEnded(): boolean {
+    return this.completionNotified;
+  }
+
   /**
    * 读取本地媒体文件信息并配置音视频源。
    *
@@ -130,7 +152,8 @@ export class MediaSourceController implements MediaSourceControlling {
    */
   async prepare(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop: boolean = true
   ): Promise<MediaSourceConfiguration> {
     if (this.metadata !== null) {
       throw new XmaxError(
@@ -156,10 +179,11 @@ export class MediaSourceController implements MediaSourceControlling {
       metadata.rotation,
       resolvedFormat.width,
       resolvedFormat.height,
-      resolvedFormat.fps
+      resolvedFormat.fps,
+      loop
     );
     if (metadata.hasAudio) {
-      this.audioSourceController.configure(filePath);
+      this.audioSourceController.configure(filePath, loop);
     }
 
     this.metadata = metadata;
@@ -176,6 +200,11 @@ export class MediaSourceController implements MediaSourceControlling {
    */
   async start(): Promise<void> {
     const metadata: MediaSourceMetadata = this.requireMetadata();
+    this.playbackVersion++;
+    this.videoEnded = false;
+    this.audioEnded = !metadata.hasAudio;
+    this.completionPending = false;
+    this.completionNotified = false;
 
     if (metadata.hasAudio) {
       await this.audioManager.start();
@@ -190,6 +219,7 @@ export class MediaSourceController implements MediaSourceControlling {
         this.audioSourceController.start(timeline);
       }
     } catch (error) {
+      this.playbackVersion++;
       const videoStopPromise: Promise<void> = this.videoSourceController.stop();
       this.audioSourceController.stop();
       await videoStopPromise;
@@ -256,6 +286,34 @@ export class MediaSourceController implements MediaSourceControlling {
       this.audioSourceController.resume(pausedDurationUs);
     }
     this.isPaused = false;
+    void this.finishPlaybackIfEnded();
+  }
+
+  private async finishPlaybackIfEnded(): Promise<void> {
+    if (!this.videoEnded || !this.audioEnded || this.isPaused || this.timeline === null ||
+      this.completionPending || this.completionNotified) {
+      return;
+    }
+    const version: number = this.playbackVersion;
+    this.completionPending = true;
+    try {
+      if (this.hasAudio) {
+        await this.audioManager.drain();
+      }
+      if (version !== this.playbackVersion || this.isPaused || this.timeline === null) {
+        return;
+      }
+      this.completionNotified = true;
+      this.endedListener();
+    } catch (error) {
+      if (version === this.playbackVersion) {
+        this.errorListener(XmaxError.from(error).message);
+      }
+    } finally {
+      if (version === this.playbackVersion) {
+        this.completionPending = false;
+      }
+    }
   }
 
   /**
@@ -284,6 +342,11 @@ export class MediaSourceController implements MediaSourceControlling {
    * @returns 媒体源停止完成后的 Promise。
    */
   async stop(): Promise<void> {
+    this.playbackVersion++;
+    this.videoEnded = false;
+    this.audioEnded = false;
+    this.completionPending = false;
+    this.completionNotified = false;
     const videoStopPromise: Promise<void> = this.videoSourceController.stop();
     this.audioSourceController.stop();
     await videoStopPromise;

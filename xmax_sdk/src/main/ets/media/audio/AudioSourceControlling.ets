@@ -9,7 +9,7 @@ export interface AudioSourceControlling {
    * @param filePath 本地媒体文件路径。
    * @returns 无返回值。
    */
-  configure(filePath: string): void;
+  configure(filePath: string, loop?: boolean): void;
 
   /**
    * 按共享时间轴开始输出音频帧。

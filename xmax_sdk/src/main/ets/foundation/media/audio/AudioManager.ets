@@ -18,6 +18,8 @@ export class AudioManager implements AudioManaging {
   private pendingFrames: Uint8Array[] = [];
   private pendingFrameOffset: number = 0;
   private isPlaybackEnabled: boolean = true;
+  private pendingFrameWaiters: Array<() => void> = [];
+  private isDraining: boolean = false;
 
   /**
    * 创建并启动本地 PCM 音频播放器。
@@ -145,6 +147,35 @@ export class AudioManager implements AudioManaging {
     }
   }
 
+  /** @inheritdoc */
+  async drain(): Promise<void> {
+    const renderer: audio.AudioRenderer | null = this.renderer;
+    if (renderer === null || !this.isPlaybackEnabled) {
+      return;
+    }
+    this.isDraining = true;
+    try {
+      if (this.pendingFrames.length > 0) {
+        await new Promise<void>((resolve: () => void): void => {
+          this.pendingFrameWaiters.push(resolve);
+        });
+      }
+      if (this.renderer === renderer && this.isPlaybackEnabled) {
+        await renderer.drain();
+      }
+    } finally {
+      if (this.renderer === renderer) {
+        this.isDraining = false;
+      }
+    }
+  }
+
+  private finishPendingFrameWaiters(): void {
+    const waiters: Array<() => void> = this.pendingFrameWaiters;
+    this.pendingFrameWaiters = [];
+    waiters.forEach((resolve: () => void): void => { resolve(); });
+  }
+
   /**
    * 停止本地音频播放并释放平台资源。
    *
@@ -157,6 +188,7 @@ export class AudioManager implements AudioManaging {
   private async stopRenderer(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     this.renderer = null;
+    this.isDraining = false;
     this.isPlaybackEnabled = true;
     this.clearPendingFrames();
 
@@ -192,6 +224,10 @@ export class AudioManager implements AudioManaging {
    * @returns 平台音频数据回调处理结果。
    */
   private fillPlaybackBuffer(data: ArrayBuffer): audio.AudioDataCallbackResult {
+    // 尾音排空期间不再持续补静音，否则平台缓冲无法排空。
+    if (this.isDraining && this.pendingFrames.length === 0) {
+      return audio.AudioDataCallbackResult.INVALID;
+    }
     const output = new Uint8Array(data);
     if (!this.isPlaybackEnabled) {
       output.fill(0);
@@ -227,6 +263,9 @@ export class AudioManager implements AudioManaging {
     if (outputOffset < output.length) {
       output.fill(0, outputOffset);
     }
+    if (this.pendingFrames.length === 0) {
+      this.finishPendingFrameWaiters();
+    }
 
     return audio.AudioDataCallbackResult.VALID;
   }
@@ -239,5 +278,6 @@ export class AudioManager implements AudioManaging {
   private clearPendingFrames(): void {
     this.pendingFrames = [];
     this.pendingFrameOffset = 0;
+    this.finishPendingFrameWaiters();
   }
 }

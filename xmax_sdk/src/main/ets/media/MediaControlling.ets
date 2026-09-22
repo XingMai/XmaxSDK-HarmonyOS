@@ -87,7 +87,8 @@ export interface MediaControlling extends InteractionControlling {
    */
   createLocalVideoStream(
     filePath: string,
-    videoFormat?: RealtimeVideoFormat
+    videoFormat?: RealtimeVideoFormat,
+    loop?: boolean
   ): Promise<RealtimeMediaStream>;
 
   /** @returns 当前视频文件来源停止并释放完成后的 Promise。 */
