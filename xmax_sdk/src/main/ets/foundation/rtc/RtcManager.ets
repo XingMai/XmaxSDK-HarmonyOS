@@ -58,6 +58,10 @@ import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 const JOIN_TIMEOUT_MS: number = 15000;
 const SNAPSHOT_TIMEOUT_MS: number = 1500;
 
+interface LoggedRoomEvent {
+  event?: string;
+}
+
 class RemoteSnapshotRequest {
   timer: number = -1;
   readonly streamKey: string;
@@ -832,6 +836,13 @@ export class RtcManager implements RtcManaging {
    * @returns 无返回值。
    */
   private bindRoomEvents(room: RTCRoom): void {
+    room.on('onRoomMessageReceived', (_userId: string, message: string): void => {
+      this.logReceivedRoomSignal(room, message);
+    });
+    room.on('onUserMessageReceived', (_userId: string, message: string): void => {
+      this.logReceivedRoomSignal(room, message);
+    });
+
     room.on(
       'onUserPublishStreamAudio',
       (_roomId: string, userId: string, published: boolean): void => {
@@ -887,6 +898,24 @@ export class RtcManager implements RtcManaging {
         this.emitNetworkQuality(localQuality, remoteQualities);
       }
     );
+  }
+
+  // 临时调试房间广播与点对点文本信令，不改变生成状态。
+  private logReceivedRoomSignal(room: RTCRoom, message: string): void {
+    if (this.room !== room && this.pendingRoom !== room) {
+      return;
+    }
+    XmaxLogger.debug((): string => {
+      try {
+        const event = JSON.parse(message) as LoggedRoomEvent;
+        const eventType: string = event.event ?? 'unknown';
+        const formattedMessage: string = JSON.stringify(event, null, 2);
+        const indentedMessage: string = formattedMessage.replace(/\n/g, '\n   ');
+        return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n├─ 类型：", "接收房间信令 (Receive Room Signal)\n├─ Type: ")}${eventType}${XmaxLogger.localized("\n└─ 内容：\n   ", "\n└─ Content: \n   ")}${indentedMessage}`;
+      } catch (_error) {
+        return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n└─ 内容：", "接收房间信令 (Receive Room Signal)\n└─ Content: ")}${message}`;
+      }
+    }, 'Room');
   }
 
   /**
