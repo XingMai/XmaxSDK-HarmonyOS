@@ -362,8 +362,7 @@ export class RealtimeViewModel {
         manager: XmaxRealtimeManaging,
         resolvedPath: string
       ): Promise<RealtimeMediaStream> =>
-        // 临时验证单次播放与 ENDED 回调。
-        manager.createLocalVideoStream(resolvedPath, undefined, false)
+        manager.createLocalVideoStream(resolvedPath)
     );
   }
 
@@ -893,8 +892,7 @@ export class RealtimeViewModel {
     }
 
     if (localVideoPath.length > 0) {
-      // 临时验证单次播放与 ENDED 回调。
-      return manager.createLocalVideoStream(localVideoPath, undefined, false);
+      return manager.createLocalVideoStream(localVideoPath);
     }
 
     return manager.createLocalCameraStream(
