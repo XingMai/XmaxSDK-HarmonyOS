@@ -1,4 +1,8 @@
 import { RealtimeVideoTrack, setRealtimeVideoTrackOrientationHandler, updateRealtimeVideoTrackOrientation } from '../../service/realtime/RealtimeVideoTrack';
+import {
+  LocalVideoPlaybackState,
+  LocalVideoPlaybackStateListener
+} from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
@@ -78,6 +82,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   // 生命周期协调
   private readonly coordinator: RealtimeCoordinator;
+  private localVideoPlaybackStateListener: LocalVideoPlaybackStateListener | null = null;
 
   /**
    * 创建实时生成业务 Manager 并完成内部依赖装配。
@@ -160,6 +165,20 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    */
   setStateListener(listener: RealtimeStateListener | null): void {
     this.coordinator.setStateListener(listener);
+  }
+
+  /** @inheritdoc */
+  get localVideoPlaybackState(): LocalVideoPlaybackState | undefined {
+    return this.mediaController.localVideoPlaybackState;
+  }
+
+  /** @inheritdoc */
+  setLocalVideoPlaybackStateListener(listener: LocalVideoPlaybackStateListener | null): void {
+    this.localVideoPlaybackStateListener = listener;
+    const state: LocalVideoPlaybackState | undefined = this.localVideoPlaybackState;
+    if (state !== undefined) {
+      this.notifyLocalVideoPlaybackState(state);
+    }
   }
 
 
@@ -324,6 +343,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const stream = await this.mediaController.createLocalVideoStream(filePath, videoFormat);
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+        this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PLAYING);
         this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(1);
         this.coordinator.commit(new RealtimeState(RealtimeConnectionState.READY), token);
@@ -345,6 +365,39 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.coordinator.commit(new RealtimeState(this.mediaController.currentTrack !== null ?
           RealtimeConnectionState.READY : RealtimeConnectionState.IDLE), token);
       });
+  }
+
+  /** @inheritdoc */
+  pauseLocalVideoStream(): Promise<void> {
+    return this.coordinator.run(RealtimeOperationKind.PLAYBACK, null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalVideoPlaybackCanChange();
+        await this.mediaController.pauseLocalVideoStream();
+        token.ensureCurrent();
+        this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PAUSE);
+        token.ensureCurrent();
+        await this.renderController.freezeRemoteVideo();
+        token.ensureCurrent();
+      });
+  }
+
+  /** @inheritdoc */
+  resumeLocalVideoStream(): Promise<void> {
+    return this.coordinator.run(RealtimeOperationKind.PLAYBACK, null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalVideoPlaybackCanChange();
+        this.mediaController.resumeLocalVideoStream();
+        token.ensureCurrent();
+        await this.renderController.resumeRemoteVideo();
+        token.ensureCurrent();
+        this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PLAYING);
+      });
+  }
+
+  /** @inheritdoc */
+  toggleLocalVideoStreamPlayback(): Promise<void> {
+    return this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE ?
+      this.resumeLocalVideoStream() : this.pauseLocalVideoStream();
   }
 
   /** 从图片输入创建持续输出帧的媒体流。 */
@@ -729,6 +782,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.ensureCurrent();
       await token.wait(this.renderController.waitUntilRemoteFrameReady());
       token.ensureCurrent();
+      if (this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE) {
+        await token.wait(this.renderController.freezeRemoteVideo());
+        token.ensureCurrent();
+      }
       this.streamController.activateRemoteAudio();
       if (this.connectionManager.currentSessionId !== sessionId) {
         throw RealtimeOperationToken.cancelledError();
@@ -748,6 +805,30 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       current.connectionState === RealtimeConnectionState.DISCONNECTING) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'Disconnect realtime before changing the local media stream');
+    }
+  }
+
+  private ensureLocalVideoPlaybackCanChange(): void {
+    const current: RealtimeConnectionState = this.currentState.connectionState;
+    if (this.localVideoPlaybackState === undefined ||
+      current === RealtimeConnectionState.PREPARING ||
+      current === RealtimeConnectionState.CONNECTING ||
+      current === RealtimeConnectionState.DISCONNECTING) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local video playback cannot change while realtime is transitioning'
+      );
+    }
+  }
+
+  private notifyLocalVideoPlaybackState(state: LocalVideoPlaybackState): void {
+    try {
+      this.localVideoPlaybackStateListener?.(state);
+    } catch (error) {
+      XmaxLogger.error(
+        `${XmaxLogger.localized("本地视频播放状态监听器执行失败 (Local Video Playback State Listener Failed)\n└─ 原因：", "本地视频播放状态监听器执行失败 (Local Video Playback State Listener Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`,
+        'Realtime'
+      );
     }
   }
 

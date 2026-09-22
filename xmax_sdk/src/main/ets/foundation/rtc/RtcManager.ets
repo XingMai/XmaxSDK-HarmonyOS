@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import {
   AudioChannel,
@@ -55,6 +56,23 @@ import { RtcVideoConverter } from './RtcVideoConverter';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
 const JOIN_TIMEOUT_MS: number = 15000;
+const SNAPSHOT_TIMEOUT_MS: number = 1500;
+
+class RemoteSnapshotRequest {
+  timer: number = -1;
+  readonly streamKey: string;
+  readonly resolve: (pixelMap: image.PixelMap) => void;
+  readonly reject: (error: XmaxError) => void;
+  constructor(
+    streamKey: string,
+    resolve: (pixelMap: image.PixelMap) => void,
+    reject: (error: XmaxError) => void
+  ) {
+    this.streamKey = streamKey;
+    this.resolve = resolve;
+    this.reject = reject;
+  }
+}
 
 /** 封装第三方 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
 export class RtcManager implements RtcManaging {
@@ -75,6 +93,7 @@ export class RtcManager implements RtcManaging {
   private readonly renderedRemoteStreams: Set<string> = new Set();
   private remoteVideoFrameListener: RtcRemoteVideoFrameListener | null = null;
   private readonly observedRemoteStreams: Set<string> = new Set();
+  private readonly snapshotRequests: Map<number, RemoteSnapshotRequest> = new Map();
   private qualityListener: RtcQualityListener | null = null;
 
   // 运行状态
@@ -146,6 +165,24 @@ export class RtcManager implements RtcManaging {
           this.remoteVideoFrameListener?.(stream, () => RtcVideoConverter.copyRemoteFrame(frame));
         }
       });
+    engine.on('onTakeRemoteSnapshotResult',
+      (taskId: number, key: RemoteStreamKey, pixelMap: image.PixelMap | null, errorCode: number): void => {
+        const request: RemoteSnapshotRequest | undefined = this.snapshotRequests.get(taskId);
+        if (this.engine !== engine || request === undefined ||
+          request.streamKey !== new RemoteStream(key.room_id, key.user_id).key() ||
+          key.stream_index !== StreamIndex.kStreamIndexMain) {
+          this.releaseSnapshot(pixelMap);
+          return;
+        }
+        this.snapshotRequests.delete(taskId);
+        clearTimeout(request.timer);
+        if (errorCode !== 0 || pixelMap === null) {
+          this.releaseSnapshot(pixelMap);
+          request.reject(new XmaxError(XmaxErrorCode.RTC_ERROR, `Remote snapshot failed: ${errorCode}`));
+          return;
+        }
+        request.resolve(pixelMap);
+      });
     engine.on(
       'onPerformanceAlarms',
       (
@@ -193,6 +230,9 @@ export class RtcManager implements RtcManaging {
           this.offEngineEventSafely((): void => {
             engine.off('onRemoteVideoFrame');
           }, 'onRemoteVideoFrame');
+          this.offEngineEventSafely((): void => {
+            engine.off('onTakeRemoteSnapshotResult');
+          }, 'onTakeRemoteSnapshotResult');
           this.offEngineEventSafely((): void => {
             engine.off('onPerformanceAlarms');
           }, 'onPerformanceAlarms');
@@ -439,6 +479,11 @@ export class RtcManager implements RtcManaging {
    * @returns 离开房间完成后的 Promise。
    */
   async leaveRoom(): Promise<void> {
+    this.snapshotRequests.forEach((request: RemoteSnapshotRequest): void => {
+      clearTimeout(request.timer);
+      request.reject(new XmaxError(XmaxErrorCode.CANCELLED, 'RTC room closed during snapshot'));
+    });
+    this.snapshotRequests.clear();
     const room: RTCRoom | null = this.room;
     const pendingRoom: RTCRoom | null = this.pendingRoom;
     const cancelPendingJoin: (() => void) | null = this.pendingJoinCancellation;
@@ -653,6 +698,41 @@ export class RtcManager implements RtcManaging {
         key,
         RtcVideoConverter.createHiddenCanvas()
       );
+    }
+  }
+
+  /** @inheritdoc */
+  takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap> {
+    const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(stream.key());
+    if (key === undefined || key.room_id !== this.activeRoomId) {
+      return Promise.reject(new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable'));
+    }
+    return new Promise<image.PixelMap>((
+      resolve: (pixelMap: image.PixelMap) => void,
+      reject: (error: XmaxError) => void
+    ): void => {
+      const taskId: number = this.requireEngine().takeRemoteSnapshot(key);
+      if (taskId <= 0) {
+        reject(new XmaxError(XmaxErrorCode.RTC_ERROR, `takeRemoteSnapshot failed: ${taskId}`));
+        return;
+      }
+      const request = new RemoteSnapshotRequest(stream.key(), resolve, reject);
+      this.snapshotRequests.set(taskId, request);
+      request.timer = setTimeout((): void => {
+        if (this.snapshotRequests.get(taskId) !== request) {
+          return;
+        }
+        this.snapshotRequests.delete(taskId);
+        request.reject(new XmaxError(XmaxErrorCode.TIMEOUT, 'Remote snapshot timed out'));
+      }, SNAPSHOT_TIMEOUT_MS);
+    });
+  }
+
+  private releaseSnapshot(pixelMap: image.PixelMap | null): void {
+    if (pixelMap !== null) {
+      void pixelMap.release().catch((error: Object): void => {
+        XmaxLogger.error(`Failed to release RTC snapshot: ${XmaxError.from(error).message}`, 'RTC');
+      });
     }
   }
 

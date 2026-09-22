@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CameraPosition,
+  LocalVideoPlaybackState,
   RealtimeConfiguration,
   RealtimeConnectionState,
   RealtimeReasonKind,
@@ -56,6 +57,7 @@ export class RealtimeViewModel {
   private hasRemoteAudioVolumeSelection: boolean = false;
   private switchingCamera: boolean = false;
   private changingLocalMedia: boolean = false;
+  private changingVideoPlayback: boolean = false;
   private generationUpdating: boolean = false;
   private pendingGenerationRestart: boolean = false;
   private generationRevision: number = 0;
@@ -143,6 +145,29 @@ export class RealtimeViewModel {
     }
   }
 
+  // 点击只切换本地视频播放；生成会话的生命周期仍由 SDK 管理。
+  async toggleLocalVideoPlayback(): Promise<void> {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    if (manager === null || this.localVideoPath.length === 0 || this.localImagePath.length > 0 ||
+      this.localStream === null || this.connecting || this.changingLocalMedia ||
+      this.changingVideoPlayback || this.state.isGenerationStarting ||
+      manager.localVideoPlaybackState === undefined) {
+      return;
+    }
+    this.changingVideoPlayback = true;
+    try {
+      await manager.toggleLocalVideoStreamPlayback();
+    } catch (error) {
+      if (this.realtimeManager === manager) {
+        this.onMessage?.(this.errorMessage(error));
+      }
+    } finally {
+      if (this.realtimeManager === manager) {
+        this.changingVideoPlayback = false;
+      }
+    }
+  }
+
   async connect(
     context: common.UIAbilityContext,
     localVideoPath: string = '',
@@ -174,6 +199,11 @@ export class RealtimeViewModel {
       );
       connectingManager = manager;
       this.realtimeManager = manager;
+      manager.setLocalVideoPlaybackStateListener((state: LocalVideoPlaybackState): void => {
+        if (this.realtimeManager === manager) {
+          this.state.localVideoPlaybackState = state;
+        }
+      });
       manager.setStateListener((state: RealtimeState): void => {
         if (this.realtimeManager !== manager) {
           return;
@@ -195,6 +225,7 @@ export class RealtimeViewModel {
         }
         this.state.isLocalPreviewLoading = state.connectionState === RealtimeConnectionState.PREPARING;
         if (state.connectionState === RealtimeConnectionState.IDLE) {
+          this.state.localVideoPlaybackState = undefined;
           this.state.localVideoTrack = null;
           this.localStream = null;
         }
@@ -357,6 +388,7 @@ export class RealtimeViewModel {
     let closePromise: Promise<void> | null = null;
     if (manager !== null) {
       manager.setStateListener(null);
+      manager.setLocalVideoPlaybackStateListener(null);
       closePromise = manager.close();
     }
     this.realtimeManager = null;
@@ -381,6 +413,8 @@ export class RealtimeViewModel {
     this.connecting = false;
     this.switchingCamera = false;
     this.changingLocalMedia = false;
+    this.changingVideoPlayback = false;
+    this.state.localVideoPlaybackState = undefined;
     this.pendingGenerationRestart = false;
     this.state.isGenerationStarting = false;
     this.state.isMoxGenerationActive = false;
@@ -713,6 +747,7 @@ export class RealtimeViewModel {
     const previousVideoPath: string = this.localVideoPath;
     const previousImagePath: string = this.localImagePath;
     this.changingLocalMedia = true;
+    this.state.localVideoPlaybackState = undefined;
     const changeRevision: number = ++this.generationRevision;
     this.state.isLocalPreviewLoading = true;
     this.state.errorMessage = '';

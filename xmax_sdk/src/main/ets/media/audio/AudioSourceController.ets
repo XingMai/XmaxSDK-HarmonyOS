@@ -25,6 +25,8 @@ export class AudioSourceController implements AudioSourceControlling {
   // 播放进度
   private timeline: MediaTimeline | null = null;
   private loopIndex: number = 0;
+  private isPaused: boolean = false;
+  private pendingEndOfStream: boolean = false;
 
   /**
    * 创建音频源 Controller。
@@ -79,20 +81,45 @@ export class AudioSourceController implements AudioSourceControlling {
 
     this.timeline = timeline;
     this.loopIndex = 0;
+    this.isPaused = false;
+    this.pendingEndOfStream = false;
     this.decoder = this.createDecoder();
   }
 
-  /**
-   * 释放当前解码器并按新时间轴重新输出音频帧。
-   *
-   * @param timeline 新的音视频共享播放时间轴。
-   * @returns 无返回值。
-   */
-  restart(timeline: MediaTimeline): void {
-    this.releaseDecoder();
-    this.timeline = timeline;
-    this.loopIndex = 0;
-    this.decoder = this.createDecoder();
+  /** @inheritdoc */
+  pause(): void {
+    if (this.isPaused) {
+      return;
+    }
+    const decoder: AudioFileFrameDecoder | null = this.decoder;
+    if (decoder === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local audio source is not active'
+      );
+    }
+    this.isPaused = true;
+    decoder.pause();
+  }
+
+  /** @inheritdoc */
+  resume(pausedDurationUs: number): void {
+    if (!this.isPaused) {
+      return;
+    }
+    const decoder: AudioFileFrameDecoder | null = this.decoder;
+    if (decoder === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local audio source is not active'
+      );
+    }
+    decoder.resume(pausedDurationUs);
+    this.isPaused = false;
+    if (this.pendingEndOfStream) {
+      this.pendingEndOfStream = false;
+      this.handleEndOfStream(this.loopIndex);
+    }
   }
 
   /**
@@ -105,6 +132,8 @@ export class AudioSourceController implements AudioSourceControlling {
     this.filePath = '';
     this.timeline = null;
     this.loopIndex = 0;
+    this.isPaused = false;
+    this.pendingEndOfStream = false;
   }
 
   /**
@@ -129,7 +158,9 @@ export class AudioSourceController implements AudioSourceControlling {
       timeline.cycleDurationUs,
       new AudioSourceDecoderListener(
         (frame: AudioFrame): void => {
-          this.frameListener(frame);
+          if (!this.isPaused) {
+            this.frameListener(frame);
+          }
         },
         (): void => {
           this.handleEndOfStream(loopIndex);
@@ -150,6 +181,10 @@ export class AudioSourceController implements AudioSourceControlling {
   private handleEndOfStream(loopIndex: number): void {
     const endedDecoder: AudioFileFrameDecoder | null = this.decoder;
     if (endedDecoder === null || loopIndex !== this.loopIndex) {
+      return;
+    }
+    if (this.isPaused) {
+      this.pendingEndOfStream = true;
       return;
     }
 

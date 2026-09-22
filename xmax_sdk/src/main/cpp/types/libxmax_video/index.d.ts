@@ -9,6 +9,12 @@ type NativeVideoFileFrameListener = (
 ) => void;
 
 export interface NativeVideoFileDecoder {
+  /** 暂停媒体时间轴上的连续解码输出。 */
+  pause(): void;
+
+  /** 恢复解码并将播放锚点向后平移本次暂停时长。 */
+  resume(pausedDurationUs: number): void;
+
   /** 停止连续解码并释放文件、解封装器与解码器资源。 */
   release(): Promise<void>;
 }
@@ -21,6 +27,12 @@ type NativeAudioFileFrameListener = (
 ) => void;
 
 export interface NativeAudioFileDecoder {
+  /** 暂停媒体时间轴上的连续解码输出。 */
+  pause(): void;
+
+  /** 恢复解码并将播放锚点向后平移本次暂停时长。 */
+  resume(pausedDurationUs: number): void;
+
   /** 停止连续解码并释放文件、解封装器与解码器资源。 */
   release(): void;
 }

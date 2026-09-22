@@ -1,4 +1,5 @@
 import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
+import { image } from '@kit.ImageKit';
 import { AudioFrame } from '../media/audio/AudioFrame';
 import { CameraPosition } from '../media/camera/CameraPosition';
 import { VideoFrame } from '../media/video/VideoFrame';
@@ -212,6 +213,9 @@ export interface RtcManaging {
    * @returns 无返回值。
    */
   unbindRemoteVideo(stream: RemoteStream): void;
+
+  /** 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。 */
+  takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap>;
 
   /**
    * 获取 RTC 渲染库名称。

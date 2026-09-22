@@ -29,6 +29,12 @@ export interface MediaSourceControlling {
    */
   start(): Promise<void>;
 
+  /** 暂停文件音视频时间轴并清空本地音频余量。 */
+  pause(): Promise<void>;
+
+  /** 从原媒体位置恢复文件音视频时间轴。 */
+  resume(): void;
+
   /**
    * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
    *

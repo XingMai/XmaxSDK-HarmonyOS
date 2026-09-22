@@ -39,6 +39,10 @@ function loadEts(stubs = {}, globals = {}) {
     const localRequire = spec => {
       const stub = stubs[spec] ?? stubs[path.basename(spec)];
       if (stub !== undefined) return stub;
+      if (spec === '@kit.ImageKit') return { image: {
+        PixelMapFormat: { RGBA_8888: 0 },
+        createPixelMap: async () => ({ release: async () => {} })
+      } };
       if (spec.startsWith('@')) throw new Error(`Missing platform stub: ${spec}`);
       return load(path.resolve(path.dirname(full), `${spec}.ets`));
     };

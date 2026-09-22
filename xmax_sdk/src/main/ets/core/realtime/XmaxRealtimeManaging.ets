@@ -11,6 +11,10 @@ import {
   RealtimeStateListener
 } from '../../service/realtime/RealtimeState';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
+import {
+  LocalVideoPlaybackState,
+  LocalVideoPlaybackStateListener
+} from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 
 /** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
@@ -28,6 +32,9 @@ export interface XmaxRealtimeManaging {
   /** 当前远端播放音量（0～1），按 RTC 百分比精度返回；新建相机/图片流后为 0，视频流后为 1。 */
   readonly remoteAudioVolume: number;
 
+  /** 当前本地视频文件播放状态；其他媒体来源或尚未创建时为空。 */
+  readonly localVideoPlaybackState: LocalVideoPlaybackState | undefined;
+
   /**
    * 设置实时生命周期状态监听器，包含本地准备、预览就绪及 state.reason 中的结束/失败原因。
    *
@@ -35,6 +42,9 @@ export interface XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setStateListener(listener: RealtimeStateListener | null): void;
+
+  /** 设置本地视频文件播放状态监听器；设置后立即回调当前有效状态。 */
+  setLocalVideoPlaybackStateListener(listener: LocalVideoPlaybackStateListener | null): void;
 
   /**
    * 异步交付当前生成流的 RTC 后处理帧；null 取消监听，未监听时不复制像素。
@@ -128,6 +138,15 @@ export interface XmaxRealtimeManaging {
    * @returns 停止完成后的 Promise。
    */
   stopLocalVideoStream(): Promise<void>;
+
+  /** 暂停本地视频文件，保持 RTC 发送冻结帧和静音音频。 */
+  pauseLocalVideoStream(): Promise<void>;
+
+  /** 从暂停位置恢复本地视频文件。 */
+  resumeLocalVideoStream(): Promise<void>;
+
+  /** 在播放和暂停之间切换。 */
+  toggleLocalVideoStreamPlayback(): Promise<void>;
 
   /**
    * 从图片输入创建持续输出视频帧的本地媒体流。

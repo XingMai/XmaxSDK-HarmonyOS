@@ -131,8 +131,28 @@ class NativeAudioFileDecoder {
     return true;
   }
 
+  void Pause() {
+    if (!running_.load()) {
+      return;
+    }
+    paused_.store(true);
+    pacingCondition_.notify_all();
+  }
+
+  void Resume(int64_t pausedDurationUs) {
+    if (!running_.load()) {
+      return;
+    }
+    if (pausedDurationUs > 0) {
+      playbackAnchorUs_.fetch_add(pausedDurationUs);
+    }
+    paused_.store(false);
+    pacingCondition_.notify_all();
+  }
+
   void Stop() {
     const bool wasRunning = running_.exchange(false);
+    paused_.store(false);
     pacingCondition_.notify_all();
 
     {
@@ -281,6 +301,9 @@ class NativeAudioFileDecoder {
         buffer == nullptr) {
       return;
     }
+    if (!decoder->WaitUntilPlaying()) {
+      return;
+    }
 
     OH_AVErrCode readResult = AV_ERR_OK;
     OH_AVErrCode pushResult = AV_ERR_OK;
@@ -404,18 +427,34 @@ class NativeAudioFileDecoder {
   }
 
   void Pace(int64_t timestampUs) {
-    const auto deadline = std::chrono::steady_clock::time_point(
-        std::chrono::microseconds(
-            PlaybackTimestampUs(timestampUs)));
-
     std::unique_lock<std::mutex> lock(pacingMutex_);
-    pacingCondition_.wait_until(lock, deadline, [this] {
-      return !running_.load();
+    while (running_.load()) {
+      pacingCondition_.wait(lock, [this] {
+        return !running_.load() || !paused_.load();
+      });
+      if (!running_.load()) {
+        return;
+      }
+      const auto deadline = std::chrono::steady_clock::time_point(
+          std::chrono::microseconds(PlaybackTimestampUs(timestampUs)));
+      if (!pacingCondition_.wait_until(lock, deadline, [this] {
+            return !running_.load() || paused_.load();
+          })) {
+        return;
+      }
+    }
+  }
+
+  bool WaitUntilPlaying() {
+    std::unique_lock<std::mutex> lock(pacingMutex_);
+    pacingCondition_.wait(lock, [this] {
+      return !running_.load() || !paused_.load();
     });
+    return running_.load();
   }
 
   int64_t PlaybackTimestampUs(int64_t mediaTimestampUs) const {
-    return playbackAnchorUs_ + std::max<int64_t>(
+    return playbackAnchorUs_.load() + std::max<int64_t>(
         mediaTimestampUs - mediaStartUs_,
         0);
   }
@@ -512,13 +551,14 @@ class NativeAudioFileDecoder {
   napi_threadsafe_function listener_ = nullptr;
 
   std::atomic<bool> running_{false};
+  std::atomic<bool> paused_{false};
   std::atomic<bool> reportedError_{false};
   std::mutex demuxerMutex_;
   bool inputEnded_ = false;
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
 
-  int64_t playbackAnchorUs_ = 0;
+  std::atomic<int64_t> playbackAnchorUs_{0};
   int64_t mediaStartUs_ = 0;
   std::unique_ptr<xmax::AudioPcmConverter> converter_;
 };
@@ -547,6 +587,48 @@ NativeAudioFileDecoder* UnwrapDecoder(
   }
 
   return decoder;
+}
+
+napi_value PauseDecoder(
+    napi_env env,
+    napi_callback_info info) {
+  NativeAudioFileDecoder* decoder = UnwrapDecoder(env, info);
+  if (decoder == nullptr) {
+    napi_throw_error(env, nullptr, "Audio decoder is unavailable");
+    return nullptr;
+  }
+  decoder->Pause();
+  napi_value result = nullptr;
+  napi_get_undefined(env, &result);
+  return result;
+}
+
+napi_value ResumeDecoder(
+    napi_env env,
+    napi_callback_info info) {
+  size_t argumentCount = 1;
+  napi_value argument = nullptr;
+  napi_value receiver = nullptr;
+  if (napi_get_cb_info(
+          env, info, &argumentCount, &argument, &receiver, nullptr) != napi_ok ||
+      argumentCount != 1) {
+    napi_throw_type_error(env, nullptr, "Expected paused duration");
+    return nullptr;
+  }
+  NativeAudioFileDecoder* decoder = nullptr;
+  double pausedDurationUs = 0;
+  if (napi_unwrap(
+          env, receiver, reinterpret_cast<void**>(&decoder)) != napi_ok ||
+      decoder == nullptr ||
+      napi_get_value_double(env, argument, &pausedDurationUs) != napi_ok ||
+      pausedDurationUs < 0) {
+    napi_throw_type_error(env, nullptr, "Audio decoder resume arguments are invalid");
+    return nullptr;
+  }
+  decoder->Resume(static_cast<int64_t>(pausedDurationUs));
+  napi_value result = nullptr;
+  napi_get_undefined(env, &result);
+  return result;
 }
 
 void FinalizeDecoder(napi_env, void* data, void*) {
@@ -633,17 +715,25 @@ napi_value CreateAudioFileDecoder(
 
   napi_value result = nullptr;
   napi_create_object(env, &result);
-  napi_property_descriptor descriptor = {
-      "release",
-      nullptr,
-      ReleaseDecoder,
-      nullptr,
-      nullptr,
-      nullptr,
-      napi_default,
-      nullptr
+  napi_property_descriptor descriptors[] = {
+      {
+          "pause", nullptr, PauseDecoder, nullptr, nullptr, nullptr,
+          napi_default, nullptr
+      },
+      {
+          "resume", nullptr, ResumeDecoder, nullptr, nullptr, nullptr,
+          napi_default, nullptr
+      },
+      {
+          "release", nullptr, ReleaseDecoder, nullptr, nullptr, nullptr,
+          napi_default, nullptr
+      }
   };
-  napi_define_properties(env, result, 1, &descriptor);
+  napi_define_properties(
+      env,
+      result,
+      sizeof(descriptors) / sizeof(descriptors[0]),
+      descriptors);
   napi_wrap(
       env,
       result,

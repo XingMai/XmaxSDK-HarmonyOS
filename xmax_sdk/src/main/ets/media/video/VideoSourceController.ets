@@ -41,6 +41,8 @@ export class VideoSourceController implements VideoSourceControlling {
   private outputWidth: number = 0;
   private outputHeight: number = 0;
   private lastSourceTimestampUs: number = -1;
+  private isPaused: boolean = false;
+  private pendingEndOfStream: boolean = false;
 
   /**
    * 创建视频源 Controller。
@@ -110,22 +112,46 @@ export class VideoSourceController implements VideoSourceControlling {
 
     this.timeline = timeline;
     this.loopIndex = 0;
+    this.isPaused = false;
+    this.pendingEndOfStream = false;
     this.resetFrameSampling();
     this.decoder = this.createDecoder();
   }
 
-  /**
-   * 释放当前解码器并按新时间轴重新输出视频帧。
-   *
-   * @param timeline 新的音视频共享播放时间轴。
-   * @returns 旧解码器释放完成后的 Promise。
-   */
-  async restart(timeline: MediaTimeline): Promise<void> {
-    await this.releaseDecoder();
-    this.timeline = timeline;
-    this.loopIndex = 0;
-    this.resetFrameSampling();
-    this.decoder = this.createDecoder();
+  /** @inheritdoc */
+  pause(): void {
+    if (this.isPaused) {
+      return;
+    }
+    const decoder: VideoFileFrameDecoder | null = this.decoder;
+    if (decoder === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local video source is not active'
+      );
+    }
+    this.isPaused = true;
+    decoder.pause();
+  }
+
+  /** @inheritdoc */
+  resume(pausedDurationUs: number): void {
+    if (!this.isPaused) {
+      return;
+    }
+    const decoder: VideoFileFrameDecoder | null = this.decoder;
+    if (decoder === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local video source is not active'
+      );
+    }
+    decoder.resume(pausedDurationUs);
+    this.isPaused = false;
+    if (this.pendingEndOfStream) {
+      this.pendingEndOfStream = false;
+      this.handleEndOfStream(this.loopIndex);
+    }
   }
 
   /**
@@ -139,6 +165,8 @@ export class VideoSourceController implements VideoSourceControlling {
     this.sourceRotation = VideoRotation.ROTATION_0;
     this.timeline = null;
     this.loopIndex = 0;
+    this.isPaused = false;
+    this.pendingEndOfStream = false;
     this.frameIntervalUs = 0;
     this.outputWidth = 0;
     this.outputHeight = 0;
@@ -191,7 +219,7 @@ export class VideoSourceController implements VideoSourceControlling {
    * @returns 无返回值。
    */
   private handleFrame(frame: VideoFileDecodedFrame): void {
-    if (!this.shouldOutputFrame(frame)) {
+    if (this.isPaused || !this.shouldOutputFrame(frame)) {
       return;
     }
 
@@ -237,6 +265,10 @@ export class VideoSourceController implements VideoSourceControlling {
   private handleEndOfStream(loopIndex: number): void {
     const endedDecoder: VideoFileFrameDecoder | null = this.decoder;
     if (endedDecoder === null || loopIndex !== this.loopIndex) {
+      return;
+    }
+    if (this.isPaused) {
+      this.pendingEndOfStream = true;
       return;
     }
 

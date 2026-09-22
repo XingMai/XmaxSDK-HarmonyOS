@@ -5,6 +5,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   DefaultTrajectoryEffectRenderer,
+  LocalVideoPlaybackState,
   TrajectoryEffectRendering,
   VideoContentMode,
   XmaxRealtimeVideoView
@@ -378,10 +379,26 @@ export struct RealtimePage {
                 localTrack: this.state.localVideoTrack,
                 remoteTrack: this.state.remoteVideoTrack ?? undefined,
                 contentMode: this.localContentMode(),
+                isInteractionEnabled: !this.hasLocalVideo(),
                 trajectoryRenderer: this.trajectoryRenderer()
               })
                 .width('100%')
                 .height('100%')
+                .onClick((): void => {
+                  if (this.hasLocalVideo()) {
+                    void this.viewModel.toggleLocalVideoPlayback();
+                  }
+                })
+
+              if (this.hasLocalVideo() && this.state.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE) {
+                SymbolGlyph($r('sys.symbol.play_fill'))
+                  .fontSize(24)
+                  .fontColor(['#FFFFFF'])
+                  .padding(12)
+                  .backgroundColor('#66000000')
+                  .borderRadius(24)
+                  .hitTestBehavior(HitTestMode.None)
+              }
 
               if (this.isCameraSwitchTransitionActive) {
                 Row()
@@ -657,6 +674,10 @@ export struct RealtimePage {
 
   private hasLocalFile(): boolean {
     return this.localVideoPath.length > 0 || this.localImagePath.length > 0;
+  }
+
+  private hasLocalVideo(): boolean {
+    return this.localVideoPath.length > 0 && !this.hasLocalImage();
   }
 
   private hasLocalImage(): boolean {

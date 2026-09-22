@@ -12,6 +12,7 @@ import { PermissionManaging } from '../../foundation/permissions/PermissionManag
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
+import { BufferVideoFrame } from '../../foundation/media/video/BufferVideoFrame';
 import { MediaSourceConfiguration } from '../../media/MediaSourceConfiguration';
 import { MediaSourceController } from '../../media/MediaSourceController';
 import { MediaSourceControlling } from '../../media/MediaSourceControlling';
@@ -24,8 +25,10 @@ import { MediaServicing } from '../../service/media/MediaServicing';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
+import { LocalVideoPlaybackState } from '../../service/realtime/LocalVideoPlaybackState';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
+import { MediaTimeline } from '../MediaTimeline';
 
 /** 协调本地视频文件、音轨、编码、传输和预览资源。 */
 export class VideoController {
@@ -34,6 +37,7 @@ export class VideoController {
   private readonly rtcManager: RtcManaging;
   private readonly audioManager: AudioManaging;
   private readonly permissionManager: PermissionManaging;
+  private readonly errorListener: (error: XmaxError) => void;
 
   // 服务层组件
   private readonly mediaService: MediaServicing;
@@ -45,6 +49,15 @@ export class VideoController {
   // 本地资源
   private activeTrack: RealtimeVideoTrack | null = null;
   private acceptsFrames: boolean = false;
+  private currentPlaybackState: LocalVideoPlaybackState | undefined = undefined;
+  private lastVideoFrame: VideoFrame | null = null;
+  private lastVideoTimestampUs: number = -1;
+  private lastAudioTimestampUs: number = -1;
+  private frozenVideoTimer: number = -1;
+  private silentAudioTimer: number = -1;
+  private readonly silentAudioData: Uint8Array = new Uint8Array(
+    AudioFrame.SAMPLES_PER_FRAME * 2
+  );
 
   /**
    * 创建视频媒体 Controller。
@@ -66,6 +79,7 @@ export class VideoController {
     this.rtcManager = rtcManager;
     this.audioManager = new AudioManager();
     this.permissionManager = new PermissionManager(context);
+    this.errorListener = errorListener;
 
     // 服务层组件
     this.mediaService = mediaService;
@@ -76,16 +90,10 @@ export class VideoController {
       this.mediaService,
       this.audioManager,
       (frame: VideoFrame): void => {
-        if (!this.acceptsFrames) {
-          return;
-        }
-        this.streamController.pushLocalVideoFrame(frame);
+        this.publishDecodedVideoFrame(frame);
       },
       (frame: AudioFrame): void => {
-        if (!this.acceptsFrames) {
-          return;
-        }
-        this.streamController.pushLocalAudioFrame(frame);
+        this.publishDecodedAudioFrame(frame);
       },
       (message: string): void => {
         if (!this.acceptsFrames) {
@@ -107,6 +115,11 @@ export class VideoController {
   /** @returns 当前视频文件是否包含并输出音轨。 */
   get hasAudio(): boolean {
     return this.mediaSourceController.hasAudio;
+  }
+
+  /** @returns 当前文件视频播放状态；尚未创建视频流时返回空值。 */
+  get playbackState(): LocalVideoPlaybackState | undefined {
+    return this.currentPlaybackState;
   }
 
   /**
@@ -142,6 +155,7 @@ export class VideoController {
     const hasAudio: boolean = this.mediaSourceController.hasAudio;
     this.prepareForStop();
     this.activeTrack = null;
+    this.currentPlaybackState = undefined;
     await this.mediaSourceController.stop();
 
     if (hasAudio) {
@@ -164,12 +178,58 @@ export class VideoController {
    */
   prepareForStop(): void {
     this.acceptsFrames = false;
+    this.stopFrozenPublishing();
     this.mediaSourceController.setLocalAudioPreviewEnabled(false);
 
     const track: RealtimeVideoTrack | null = this.activeTrack;
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
       this.rtcManager.unbindLocalVideo();
+    }
+  }
+
+  /** 暂停文件播放并持续发布最后一帧与静音音频。 */
+  async pauseLocalVideoStream(): Promise<void> {
+    if (this.currentPlaybackState === LocalVideoPlaybackState.PAUSE) {
+      return;
+    }
+    if (this.activeTrack === null || this.currentPlaybackState === undefined) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Create a local video stream before pausing it'
+      );
+    }
+    if (this.lastVideoFrame === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Wait for the first local video frame before pausing it'
+      );
+    }
+
+    await this.mediaSourceController.pause();
+    this.startFrozenPublishing();
+    this.currentPlaybackState = LocalVideoPlaybackState.PAUSE;
+  }
+
+  /** 停止冻结帧发布并从原媒体位置恢复播放。 */
+  resumeLocalVideoStream(): void {
+    if (this.currentPlaybackState === LocalVideoPlaybackState.PLAYING) {
+      return;
+    }
+    if (this.activeTrack === null || this.currentPlaybackState === undefined) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Create a local video stream before resuming it'
+      );
+    }
+
+    this.stopFrozenPublishing();
+    try {
+      this.mediaSourceController.resume();
+      this.currentPlaybackState = LocalVideoPlaybackState.PLAYING;
+    } catch (error) {
+      this.startFrozenPublishing();
+      throw XmaxError.from(error);
     }
   }
 
@@ -207,6 +267,7 @@ export class VideoController {
     let track: RealtimeVideoTrack | null = null;
 
     try {
+      this.resetPlaybackFrames();
       const sourceConfiguration: MediaSourceConfiguration =
         await this.mediaSourceController.prepare(
           filePath,
@@ -229,10 +290,14 @@ export class VideoController {
       this.acceptsFrames = true;
       await this.mediaSourceController.start();
       this.activeTrack = track;
+      this.currentPlaybackState = LocalVideoPlaybackState.PLAYING;
 
       return new RealtimeMediaStream(StreamId.LOCAL, track);
     } catch (error) {
       this.acceptsFrames = false;
+      this.stopFrozenPublishing();
+      this.currentPlaybackState = undefined;
+      this.resetPlaybackFrames();
       const hasAudio: boolean = this.mediaSourceController.hasAudio;
       await this.mediaSourceController.stop();
 
@@ -255,6 +320,120 @@ export class VideoController {
 
       throw XmaxError.from(error);
     }
+  }
+
+  private publishDecodedVideoFrame(frame: VideoFrame): void {
+    if (!this.acceptsFrames) {
+      return;
+    }
+    const hasTimestamp: boolean = Number.isFinite(frame.timestampUs);
+    const output: VideoFrame = !hasTimestamp || frame.timestampUs > this.lastVideoTimestampUs ? frame :
+      new BufferVideoFrame(
+        frame.format,
+        this.lastVideoTimestampUs + 1,
+        frame.planes,
+        frame.rotation
+      );
+    this.lastVideoFrame = output;
+    if (hasTimestamp) {
+      this.lastVideoTimestampUs = output.timestampUs;
+    }
+    this.streamController.pushLocalVideoFrame(output);
+  }
+
+  private publishDecodedAudioFrame(frame: AudioFrame): void {
+    if (!this.acceptsFrames) {
+      return;
+    }
+    const hasTimestamp: boolean = Number.isFinite(frame.timestampUs);
+    const output: AudioFrame = !hasTimestamp || frame.timestampUs > this.lastAudioTimestampUs ? frame :
+      new AudioFrame(frame.data, this.lastAudioTimestampUs + 1);
+    if (hasTimestamp) {
+      this.lastAudioTimestampUs = output.timestampUs;
+    }
+    this.streamController.pushLocalAudioFrame(output);
+  }
+
+  private startFrozenPublishing(): void {
+    const track: RealtimeVideoTrack | null = this.activeTrack;
+    if (track === null || this.frozenVideoTimer >= 0) {
+      return;
+    }
+    const fps: number = track.videoFormat?.fps ?? 30;
+    this.publishFrozenVideoFrame();
+    this.frozenVideoTimer = setInterval((): void => {
+      this.publishFrozenVideoFrame();
+    }, 1000 / fps);
+
+    if (this.hasAudio) {
+      this.publishSilentAudioFrame();
+      this.silentAudioTimer = setInterval((): void => {
+        this.publishSilentAudioFrame();
+      }, 10);
+    }
+  }
+
+  private stopFrozenPublishing(): void {
+    if (this.frozenVideoTimer >= 0) {
+      clearInterval(this.frozenVideoTimer);
+      this.frozenVideoTimer = -1;
+    }
+    if (this.silentAudioTimer >= 0) {
+      clearInterval(this.silentAudioTimer);
+      this.silentAudioTimer = -1;
+    }
+  }
+
+  private publishFrozenVideoFrame(): void {
+    const frame: VideoFrame | null = this.lastVideoFrame;
+    if (!this.acceptsFrames || frame === null) {
+      return;
+    }
+    const timestampUs: number = Math.max(
+      MediaTimeline.currentTimestampUs(),
+      this.lastVideoTimestampUs + 1
+    );
+    try {
+      this.publishDecodedVideoFrame(new BufferVideoFrame(
+        frame.format,
+        timestampUs,
+        frame.planes,
+        frame.rotation
+      ));
+    } catch (error) {
+      this.reportPublishingError(error);
+    }
+  }
+
+  private publishSilentAudioFrame(): void {
+    if (!this.acceptsFrames || !this.hasAudio) {
+      return;
+    }
+    const timestampUs: number = Math.max(
+      MediaTimeline.currentTimestampUs(),
+      this.lastAudioTimestampUs + 1
+    );
+    try {
+      this.publishDecodedAudioFrame(new AudioFrame(
+        this.silentAudioData,
+        timestampUs
+      ));
+    } catch (error) {
+      this.reportPublishingError(error);
+    }
+  }
+
+  private reportPublishingError(error: Object): void {
+    this.errorListener(new XmaxError(
+      XmaxErrorCode.MEDIA_ERROR,
+      XmaxError.from(error).message
+    ));
+  }
+
+  private resetPlaybackFrames(): void {
+    this.lastVideoFrame = null;
+    this.lastVideoTimestampUs = -1;
+    this.lastAudioTimestampUs = -1;
   }
 
   /**

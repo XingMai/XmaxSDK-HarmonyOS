@@ -5,6 +5,7 @@ import { XmaxRealtimeErrorManager } from './XmaxRealtimeErrorManager';
 
 export enum RealtimeOperationKind {
   MEDIA,
+  PLAYBACK,
   CONNECTION,
   GENERATION,
   CAMERA_SWITCH
@@ -343,7 +344,8 @@ export class RealtimeCoordinator {
     if (scope === RealtimeTerminationScope.ALL) {
       return true;
     }
-    return kind !== RealtimeOperationKind.MEDIA;
+    return kind !== RealtimeOperationKind.MEDIA &&
+      kind !== RealtimeOperationKind.PLAYBACK;
   }
 
   private finish(operation: RealtimeOperation): void {

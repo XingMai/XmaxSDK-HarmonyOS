@@ -1,4 +1,4 @@
-import { RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
+import { LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
 
@@ -54,6 +54,7 @@ export class RealtimeViewState {
   connectionState: RealtimeConnectionState = RealtimeConnectionState.IDLE;
   localVideoTrack: RealtimeVideoTrack | null = null;
   remoteVideoTrack: RealtimeVideoTrack | null = null;
+  localVideoPlaybackState: LocalVideoPlaybackState | undefined = undefined;
   isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;

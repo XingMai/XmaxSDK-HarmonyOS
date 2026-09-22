@@ -371,6 +371,15 @@ build() {
 The component displays a local camera preview until the generated video is ready
 to render, with touch interaction enabled by default.
 
+For streams created by `createLocalVideoStream`, call `pauseLocalVideoStream`,
+`resumeLocalVideoStream`, or `toggleLocalVideoStreamPlayback` on the realtime
+manager from your own button or `onClick` handler. Observe the current `playing` /
+`pause` value with `localVideoPlaybackState` or
+`setLocalVideoPlaybackStateListener`. While paused, the SDK continues sending the
+last input frame and silent audio, and overlays a still image on the generated
+video; the generation task remains active. See the
+[playback control example](docs/usage.md#control-local-video-playback).
+
 <br>
 
 ### Listen for events

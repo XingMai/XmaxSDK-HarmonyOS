@@ -197,6 +197,52 @@ inputs. `isInteractionEnabled` controls remote touch interaction; a custom
 `XmaxVideoView` remains available for displaying one track. Both components react
 to track replacements, including streams recreated with different dimensions.
 
+## Control local video playback
+
+For a stream created by `createLocalVideoStream`, use the realtime manager's
+`pauseLocalVideoStream`, `resumeLocalVideoStream`, or
+`toggleLocalVideoStreamPlayback` methods. Bind them to your own controls, for
+example a tap on the video view:
+
+```ts
+XmaxRealtimeVideoView({
+  localTrack: this.localVideoTrack,
+  remoteTrack: this.remoteVideoTrack,
+  contentMode: VideoContentMode.FIT,
+  // Reserve taps for playback control in this example.
+  isInteractionEnabled: false
+})
+  .width('100%')
+  .height('100%')
+  .onClick((): void => {
+    void realtime.toggleLocalVideoStreamPlayback().catch((error: Object): void => {
+      console.error(`Playback control failed: ${error}`);
+    });
+  })
+```
+
+If you need touch interaction for generation, use a separate playback button.
+Register a manager listener to update your controls when playback changes:
+
+```ts
+realtime.setLocalVideoPlaybackStateListener((state): void => {
+  console.info(`Local video playback: ${state}`); // "playing" or "pause"
+});
+
+// Remove the listener when it is no longer needed.
+realtime.setLocalVideoPlaybackStateListener(null);
+```
+
+`localVideoPlaybackState` returns the current state, or `undefined` when there is
+no local video file stream. Registering a listener immediately reports the current
+state if a video file stream exists. Camera and image streams do not support these
+playback operations.
+
+While paused, the SDK holds the file's playback position, continues publishing
+the last input frame and silent audio with advancing timestamps, and overlays a
+still image on the generated video. The generation task remains active. Resuming
+continues file playback from the paused position.
+
 ## Receive remote video frames
 
 Register a listener before or during generation to receive RTC post-processed

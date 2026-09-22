@@ -9,6 +9,8 @@ export class MediaTimeline {
   readonly cycleDurationUs: number;
 
   private readonly playbackAnchorUs: number;
+  private accumulatedPauseUs: number = 0;
+  private pausedAtUs: number = -1;
 
   constructor(
     mediaStartUs: number,
@@ -32,6 +34,32 @@ export class MediaTimeline {
   }
 
   playbackAnchorForLoop(loopIndex: number): number {
-    return this.playbackAnchorUs + loopIndex * this.cycleDurationUs;
+    return this.playbackAnchorUs + this.accumulatedPauseUs +
+      loopIndex * this.cycleDurationUs;
+  }
+
+  /** 冻结共享媒体时间轴。 */
+  pause(): void {
+    if (this.pausedAtUs < 0) {
+      this.pausedAtUs = MediaTimeline.currentTimestampUs();
+    }
+  }
+
+  /**
+   * 恢复共享媒体时间轴。
+   *
+   * @returns 本次暂停持续时间，供已创建的音视频解码器同步平移播放锚点。
+   */
+  resume(): number {
+    if (this.pausedAtUs < 0) {
+      return 0;
+    }
+    const durationUs: number = Math.max(
+      MediaTimeline.currentTimestampUs() - this.pausedAtUs,
+      0
+    );
+    this.pausedAtUs = -1;
+    this.accumulatedPauseUs += durationUs;
+    return durationUs;
   }
 }

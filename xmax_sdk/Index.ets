@@ -44,6 +44,10 @@ export {
   RealtimeVideoTrack
 } from './src/main/ets/service/realtime/RealtimeVideoTrack';
 export {
+  LocalVideoPlaybackState,
+  LocalVideoPlaybackStateListener
+} from './src/main/ets/service/realtime/LocalVideoPlaybackState';
+export {
   DefaultTrajectoryEffectRenderer
 } from './src/main/ets/rendering/trajectory/DefaultTrajectoryEffectRenderer';
 export {

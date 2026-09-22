@@ -66,6 +66,18 @@ export class AudioFileFrameDecoder {
     }
   }
 
+  pause(): void {
+    if (!this.isReleased) {
+      this.nativeDecoder.pause();
+    }
+  }
+
+  resume(pausedDurationUs: number): void {
+    if (!this.isReleased) {
+      this.nativeDecoder.resume(pausedDurationUs);
+    }
+  }
+
   release(): void {
     if (this.isReleased) {
       return;

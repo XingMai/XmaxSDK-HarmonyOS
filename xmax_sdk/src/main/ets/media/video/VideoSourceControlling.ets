@@ -34,13 +34,11 @@ export interface VideoSourceControlling {
    */
   start(timeline: MediaTimeline): void;
 
-  /**
-   * 按新的共享时间轴重新输出视频帧。
-   *
-   * @param timeline 音视频共享播放时间轴。
-   * @returns 旧视频源释放完成后的 Promise。
-   */
-  restart(timeline: MediaTimeline): Promise<void>;
+  /** 暂停当前解码器，保留媒体位置与资源。 */
+  pause(): void;
+
+  /** 使用统一的暂停时长恢复当前解码器。 */
+  resume(pausedDurationUs: number): void;
 
   /**
    * 停止输出并释放视频文件资源。

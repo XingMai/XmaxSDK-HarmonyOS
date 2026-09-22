@@ -4,6 +4,7 @@ import { CameraPreviewReadyHandler } from './camera/CameraPreviewReadyHandler';
 import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
+import { LocalVideoPlaybackState } from '../service/realtime/LocalVideoPlaybackState';
 import { InteractionControlling } from './interaction/InteractionControlling';
 
 /** 定义媒体层向 Core 暴露的统一能力。 */
@@ -20,6 +21,9 @@ export interface MediaControlling extends InteractionControlling {
 
   /** @returns 当前媒体来源是否包含由 SDK 管理的本地音频。 */
   readonly hasAudio: boolean;
+
+  /** 当前活动视频文件的播放状态；其他媒体来源返回空值。 */
+  readonly localVideoPlaybackState: LocalVideoPlaybackState | undefined;
 
   /**
    * 立即阻断当前本地媒体输出并解除预览绑定。
@@ -88,6 +92,12 @@ export interface MediaControlling extends InteractionControlling {
 
   /** @returns 当前视频文件来源停止并释放完成后的 Promise。 */
   stopLocalVideoStream(): Promise<void>;
+
+  /** 暂停当前视频文件流并开始冻结帧发布。 */
+  pauseLocalVideoStream(): Promise<void>;
+
+  /** 从原媒体位置恢复当前视频文件流。 */
+  resumeLocalVideoStream(): void;
 
   /**
    * 从图片输入创建并持有持续输出帧的媒体流。

@@ -882,6 +882,91 @@ function exampleFixture(modelName = 'x2.0-sla') {
   };
 }
 
+function exampleVideoPlaybackFixture() {
+  const f = exampleFixture();
+  const { LocalVideoPlaybackState: Playback } = f.load('service/realtime/LocalVideoPlaybackState.ets');
+  f.media.createLocalVideoStream = async () => {
+    f.media.currentTrack = new f.Track('file-video', new f.Format(832, 1472, 24));
+    f.media.localVideoPlaybackState = Playback.PLAYING;
+    return new f.MediaStream('local', f.media.currentTrack);
+  };
+  f.media.pauseLocalVideoStream = async () => { f.media.localVideoPlaybackState = Playback.PAUSE; };
+  f.media.resumeLocalVideoStream = () => { f.media.localVideoPlaybackState = Playback.PLAYING; };
+  f.media.stopLocalVideoStream = async () => {
+    f.media.currentTrack = null;
+    f.media.localVideoPlaybackState = undefined;
+  };
+  f.manager.renderController.freezeRemoteVideo = async () => {};
+  f.manager.renderController.resumeRemoteVideo = async () => {};
+  return { ...f, Playback };
+}
+
+test('XLab video taps pause and resume through the SDK callback without starting generation', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel;
+  await vm.connect({}, 'video.mp4');
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  await vm.toggleLocalVideoPlayback();
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PAUSE);
+  await vm.toggleLocalVideoPlayback();
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  assert.deepEqual(f.calls.sessions, []);
+  assert.ok(vm.state.localVideoTrack);
+});
+
+test('XLab video tap waits for playback completion and reports failures without changing UI state', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel, gate = deferred(), messages = [];
+  await vm.connect({}, 'video.mp4');
+  vm.onMessage = value => messages.push(value);
+  let toggles = 0;
+  f.manager.toggleLocalVideoStreamPlayback = async () => { toggles++; await gate.promise; };
+  const pending = vm.toggleLocalVideoPlayback();
+  await vm.toggleLocalVideoPlayback();
+  assert.equal(toggles, 1);
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  gate.reject(new Error('pause failed'));
+  await pending;
+  assert.deepEqual(messages, ['pause failed']);
+  assert.equal(vm.state.errorMessage, '');
+  assert.equal(vm.changingVideoPlayback, false);
+});
+
+test('XLab ignores playback taps for camera, image, loading and media replacement', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel;
+  const camera = exampleFixture();
+  let toggles = 0;
+  f.manager.toggleLocalVideoStreamPlayback = async () => { toggles++; };
+  camera.manager.toggleLocalVideoStreamPlayback = async () => { toggles++; };
+  await vm.toggleLocalVideoPlayback();
+  await camera.viewModel.connect({});
+  await camera.viewModel.toggleLocalVideoPlayback();
+  await camera.viewModel.disconnect();
+  await vm.connect({}, 'video.mp4');
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  vm.localImagePath = 'image.jpg';
+  await vm.toggleLocalVideoPlayback();
+  vm.localImagePath = '';
+  vm.state.isGenerationStarting = true;
+  await vm.toggleLocalVideoPlayback();
+  vm.state.isGenerationStarting = false;
+  vm.changingLocalMedia = true;
+  await vm.toggleLocalVideoPlayback();
+  assert.equal(toggles, 0);
+});
+
+test('XLab resets paused video when replacing the file and detaches callback on exit', async () => {
+  const f = exampleVideoPlaybackFixture(), vm = f.viewModel;
+  await vm.connect({}, 'video.mp4');
+  await vm.toggleLocalVideoPlayback();
+  await vm.changeLocalVideo('next.mp4');
+  assert.equal(vm.state.localVideoPlaybackState, f.Playback.PLAYING);
+  const oldListener = f.manager.localVideoPlaybackStateListener;
+  assert.equal(typeof oldListener, 'function');
+  await vm.disconnect();
+  assert.equal(f.manager.localVideoPlaybackStateListener, null);
+  oldListener(f.Playback.PAUSE);
+  assert.equal(vm.state.localVideoPlaybackState, undefined);
+});
+
 test('XLab uses model camera defaults for both models without an interpolation size override', async () => {
   for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1024, 1920, 30]]) {
     const f = exampleFixture(name);

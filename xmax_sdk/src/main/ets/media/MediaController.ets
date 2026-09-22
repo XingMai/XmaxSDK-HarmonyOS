@@ -14,6 +14,7 @@ import { RealtimeMediaStream } from '../service/realtime/RealtimeMediaStream';
 import { RealtimePoint } from '../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
+import { LocalVideoPlaybackState } from '../service/realtime/LocalVideoPlaybackState';
 import { StreamControlling } from '../stream/StreamControlling';
 import { CameraController } from './camera/CameraController';
 import { ImageController } from './image/ImageController';
@@ -128,6 +129,12 @@ export class MediaController implements MediaControlling {
     }
     return this.activeSource?.controller === this.videoController &&
       this.videoController.hasAudio;
+  }
+
+  /** @inheritdoc */
+  get localVideoPlaybackState(): LocalVideoPlaybackState | undefined {
+    return this.activeSource?.controller === this.videoController ?
+      this.videoController.playbackState : undefined;
   }
 
   /** @inheritdoc */
@@ -262,6 +269,28 @@ export class MediaController implements MediaControlling {
   /** @returns 当前视频文件来源停止完成后的 Promise。 */
   stopLocalVideoStream(): Promise<void> {
     return this.stopSource(this.videoController);
+  }
+
+  /** @inheritdoc */
+  pauseLocalVideoStream(): Promise<void> {
+    if (this.activeSource?.controller !== this.videoController) {
+      return Promise.reject(new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Create a local video stream before pausing it'
+      ));
+    }
+    return this.videoController.pauseLocalVideoStream();
+  }
+
+  /** @inheritdoc */
+  resumeLocalVideoStream(): void {
+    if (this.activeSource?.controller !== this.videoController) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Create a local video stream before resuming it'
+      );
+    }
+    this.videoController.resumeLocalVideoStream();
   }
 
   /**

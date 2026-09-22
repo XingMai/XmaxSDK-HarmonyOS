@@ -73,6 +73,8 @@ export class MediaSourceController implements MediaSourceControlling {
 
   // 媒体文件资源
   private metadata: MediaSourceMetadata | null = null;
+  private timeline: MediaTimeline | null = null;
+  private isPaused: boolean = false;
 
   /**
    * 创建媒体源 Controller。
@@ -180,6 +182,8 @@ export class MediaSourceController implements MediaSourceControlling {
     }
 
     const timeline = new MediaTimeline(0, metadata.durationUs);
+    this.timeline = timeline;
+    this.isPaused = false;
     try {
       this.videoSourceController.start(timeline);
       if (metadata.hasAudio) {
@@ -190,8 +194,68 @@ export class MediaSourceController implements MediaSourceControlling {
       this.audioSourceController.stop();
       await videoStopPromise;
       await this.audioManager.stop();
+      this.timeline = null;
       throw XmaxError.from(error);
     }
+  }
+
+  /** @inheritdoc */
+  async pause(): Promise<void> {
+    if (this.isPaused) {
+      return;
+    }
+    const timeline: MediaTimeline | null = this.timeline;
+    if (timeline === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local media source is not active'
+      );
+    }
+
+    timeline.pause();
+    this.isPaused = true;
+    try {
+      this.videoSourceController.pause();
+      if (this.hasAudio) {
+        this.audioSourceController.pause();
+        await this.audioManager.flush();
+      }
+    } catch (error) {
+      const pausedDurationUs: number = timeline.resume();
+      try {
+        this.videoSourceController.resume(pausedDurationUs);
+        if (this.hasAudio) {
+          this.audioSourceController.resume(pausedDurationUs);
+        }
+      } catch (resumeError) {
+        XmaxLogger.error(
+          `${XmaxLogger.localized("回滚本地视频暂停失败 (Failed to Roll Back Local Video Pause)\n└─ 原因：", "回滚本地视频暂停失败 (Failed to Roll Back Local Video Pause)\n└─ Reason: ")}${XmaxError.from(resumeError).message}`,
+          'Video'
+        );
+      }
+      this.isPaused = false;
+      throw XmaxError.from(error);
+    }
+  }
+
+  /** @inheritdoc */
+  resume(): void {
+    if (!this.isPaused) {
+      return;
+    }
+    const timeline: MediaTimeline | null = this.timeline;
+    if (timeline === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local media source is not active'
+      );
+    }
+    const pausedDurationUs: number = timeline.resume();
+    this.videoSourceController.resume(pausedDurationUs);
+    if (this.hasAudio) {
+      this.audioSourceController.resume(pausedDurationUs);
+    }
+    this.isPaused = false;
   }
 
   /**
@@ -226,6 +290,8 @@ export class MediaSourceController implements MediaSourceControlling {
     await this.stopAudioPlayback();
 
     this.metadata = null;
+    this.timeline = null;
+    this.isPaused = false;
   }
 
   /**

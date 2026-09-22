@@ -117,6 +117,18 @@ export class VideoFileFrameDecoder {
     }
   }
 
+  pause(): void {
+    if (!this.isReleased) {
+      this.nativeDecoder.pause();
+    }
+  }
+
+  resume(pausedDurationUs: number): void {
+    if (!this.isReleased) {
+      this.nativeDecoder.resume(pausedDurationUs);
+    }
+  }
+
   release(): Promise<void> {
     if (this.isReleased) {
       return Promise.resolve();

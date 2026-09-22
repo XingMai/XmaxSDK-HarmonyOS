@@ -12,6 +12,12 @@ export interface RenderControlling {
   /** 停止当前流的公开帧交付，直至设置新的远端流。 */
   stopRemoteVideoFrameDelivery(): void;
 
+  /** 捕获下一张远端帧并以静态覆盖层冻结当前生成画面。 */
+  freezeRemoteVideo(): Promise<void>;
+
+  /** 收到下一张远端帧后移除静态覆盖层。 */
+  resumeRemoteVideo(): Promise<void>;
+
 
   /**
    * 更新当前需要渲染的远端 RTC 视频流。
