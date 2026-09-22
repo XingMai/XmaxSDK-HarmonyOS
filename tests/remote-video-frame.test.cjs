@@ -46,6 +46,72 @@ function rawFrame() {
     ] };
 }
 
+function frozenFixture() {
+  const f = fixture(), previews = [];
+  const snapshot = { releases: 0, async release() { this.releases++; } };
+  f.render.setRemoteStream(f.stream);
+  f.frame();
+  f.render.remoteBinding = { setVideoReady() {}, setPreviewFrame(value) { previews.push(value); } };
+  f.render.frozenRemoteFrame = snapshot;
+  return { ...f, snapshot, previews };
+}
+
+test('resuming frozen video waits for the next frame without copying its pixels', async () => {
+  const f = frozenFixture();
+  const pending = f.render.resumeRemoteVideo();
+  assert.equal(f.snapshot.releases, 0);
+  assert.equal(f.timers.size, 1);
+  // Removing a public listener must not disable the internal resume wait.
+  f.render.setRemoteVideoFrameListener(null);
+  assert.deepEqual(f.observations.at(-1), [f.stream.key(), true]);
+  f.frame(new f.RemoteStream('other-room', 'bot'), () => assert.fail('wrong stream copied'));
+  assert.equal(f.timers.size, 1);
+  f.frame(f.stream, () => assert.fail('resume must not copy pixels'));
+  await pending;
+  assert.equal(f.snapshot.releases, 1);
+  assert.equal(f.previews.at(-1), undefined);
+  assert.equal(f.timers.size, 0);
+  assert.deepEqual(f.observations.at(-1), [f.stream.key(), false]);
+});
+
+test('a resume frame is copied once only when a public listener also needs it', async () => {
+  const f = frozenFixture(), delivered = [];
+  f.render.setRemoteVideoFrameListener(frame => delivered.push(frame));
+  const pending = f.render.resumeRemoteVideo();
+  let copies = 0;
+  f.frame(f.stream, () => { copies++; return f.convert(rawFrame()); });
+  await pending;
+  f.flush();
+  assert.equal(copies, 1);
+  assert.equal(delivered.length, 1);
+  assert.equal(f.snapshot.releases, 1);
+  assert.deepEqual(f.observations.at(-1), [f.stream.key(), true]);
+});
+
+test('resume timeout removes the overlay without waiting forever', async () => {
+  const f = frozenFixture(), pending = f.render.resumeRemoteVideo();
+  const timer = [...f.timers.values()].find(value => value.ms === 1500);
+  assert.ok(timer);
+  timer.callback();
+  await pending;
+  assert.equal(f.snapshot.releases, 1);
+  assert.equal(f.timers.size, 0);
+  assert.match(f.logs.at(-1), /next frame timed out/);
+});
+
+test('reset cancels the resume wait and a late frame cannot restore or release a new overlay', async () => {
+  const f = frozenFixture(), pending = f.render.resumeRemoteVideo();
+  f.render.setRemoteStream(null);
+  const replacement = { releases: 0, async release() { this.releases++; } };
+  f.render.frozenRemoteFrame = replacement;
+  f.frame(f.stream, () => assert.fail('stale frame copied'));
+  await pending;
+  assert.equal(f.snapshot.releases, 1);
+  assert.equal(replacement.releases, 0);
+  assert.equal(f.timers.size, 0);
+  f.render.setRemoteStream(null);
+});
+
 test('I420 conversion copies visible rows, preserves timestamps/rotation and owns all planes', () => {
   const f = fixture(), raw = rawFrame(), frame = f.convert(raw);
   assert.equal(frame.width, 3); assert.equal(frame.height, 3);

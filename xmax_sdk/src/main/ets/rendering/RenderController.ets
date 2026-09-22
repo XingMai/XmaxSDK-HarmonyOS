@@ -19,7 +19,7 @@ import {
 } from './video/VideoRenderRegistry';
 
 const REMOTE_FRAME_TIMEOUT_MS: number = 10000;
-const REMOTE_FREEZE_FRAME_TIMEOUT_MS: number = 1500;
+const REMOTE_NEXT_FRAME_TIMEOUT_MS: number = 1500;
 
 class RemoteFrameWaiter {
   timer: number = -1;
@@ -27,20 +27,6 @@ class RemoteFrameWaiter {
   readonly reject: (error: XmaxError) => void;
 
   constructor(resolve: () => void, reject: (error: XmaxError) => void) {
-    this.resolve = resolve;
-    this.reject = reject;
-  }
-}
-
-class RemoteFrameCaptureWaiter {
-  timer: number = -1;
-  readonly resolve: (frame: RealtimeVideoFrame) => void;
-  readonly reject: (error: XmaxError) => void;
-
-  constructor(
-    resolve: (frame: RealtimeVideoFrame) => void,
-    reject: (error: XmaxError) => void
-  ) {
     this.resolve = resolve;
     this.reject = reject;
   }
@@ -59,7 +45,7 @@ export class RenderController implements RenderControlling {
   private readonly frameDispatcher: RealtimeVideoFrameDispatcher = new RealtimeVideoFrameDispatcher();
   private remoteFrameError: XmaxError | null = null;
   private readonly remoteFrameWaiters: Set<RemoteFrameWaiter> = new Set();
-  private remoteFrameCaptureWaiter: RemoteFrameCaptureWaiter | null = null;
+  private nextRemoteFrameWaiter: RemoteFrameWaiter | null = null;
   private frozenRemoteFrame: image.PixelMap | null = null;
   private remoteFreezeVersion: number = 0;
 
@@ -89,26 +75,17 @@ export class RenderController implements RenderControlling {
         this.remoteFrameReady = true;
         this.finishRemoteFrameWaiters();
       }
-      const captureWaiter: RemoteFrameCaptureWaiter | null = this.remoteFrameCaptureWaiter;
+      // 恢复播放只需要下一帧到达的通知；只有公开帧监听器需要复制像素。
+      this.finishNextRemoteFrameWait();
       const shouldDeliver: boolean = this.frameDispatcher.hasListener && this.remoteFrameDeliveryActive;
-      if (!shouldDeliver && captureWaiter === null) {
+      if (!shouldDeliver) {
         this.stopFrameObservation(stream);
         return;
       }
       try {
         const frame: RealtimeVideoFrame = copyFrame();
-        if (captureWaiter !== null && this.remoteFrameCaptureWaiter === captureWaiter) {
-          this.finishRemoteFrameCapture(frame);
-        }
-        if (shouldDeliver) {
-          this.frameDispatcher.dispatch(frame);
-        } else if (this.remoteFrameCaptureWaiter === null) {
-          this.stopFrameObservation(stream);
-        }
+        this.frameDispatcher.dispatch(frame);
       } catch (error) {
-        if (captureWaiter !== null && this.remoteFrameCaptureWaiter === captureWaiter) {
-          this.cancelRemoteFrameCapture(XmaxError.from(error));
-        }
         XmaxLogger.error(`${XmaxLogger.localized("复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ 原因：", "复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Render');
       }
     });
@@ -122,7 +99,7 @@ export class RenderController implements RenderControlling {
       this.rtcManager.observeRemoteVideoFrames(stream, true);
     }
     this.frameDispatcher.setListener(listener);
-    if (listener === null && stream !== null && this.remoteFrameReady) {
+    if (listener === null && stream !== null && this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
       this.stopFrameObservation(stream);
     }
   }
@@ -171,7 +148,7 @@ export class RenderController implements RenderControlling {
     }
     try {
       if (this.remoteStream !== null) {
-        await this.captureNextRemoteFrame();
+        await this.waitForNextRemoteFrame();
       }
     } catch (error) {
       XmaxLogger.error(
@@ -228,6 +205,7 @@ export class RenderController implements RenderControlling {
     this.remoteFrameError = error;
     this.stopFrameObservation(this.remoteStream);
     this.finishRemoteFrameWaiters(error);
+    this.finishNextRemoteFrameWait(error);
   }
 
   private resetRemoteFrameWait(): void {
@@ -237,9 +215,9 @@ export class RenderController implements RenderControlling {
     this.remoteStream = null;
     this.remoteFrameReady = false;
     this.remoteFrameError = null;
-    this.cancelRemoteFrameCapture(new XmaxError(
+    this.finishNextRemoteFrameWait(new XmaxError(
       XmaxErrorCode.CANCELLED,
-      'Remote video frame capture was cancelled'
+      'Remote video next frame wait was cancelled'
     ));
     void this.clearFrozenRemoteFrame();
     this.finishRemoteFrameWaiters(new XmaxError(XmaxErrorCode.CANCELLED,
@@ -261,60 +239,54 @@ export class RenderController implements RenderControlling {
     this.remoteFrameWaiters.clear();
   }
 
-  private captureNextRemoteFrame(): Promise<RealtimeVideoFrame> {
+  private waitForNextRemoteFrame(): Promise<void> {
     const stream: RemoteStream | null = this.remoteStream;
     if (stream === null || this.remoteFrameError !== null) {
       return Promise.reject(this.remoteFrameError ?? new XmaxError(
         XmaxErrorCode.CANCELLED,
-        'Remote video frame capture is unavailable'
+        'Remote video next frame wait is unavailable'
       ));
     }
-    this.cancelRemoteFrameCapture(new XmaxError(
+    this.finishNextRemoteFrameWait(new XmaxError(
       XmaxErrorCode.CANCELLED,
-      'Remote video frame capture was replaced'
+      'Remote video next frame wait was replaced'
     ));
-    return new Promise<RealtimeVideoFrame>((
-      resolve: (frame: RealtimeVideoFrame) => void,
+    return new Promise<void>((
+      resolve: () => void,
       reject: (error: XmaxError) => void
     ): void => {
-      const waiter = new RemoteFrameCaptureWaiter(resolve, reject);
-      this.remoteFrameCaptureWaiter = waiter;
+      const waiter = new RemoteFrameWaiter(resolve, reject);
+      this.nextRemoteFrameWaiter = waiter;
       try {
         this.rtcManager.observeRemoteVideoFrames(stream, true);
       } catch (error) {
-        this.remoteFrameCaptureWaiter = null;
+        this.nextRemoteFrameWaiter = null;
         reject(XmaxError.from(error));
         return;
       }
       waiter.timer = setTimeout((): void => {
-        if (this.remoteFrameCaptureWaiter === waiter) {
-          this.cancelRemoteFrameCapture(new XmaxError(
+        if (this.nextRemoteFrameWaiter === waiter) {
+          this.finishNextRemoteFrameWait(new XmaxError(
             XmaxErrorCode.TIMEOUT,
-            'Remote video freeze frame timed out'
+            'Remote video next frame timed out'
           ));
         }
-      }, REMOTE_FREEZE_FRAME_TIMEOUT_MS);
+      }, REMOTE_NEXT_FRAME_TIMEOUT_MS);
     });
   }
 
-  private finishRemoteFrameCapture(frame: RealtimeVideoFrame): void {
-    const waiter: RemoteFrameCaptureWaiter | null = this.remoteFrameCaptureWaiter;
+  private finishNextRemoteFrameWait(error?: XmaxError): void {
+    const waiter: RemoteFrameWaiter | null = this.nextRemoteFrameWaiter;
     if (waiter === null) {
       return;
     }
-    this.remoteFrameCaptureWaiter = null;
+    this.nextRemoteFrameWaiter = null;
     clearTimeout(waiter.timer);
-    waiter.resolve(frame);
-  }
-
-  private cancelRemoteFrameCapture(error: XmaxError): void {
-    const waiter: RemoteFrameCaptureWaiter | null = this.remoteFrameCaptureWaiter;
-    if (waiter === null) {
-      return;
+    if (error === undefined) {
+      waiter.resolve();
+    } else {
+      waiter.reject(error);
     }
-    this.remoteFrameCaptureWaiter = null;
-    clearTimeout(waiter.timer);
-    waiter.reject(error);
   }
 
   private async clearFrozenRemoteFrame(): Promise<void> {
