@@ -611,8 +611,8 @@ class NativeVideoFileDecoder {
 
   bool InitializeOutputSurface(std::string* error) {
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
-    surfaceWidth_ = swapsDimensions ? targetHeight_ : targetWidth_;
-    surfaceHeight_ = swapsDimensions ? targetWidth_ : targetHeight_;
+    const int32_t surfaceWidth = swapsDimensions ? targetHeight_ : targetWidth_;
+    const int32_t surfaceHeight = swapsDimensions ? targetWidth_ : targetHeight_;
     surfaceOutputSurface_ = OH_ConsumerSurface_Create();
     if (surfaceOutputSurface_ == nullptr) {
       *error = "创建视频输出 Surface 失败";
@@ -623,7 +623,7 @@ class NativeVideoFileDecoder {
         NATIVEBUFFER_USAGE_CPU_READ |
             NATIVEBUFFER_USAGE_CPU_READ_OFTEN) != 0 ||
         OH_ConsumerSurface_SetDefaultSize(
-            surfaceOutputSurface_, surfaceWidth_, surfaceHeight_) != 0) {
+            surfaceOutputSurface_, surfaceWidth, surfaceHeight) != 0) {
       *error = "配置视频输出 Surface 失败";
       ReleaseOutputSurface();
       return false;
@@ -1509,8 +1509,6 @@ class NativeVideoFileDecoder {
   int32_t pixelFormat_ = 0;
   bool isHdrVivid_ = false;
   bool useSurfaceOutput_ = false;
-  int32_t surfaceWidth_ = 0;
-  int32_t surfaceHeight_ = 0;
   OH_VideoProcessing* videoProcessor_ = nullptr;
   VideoProcessing_Callback* surfaceProcessingCallback_ = nullptr;
   OHNativeWindow* surfaceProcessorInputWindow_ = nullptr;

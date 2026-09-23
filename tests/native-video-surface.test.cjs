@@ -103,7 +103,7 @@ class SurfaceReader {
   OH_NativeImage* surfaceOutputSurface_ = &image;
   std::mutex surfaceMutex_;
   std::atomic<bool> running_{true};
-  int32_t surfaceWidth_ = 4, surfaceHeight_ = 2, targetWidth_ = 4, targetHeight_ = 2, rotation_ = 0;
+  int32_t targetWidth_ = 4, targetHeight_ = 2, rotation_ = 0;
   std::vector<uint8_t> surfaceSourceData_, surfaceScaledData_;
   DecodedFramePacket output;
   bool dispatched = false;

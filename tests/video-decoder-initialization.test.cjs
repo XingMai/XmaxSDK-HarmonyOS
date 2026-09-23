@@ -24,7 +24,6 @@ function decoderFixture() {
       stat: async () => ({ size: 1234 }),
       close: async () => { calls.closed++; }
     } },
-    '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 1000000000 } },
     'libxmax_video.so': { default: { createVideoFileDecoder(...args) {
       calls.created++; callback = args.at(-1); return initialization.promise;
     } } }

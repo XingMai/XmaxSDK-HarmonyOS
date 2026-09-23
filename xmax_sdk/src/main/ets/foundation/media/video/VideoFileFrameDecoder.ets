@@ -1,5 +1,4 @@
 import { fileIo } from '@kit.CoreFileKit';
-import systemDateTime from '@ohos.systemDateTime';
 import xmaxVideoNative, {
   NativeVideoFileDecoder
 } from 'libxmax_video.so';
@@ -59,9 +58,9 @@ export class VideoFileFrameDecoder {
     outputHeight: number,
     frameIntervalUs: number,
     listener: VideoFileFrameDecoderListener,
-    playbackAnchorUs?: number,
-    mediaStartUs?: number,
-    cycleDurationUs?: number
+    playbackAnchorUs: number,
+    mediaStartUs: number,
+    cycleDurationUs: number
   ) {
     this.ready = this.initialize(videoUri, rotation, outputWidth, outputHeight,
       frameIntervalUs, listener, playbackAnchorUs, mediaStartUs, cycleDurationUs);
@@ -74,17 +73,10 @@ export class VideoFileFrameDecoder {
     outputHeight: number,
     frameIntervalUs: number,
     listener: VideoFileFrameDecoderListener,
-    playbackAnchorUs?: number,
-    mediaStartUs?: number,
-    cycleDurationUs?: number
+    playbackAnchorUs: number,
+    mediaStartUs: number,
+    cycleDurationUs: number
   ): Promise<void> {
-    const resolvedPlaybackAnchorUs: number = playbackAnchorUs ??
-      systemDateTime.getUptime(
-        systemDateTime.TimeType.ACTIVE,
-        true
-      ) / 1000;
-    const resolvedMediaStartUs: number = mediaStartUs ?? 0;
-
     const sourceFile: fileIo.File = await fileIo.open(
       videoUri,
       fileIo.OpenMode.READ_ONLY
@@ -100,13 +92,13 @@ export class VideoFileFrameDecoder {
       this.nativeDecoder = await xmaxVideoNative.createVideoFileDecoder(
         sourceFile.fd,
         sourceSize,
-        resolvedPlaybackAnchorUs,
-        resolvedMediaStartUs,
+        playbackAnchorUs,
+        mediaStartUs,
         rotation,
         outputWidth,
         outputHeight,
         frameIntervalUs,
-        cycleDurationUs ?? 0,
+        cycleDurationUs,
         (
           data: ArrayBuffer | undefined,
           width: number,
