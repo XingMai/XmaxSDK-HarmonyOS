@@ -20,6 +20,10 @@ import {
 } from './VideoSourceControlling';
 
 const FRAME_INTERVAL_TOLERANCE: number = 0.75;
+// 帧率采样间隔不是处理延迟预算：Surface、取帧和线程调度可能超过一帧。
+// 允许最多三个帧周期（至少 100 ms），仍丢弃明显积压的历史帧。
+const MIN_FRAME_LATENESS_US: number = 100000;
+const FRAME_LATENESS_INTERVALS: number = 3;
 
 /** 解码本地媒体文件中的视频轨，并按共享时间轴循环输出采样后的视频帧。 */
 export class VideoSourceController implements VideoSourceControlling {
@@ -353,8 +357,13 @@ export class VideoSourceController implements VideoSourceControlling {
    * @returns 当前解码帧需要输出时返回 true，否则返回 false。
    */
   private shouldOutputFrame(frame: VideoFileDecodedFrame): boolean {
-    if (MediaTimeline.currentTimestampUs() - frame.timestampUs >
-      this.frameIntervalUs) {
+    const nowUs: number = MediaTimeline.currentTimestampUs();
+    const ageUs: number = nowUs - frame.timestampUs;
+    const latenessLimitUs: number = Math.max(
+      MIN_FRAME_LATENESS_US,
+      this.frameIntervalUs * FRAME_LATENESS_INTERVALS
+    );
+    if (ageUs > latenessLimitUs) {
       return false;
     }
 

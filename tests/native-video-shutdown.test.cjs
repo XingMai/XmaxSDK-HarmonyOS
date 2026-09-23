@@ -67,33 +67,33 @@ class ScheduledCondition {
   }
 };
 
-struct HdrSurfaceBufferPacket {};
+struct SurfaceBufferPacket {};
 constexpr int VIDEO_PROCESSING_SUCCESS = 0;
 int OH_VideoProcessing_RenderOutputBuffer(void*, uint32_t) { return 0; }
 class DecoderWorker {
  public:
-  std::mutex hdrSurfaceMutex_;
-  std::mutex hdrSurfaceQueueMutex_;
-  ScheduledCondition hdrSurfaceCondition_;
-  std::atomic<bool> hdrSurfaceWorkerRunning_{true};
-  std::deque<uint32_t> hdrPendingOutputBuffers_;
-  void* hdrVideoProcessor_ = nullptr;
+  std::mutex surfaceMutex_;
+  std::mutex surfaceQueueMutex_;
+  ScheduledCondition surfaceCondition_;
+  std::atomic<bool> surfaceWorkerRunning_{true};
+  std::deque<uint32_t> surfacePendingOutputBuffers_;
+  void* videoProcessor_ = nullptr;
   void ReportError(const char*) {}
-  std::thread hdrSurfaceWorker_;
-  bool AcquireHdrSurfaceFrame(HdrSurfaceBufferPacket&) { return false; }
-  void ReleaseHdrSurfaceBufferLocked(const HdrSurfaceBufferPacket&) {}
-  void HandleHdrSurfaceFrame(const HdrSurfaceBufferPacket&) {}
-  void CompleteHdrSurfaceFrame() {}
-${workerMethod(source, 'StopHdrSurfaceWorker')}
-${workerMethod(source, 'HdrSurfaceWorkerLoop')}
+  std::thread surfaceWorker_;
+  bool AcquireSurfaceFrame(SurfaceBufferPacket&) { return false; }
+  void ReleaseSurfaceBufferLocked(const SurfaceBufferPacket&) {}
+  void HandleSurfaceFrame(const SurfaceBufferPacket&) {}
+  void CompleteSurfaceFrame() {}
+${workerMethod(source, 'StopSurfaceWorker')}
+${workerMethod(source, 'SurfaceWorkerLoop')}
 };
 
 int main() {
   DecoderWorker decoder;
-  auto& condition = decoder.hdrSurfaceCondition_;
-  decoder.hdrSurfaceWorker_ = std::thread([&] { decoder.HdrSurfaceWorkerLoop(); });
+  auto& condition = decoder.surfaceCondition_;
+  decoder.surfaceWorker_ = std::thread([&] { decoder.SurfaceWorkerLoop(); });
   condition.predicateChecked.get_future().wait();
-  auto stopping = std::async(std::launch::async, [&] { decoder.StopHdrSurfaceWorker(); });
+  auto stopping = std::async(std::launch::async, [&] { decoder.StopSurfaceWorker(); });
   // The broken implementation can notify now; the fixed one waits for the lock.
   condition.stopNotified.get_future().wait_for(200ms);
   condition.resumeWait.set_value();
@@ -143,7 +143,7 @@ using namespace std::chrono_literals;
 
 struct OHNativeWindowBuffer { int references = 0; };
 struct OH_NativeImage {};
-struct HdrSurfaceBufferPacket {
+struct SurfaceBufferPacket {
   OHNativeWindowBuffer* windowBuffer = nullptr;
   int fenceFd = -1;
   int64_t timestampUs = 0;
@@ -198,37 +198,37 @@ int OH_NativeImage_ReleaseNativeWindowBuffer(OH_NativeImage*, OHNativeWindowBuff
 class DecoderWorker {
  public:
   OH_NativeImage surface;
-  OH_NativeImage* hdrOutputSurface_ = &surface;
-  std::mutex hdrSurfaceMutex_, hdrSurfaceQueueMutex_, hdrTimestampMutex_;
-  std::condition_variable hdrSurfaceCondition_;
-  std::atomic<bool> hdrSurfaceWorkerRunning_{true};
-  std::deque<uint32_t> hdrPendingOutputBuffers_;
-  void* hdrVideoProcessor_ = nullptr;
-  size_t hdrSurfaceFramesInFlight_ = 0;
-  std::deque<int64_t> pendingHdrTimestamps_;
-  std::thread hdrSurfaceWorker_;
+  OH_NativeImage* surfaceOutputSurface_ = &surface;
+  std::mutex surfaceMutex_, surfaceQueueMutex_, surfaceTimestampMutex_;
+  std::condition_variable surfaceCondition_;
+  std::atomic<bool> surfaceWorkerRunning_{true};
+  std::deque<uint32_t> surfacePendingOutputBuffers_;
+  void* videoProcessor_ = nullptr;
+  size_t surfaceFramesInFlight_ = 0;
+  std::deque<int64_t> pendingSurfaceTimestamps_;
+  std::thread surfaceWorker_;
   std::mutex completionMutex;
   std::condition_variable completionCondition;
   int completed = 0, rendered = 0;
   void ReportError(const char* error) { throw std::runtime_error(error); }
-  void HandleHdrSurfaceFrame(const HdrSurfaceBufferPacket& packet) {
+  void HandleSurfaceFrame(const SurfaceBufferPacket& packet) {
     ++rendered;
-    std::lock_guard<std::mutex> lock(hdrSurfaceMutex_);
-    ReleaseHdrSurfaceBufferLocked(packet);
+    std::lock_guard<std::mutex> lock(surfaceMutex_);
+    ReleaseSurfaceBufferLocked(packet);
   }
-  void CompleteHdrSurfaceFrame() {
-    --hdrSurfaceFramesInFlight_;
+  void CompleteSurfaceFrame() {
+    --surfaceFramesInFlight_;
     {
       std::lock_guard<std::mutex> lock(completionMutex);
       ++completed;
     }
     completionCondition.notify_all();
   }
-${workerMethod(source, 'StopHdrSurfaceWorker')}
-${workerMethod(source, 'EnqueueHdrSurfaceFrame')}
-${workerMethod(source, 'AcquireHdrSurfaceFrame')}
-${workerMethod(source, 'ReleaseHdrSurfaceBufferLocked')}
-${workerMethod(source, 'HdrSurfaceWorkerLoop')}
+${workerMethod(source, 'StopSurfaceWorker')}
+${workerMethod(source, 'EnqueueSurfaceFrame')}
+${workerMethod(source, 'AcquireSurfaceFrame')}
+${workerMethod(source, 'ReleaseSurfaceBufferLocked')}
+${workerMethod(source, 'SurfaceWorkerLoop')}
 };
 
 int main() {
@@ -239,24 +239,24 @@ int main() {
     std::lock_guard<std::mutex> lock(producerMutex);
     insideProducer = true;
     for (uint32_t index = 0; index < burst.size(); ++index) {
-      decoder.pendingHdrTimestamps_.push_back(1000);
-      decoder.EnqueueHdrSurfaceFrame(index);
+      decoder.pendingSurfaceTimestamps_.push_back(1000);
+      decoder.EnqueueSurfaceFrame(index);
     }
     insideProducer = false;
   }
-  decoder.hdrSurfaceWorker_ = std::thread([&] { decoder.HdrSurfaceWorkerLoop(); });
+  decoder.surfaceWorker_ = std::thread([&] { decoder.SurfaceWorkerLoop(); });
   bool completed;
   {
     std::unique_lock<std::mutex> lock(decoder.completionMutex);
     completed = decoder.completionCondition.wait_for(lock, 1s, [&] { return decoder.completed == 8; });
   }
-  decoder.StopHdrSurfaceWorker();
+  decoder.StopSurfaceWorker();
   if (callbackOperations != 0) {
     std::cerr << "Surface buffer operations re-entered VPE from its producer callback\\n";
     return 1;
   }
   if (!completed || renderCalls != 8 || acquired != 8 || released != 8 || decoder.rendered != 1 ||
-      decoder.hdrSurfaceFramesInFlight_ != 0 || !decoder.pendingHdrTimestamps_.empty()) {
+      decoder.surfaceFramesInFlight_ != 0 || !decoder.pendingSurfaceTimestamps_.empty()) {
     std::cerr << "Worker did not drain the burst and render the latest frame\\n";
     return 1;
   }
@@ -264,16 +264,16 @@ int main() {
     if (buffer.references != 0) return 1;
   }
   // Late notifications must not schedule work after the worker has stopped.
-  decoder.EnqueueHdrSurfaceFrame(0);
-  if (!decoder.hdrPendingOutputBuffers_.empty()) return 1;
+  decoder.EnqueueSurfaceFrame(0);
+  if (!decoder.surfacePendingOutputBuffers_.empty()) return 1;
   // Stop leaves queued output indices owned by VPE; do not render them while
   // its resources are being torn down, and never acquire a new Surface buffer.
   DecoderWorker cancelled;
-  cancelled.EnqueueHdrSurfaceFrame(0);
-  cancelled.StopHdrSurfaceWorker();
-  cancelled.hdrSurfaceWorker_ = std::thread([&] { cancelled.HdrSurfaceWorkerLoop(); });
-  cancelled.StopHdrSurfaceWorker();
-  return cancelled.hdrPendingOutputBuffers_.empty() && renderCalls == 8 && acquired == 8 ? 0 : 1;
+  cancelled.EnqueueSurfaceFrame(0);
+  cancelled.StopSurfaceWorker();
+  cancelled.surfaceWorker_ = std::thread([&] { cancelled.SurfaceWorkerLoop(); });
+  cancelled.StopSurfaceWorker();
+  return cancelled.surfacePendingOutputBuffers_.empty() && renderCalls == 8 && acquired == 8 ? 0 : 1;
 }
 `);
     const compile = spawnSync(process.env.CXX || 'clang++',
