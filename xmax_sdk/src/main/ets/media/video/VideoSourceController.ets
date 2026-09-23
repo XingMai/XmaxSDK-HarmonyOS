@@ -106,16 +106,16 @@ export class VideoSourceController implements VideoSourceControlling {
    * 按共享时间轴开始输出视频帧。
    *
    * @param timeline 音视频共享播放时间轴。
-   * @returns 无返回值。
+   * @returns 后台初始化并开始输出后的 Promise。
    */
-  start(timeline: MediaTimeline): void {
+  async start(timeline: MediaTimeline): Promise<void> {
     if (this.filePath.length === 0) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Configure the local media file before starting the video source'
       );
     }
-    if (this.decoder !== null) {
+    if (this.decoder !== null || this.decoderReleasePromise !== null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         'Local video source is already active'
@@ -129,7 +129,9 @@ export class VideoSourceController implements VideoSourceControlling {
     this.isPaused = false;
     this.pendingEndOfStream = false;
     this.resetFrameSampling();
-    this.decoder = this.createDecoder();
+    // Audio has not started yet. Exclude decoder setup time from both clocks.
+    timeline.pause();
+    await this.createDecoder(true);
   }
 
   /** @inheritdoc */
@@ -199,9 +201,10 @@ export class VideoSourceController implements VideoSourceControlling {
   /**
    * 根据当前文件和时间轴创建视频帧解码器。
    *
-   * @returns 已启动的视频帧解码器。
+   * @param initial 是否为首次启动；循环重建不移动音视频共享时间轴。
+   * @returns 解码器就绪并按共享时间轴放行后的 Promise。
    */
-  private createDecoder(): VideoFileFrameDecoder {
+  private async createDecoder(initial: boolean = false): Promise<void> {
     const timeline: MediaTimeline | null = this.timeline;
     if (timeline === null) {
       throw new XmaxError(
@@ -212,7 +215,8 @@ export class VideoSourceController implements VideoSourceControlling {
 
     const loopIndex: number = this.loopIndex;
     const version: number = this.sourceVersion;
-    return new VideoFileFrameDecoder(
+    const playbackAnchorUs: number = timeline.playbackAnchorForLoop(loopIndex);
+    const decoder = new VideoFileFrameDecoder(
       this.filePath,
       this.sourceRotation,
       this.outputWidth,
@@ -235,10 +239,21 @@ export class VideoSourceController implements VideoSourceControlling {
           }
         }
       ),
-      timeline.playbackAnchorForLoop(loopIndex),
+      playbackAnchorUs,
       timeline.mediaStartUs,
       timeline.cycleDurationUs
     );
+    this.decoder = decoder;
+    await decoder.ready;
+    if (version !== this.sourceVersion || this.decoder !== decoder) {
+      await decoder.release();
+      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Video initialization was cancelled');
+    }
+    if (initial) {
+      timeline.resume();
+    }
+    // Includes any pause/resume that happened while a loop decoder was loading.
+    decoder.activate(timeline.playbackAnchorForLoop(loopIndex) - playbackAnchorUs);
   }
 
   /**
@@ -343,10 +358,12 @@ export class VideoSourceController implements VideoSourceControlling {
     this.resetFrameSampling();
 
     try {
-      this.decoder = this.createDecoder();
+      await this.createDecoder();
     } catch (error) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      this.errorListener(reason);
+      if (version === this.sourceVersion) {
+        const reason: string = error instanceof Error ? error.message : String(error);
+        this.errorListener(reason);
+      }
     }
   }
 

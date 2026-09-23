@@ -201,6 +201,7 @@ export class MediaSourceController implements MediaSourceControlling {
   async start(): Promise<void> {
     const metadata: MediaSourceMetadata = this.requireMetadata();
     this.playbackVersion++;
+    const version: number = this.playbackVersion;
     this.videoEnded = false;
     this.audioEnded = !metadata.hasAudio;
     this.completionPending = false;
@@ -209,16 +210,25 @@ export class MediaSourceController implements MediaSourceControlling {
     if (metadata.hasAudio) {
       await this.audioManager.start();
     }
+    if (version !== this.playbackVersion) {
+      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Media initialization was cancelled');
+    }
 
     const timeline = new MediaTimeline(0, metadata.durationUs);
     this.timeline = timeline;
     this.isPaused = false;
     try {
-      this.videoSourceController.start(timeline);
+      await this.videoSourceController.start(timeline);
+      if (version !== this.playbackVersion) {
+        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Media initialization was cancelled');
+      }
       if (metadata.hasAudio) {
         this.audioSourceController.start(timeline);
       }
     } catch (error) {
+      if (version !== this.playbackVersion) {
+        throw XmaxError.from(error);
+      }
       this.playbackVersion++;
       const videoStopPromise: Promise<void> = this.videoSourceController.stop();
       this.audioSourceController.stop();

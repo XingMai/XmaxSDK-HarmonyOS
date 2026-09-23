@@ -9,13 +9,15 @@ function deferred() {
   return { promise, resolve };
 }
 
-function sourceFixture(kind, loop) {
+async function sourceFixture(kind, loop) {
   const decoders = [], timers = [], errors = [];
   let ended = 0;
   class Decoder {
+    ready = Promise.resolve();
     constructor(...args) { this.listener = args[kind === 'video' ? 5 : 4]; decoders.push(this); }
     pause() {}
     resume() {}
+    activate() {}
     release() { this.released = true; return Promise.resolve(); }
   }
   const load = loadEts({
@@ -27,10 +29,11 @@ function sourceFixture(kind, loop) {
   const { [kind === 'video' ? 'VideoSourceController' : 'AudioSourceController']: Source } =
     load(`media/${kind}/${kind === 'video' ? 'Video' : 'Audio'}SourceController.ets`);
   const source = new Source(() => {}, error => errors.push(error), () => { ended++; });
-  const timeline = { playbackAnchorForLoop: index => index * 1000000, mediaStartUs: 0, cycleDurationUs: 1000000 };
+  const timeline = { playbackAnchorForLoop: index => index * 1000000, mediaStartUs: 0,
+    cycleDurationUs: 1000000, pause() {}, resume() {} };
   const configure = () => kind === 'video' ? source.configure('file', 0, 2, 2, 24, loop) : source.configure('file', loop);
   configure();
-  source.start(timeline);
+  await source.start(timeline);
   return { source, decoders, errors, timeline, configure, get ended() { return ended; },
     async flush() { while (timers.length) { timers.shift()(); await settle(); } }
   };
@@ -38,7 +41,7 @@ function sourceFixture(kind, loop) {
 
 for (const kind of ['video', 'audio']) {
   test(`${kind} loops by default and does not report natural completion`, async () => {
-    const f = sourceFixture(kind);
+    const f = await sourceFixture(kind);
     f.decoders[0].listener.onEndOfStream();
     await f.flush();
     assert.equal(f.decoders.length, 2);
@@ -46,7 +49,7 @@ for (const kind of ['video', 'audio']) {
     await f.source.stop();
   });
   test(`${kind} plays once with loop=false and emits completion once`, async () => {
-    const f = sourceFixture(kind, false), first = f.decoders[0];
+    const f = await sourceFixture(kind, false), first = f.decoders[0];
     first.listener.onEndOfStream();
     first.listener.onEndOfStream();
     await f.flush();
@@ -62,7 +65,7 @@ for (const kind of ['video', 'audio']) {
     assert.equal(f.ended, 1);
   });
   test(`${kind} defers completion while paused, including pause after EOS is queued`, async () => {
-    const f = sourceFixture(kind, false);
+    const f = await sourceFixture(kind, false);
     f.decoders[0].listener.onEndOfStream();
     f.source.pause();
     await f.flush();
@@ -73,11 +76,11 @@ for (const kind of ['video', 'audio']) {
     await f.source.stop();
   });
   test(`${kind} stopping/replacing suppresses queued and stale completion`, async () => {
-    const f = sourceFixture(kind, false), old = f.decoders[0];
+    const f = await sourceFixture(kind, false), old = f.decoders[0];
     old.listener.onEndOfStream();
     await f.source.stop();
     f.configure();
-    f.source.start(f.timeline);
+    await f.source.start(f.timeline);
     old.listener.onEndOfStream();
     old.listener.onError('late error');
     await f.flush();
@@ -179,5 +182,39 @@ test('pause during audio drain defers completion until resumed', async () => {
   f.media.resume();
   await settle();
   assert.equal(f.ended, 1);
+  await f.media.stop();
+});
+
+test('media waits for video initialization before starting audio, and exit cancels the pending start', async () => {
+  const f = await mediaFixture();
+  await f.media.stop();
+  const gate = deferred();
+  let audioStarts = 0;
+  f.media.metadata = { durationUs: 1000000, hasAudio: true };
+  f.video.start = () => gate.promise;
+  f.audio.start = () => { audioStarts++; };
+  const starting = f.media.start();
+  const cancelled = assert.rejects(starting, error => error.code === 'CANCELLED');
+  await settle();
+  assert.equal(audioStarts, 0);
+  await f.media.stop();
+  gate.resolve(); await cancelled;
+  assert.equal(audioStarts, 0);
+  assert.equal(f.media.timeline, null);
+});
+
+test('media starts audio only after video initialization succeeds', async () => {
+  const f = await mediaFixture();
+  await f.media.stop();
+  const gate = deferred();
+  let audioStarts = 0, videoTimeline, audioTimeline;
+  f.media.metadata = { durationUs: 1000000, hasAudio: true };
+  f.video.start = timeline => { videoTimeline = timeline; return gate.promise; };
+  f.audio.start = timeline => { audioStarts++; audioTimeline = timeline; };
+  const starting = f.media.start();
+  await settle(); assert.equal(audioStarts, 0);
+  gate.resolve(); await starting;
+  assert.equal(audioStarts, 1);
+  assert.equal(audioTimeline, videoTimeline);
   await f.media.stop();
 });

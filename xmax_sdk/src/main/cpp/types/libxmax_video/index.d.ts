@@ -70,7 +70,7 @@ interface XmaxVideoNative {
     listener: NativeCameraFrameListener
   ): NativeFrameReceiver;
 
-  /** 使用系统视频解码器按媒体时间戳连续输出已转正的 NV12 帧。 */
+  /** 后台初始化系统视频解码器；就绪后处于暂停状态，调用 resume 开始输出。 */
   createVideoFileDecoder(
     fd: number,
     size: number,
@@ -82,7 +82,7 @@ interface XmaxVideoNative {
     frameIntervalUs: number,
     cycleDurationUs: number,
     listener: NativeVideoFileFrameListener
-  ): NativeVideoFileDecoder;
+  ): Promise<NativeVideoFileDecoder>;
 
   /** 使用系统音频解码器连续输出 48 kHz 单声道 PCM 帧。 */
   createAudioFileDecoder(

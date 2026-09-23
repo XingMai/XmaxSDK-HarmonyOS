@@ -31,9 +31,9 @@ export interface VideoSourceControlling {
    * 按共享时间轴开始输出视频帧。
    *
    * @param timeline 音视频共享播放时间轴。
-   * @returns 无返回值。
+   * @returns 后台初始化并开始输出后的 Promise。
    */
-  start(timeline: MediaTimeline): void;
+  start(timeline: MediaTimeline): Promise<void>;
 
   /** 暂停当前解码器，保留媒体位置与资源。 */
   pause(): void;

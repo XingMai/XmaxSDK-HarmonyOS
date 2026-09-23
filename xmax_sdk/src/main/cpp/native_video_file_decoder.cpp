@@ -312,10 +312,26 @@ class NativeVideoFileDecoder {
     Stop();
   }
 
+  // Only JS binding and fd ownership are established on the calling thread.
+  bool Bind(napi_env env, napi_value listener, int32_t sourceFd, std::string* error) {
+    fd_ = dup(sourceFd);
+    if (fd_ < 0) {
+      *error = "复制视频文件描述符失败";
+      return false;
+    }
+    napi_value resourceName = nullptr;
+    if (napi_create_string_utf8(env, "XmaxNativeVideoFileDecoder", NAPI_AUTO_LENGTH,
+            &resourceName) != napi_ok ||
+        napi_create_threadsafe_function(env, listener, nullptr, resourceName, 4, 1,
+            nullptr, nullptr, nullptr, CallListener, &listener_) != napi_ok) {
+      *error = "创建视频解码回调失败";
+      return false;
+    }
+    return true;
+  }
+
+  // Codec, demuxer and Surface setup run in a native async worker, without JS APIs.
   bool Initialize(
-      napi_env env,
-      napi_value listener,
-      int32_t sourceFd,
       int64_t sourceSize,
       int64_t playbackAnchorUs,
       int64_t mediaStartUs,
@@ -332,12 +348,6 @@ class NativeVideoFileDecoder {
     targetHeight_ = targetHeight;
     frameIntervalUs_ = frameIntervalUs;
     cycleDurationUs_ = cycleDurationUs;
-
-    fd_ = dup(sourceFd);
-    if (fd_ < 0) {
-      *error = "复制视频文件描述符失败";
-      return false;
-    }
 
     source_ = OH_AVSource_CreateWithFD(fd_, 0, sourceSize);
     if (source_ == nullptr) {
@@ -416,32 +426,13 @@ class NativeVideoFileDecoder {
       return false;
     }
 
-    napi_value resourceName = nullptr;
-    if (napi_create_string_utf8(
-            env,
-            "XmaxNativeVideoFileDecoder",
-            NAPI_AUTO_LENGTH,
-            &resourceName) != napi_ok ||
-        napi_create_threadsafe_function(
-            env,
-            listener,
-            nullptr,
-            resourceName,
-            4,
-            1,
-            nullptr,
-            nullptr,
-            nullptr,
-            CallListener,
-            &listener_) != napi_ok) {
-      *error = "创建视频解码回调失败";
-      return false;
-    }
-
     if (!PrepareOutput(mime, error)) {
       return false;
     }
 
+    // Start codec resources now, but do not consume media until the caller has
+    // installed the handle and aligned the shared audio/video playback clock.
+    paused_.store(true);
     running_.store(true);
     if (useSurfaceOutput_) {
       surfaceWorkerRunning_.store(true);
@@ -449,8 +440,6 @@ class NativeVideoFileDecoder {
           std::thread(&NativeVideoFileDecoder::SurfaceWorkerLoop, this);
     }
     if (OH_VideoDecoder_Start(decoder_) != AV_ERR_OK) {
-      running_.store(false);
-      StopSurfaceWorker();
       *error = "启动视频连续解码失败";
       return false;
     }
@@ -466,9 +455,6 @@ class NativeVideoFileDecoder {
           std::lock_guard<std::mutex> lock(surfaceProcessingStateMutex_);
           videoProcessorStopped_ = true;
         }
-        OH_VideoDecoder_Stop(decoder_);
-        running_.store(false);
-        StopSurfaceWorker();
         *error = "启动视频缩放失败：" +
             std::to_string(processingResult);
         return false;
@@ -1637,7 +1623,7 @@ struct ReleaseDecoderContext {
   NativeVideoFileDecoder* decoder = nullptr;
 };
 
-void RejectReleaseDecoder(
+void RejectDecoderPromise(
     napi_env env,
     napi_deferred deferred,
     const char* reason) {
@@ -1669,7 +1655,7 @@ void CompleteReleaseDecoder(
     napi_get_undefined(env, &result);
     napi_resolve_deferred(env, context->deferred, result);
   } else {
-    RejectReleaseDecoder(
+    RejectDecoderPromise(
         env,
         context->deferred,
         "Failed to release the video decoder asynchronously");
@@ -1731,7 +1717,7 @@ napi_value ReleaseDecoder(
     if (context->work != nullptr) {
       napi_delete_async_work(env, context->work);
     }
-    RejectReleaseDecoder(
+    RejectDecoderPromise(
         env,
         context->deferred,
         "Failed to queue video decoder release");
@@ -1740,6 +1726,48 @@ napi_value ReleaseDecoder(
     return promise;
   }
   return promise;
+}
+
+struct CreateDecoderContext {
+  napi_async_work work = nullptr;
+  napi_deferred deferred = nullptr;
+  napi_ref reference = nullptr;
+  NativeVideoFileDecoder* decoder = nullptr;
+  int64_t size = 0;
+  int64_t anchorUs = 0;
+  int64_t mediaStartUs = 0;
+  int32_t rotation = 0;
+  int32_t width = 0;
+  int32_t height = 0;
+  int64_t frameIntervalUs = 0;
+  int64_t cycleDurationUs = 0;
+  std::string error;
+};
+
+void ExecuteCreateDecoder(napi_env, void* data) {
+  auto* context = static_cast<CreateDecoderContext*>(data);
+  if (!context->decoder->Initialize(context->size, context->anchorUs,
+          context->mediaStartUs, context->rotation, context->width, context->height,
+          context->frameIntervalUs, context->cycleDurationUs, &context->error)) {
+    // Failed initialization may own codec/Surface resources: release them here,
+    // not in the completion callback on the UI thread.
+    context->decoder->Stop();
+  }
+}
+
+void CompleteCreateDecoder(napi_env env, napi_status status, void* data) {
+  auto* context = static_cast<CreateDecoderContext*>(data);
+  if (status != napi_ok || !context->error.empty()) {
+    RejectDecoderPromise(env, context->deferred, context->error.empty()
+        ? "Failed to initialize the video decoder asynchronously" : context->error.c_str());
+  } else {
+    napi_value result = nullptr;
+    napi_get_reference_value(env, context->reference, &result);
+    napi_resolve_deferred(env, context->deferred, result);
+  }
+  napi_delete_reference(env, context->reference);
+  napi_delete_async_work(env, context->work);
+  delete context;
 }
 
 napi_value CreateVideoFileDecoder(
@@ -1810,26 +1838,18 @@ napi_value CreateVideoFileDecoder(
 
   auto* decoder = new NativeVideoFileDecoder();
   std::string error;
-  if (!decoder->Initialize(
-          env,
-          arguments[9],
-          fd,
-          static_cast<int64_t>(sizeValue),
-          static_cast<int64_t>(playbackAnchorUs),
-          static_cast<int64_t>(mediaStartUs),
-          rotation,
-          targetWidth,
-          targetHeight,
-          static_cast<int64_t>(frameIntervalUs),
-          static_cast<int64_t>(cycleDurationUs),
-          &error)) {
+  if (!decoder->Bind(env, arguments[9], fd, &error)) {
     delete decoder;
     napi_throw_error(env, nullptr, error.c_str());
     return nullptr;
   }
 
   napi_value result = nullptr;
-  napi_create_object(env, &result);
+  if (napi_create_object(env, &result) != napi_ok) {
+    delete decoder;
+    napi_throw_error(env, nullptr, "Failed to create video decoder handle");
+    return nullptr;
+  }
   napi_property_descriptor descriptors[] = {
       {
           "pause", nullptr, PauseDecoder, nullptr, nullptr, nullptr,
@@ -1844,19 +1864,54 @@ napi_value CreateVideoFileDecoder(
           napi_default, nullptr
       }
   };
-  napi_define_properties(
+  if (napi_define_properties(
       env,
       result,
       sizeof(descriptors) / sizeof(descriptors[0]),
-      descriptors);
-  napi_wrap(
+      descriptors) != napi_ok || napi_wrap(
       env,
       result,
       decoder,
       FinalizeDecoder,
       nullptr,
-      nullptr);
-  return result;
+      nullptr) != napi_ok) {
+    delete decoder;
+    napi_throw_error(env, nullptr, "Failed to bind video decoder handle");
+    return nullptr;
+  }
+
+  auto* context = new CreateDecoderContext();
+  context->decoder = decoder;
+  context->size = static_cast<int64_t>(sizeValue);
+  context->anchorUs = static_cast<int64_t>(playbackAnchorUs);
+  context->mediaStartUs = static_cast<int64_t>(mediaStartUs);
+  context->rotation = rotation;
+  context->width = targetWidth;
+  context->height = targetHeight;
+  context->frameIntervalUs = static_cast<int64_t>(frameIntervalUs);
+  context->cycleDurationUs = static_cast<int64_t>(cycleDurationUs);
+  napi_value promise = nullptr;
+  napi_value resourceName = nullptr;
+  if (napi_create_promise(env, &context->deferred, &promise) != napi_ok) {
+    decoder->Stop();
+    delete context;
+    napi_throw_error(env, nullptr, "Failed to create video initialization promise");
+    return nullptr;
+  }
+  if (napi_create_reference(env, result, 1, &context->reference) != napi_ok ||
+      napi_create_string_utf8(env, "XmaxCreateNativeVideoFileDecoder", NAPI_AUTO_LENGTH,
+          &resourceName) != napi_ok ||
+      napi_create_async_work(env, nullptr, resourceName, ExecuteCreateDecoder,
+          CompleteCreateDecoder, context, &context->work) != napi_ok ||
+      napi_queue_async_work(env, context->work) != napi_ok) {
+    // The worker has not run: only the lightweight binding/fd exist here.
+    decoder->Stop();
+    RejectDecoderPromise(env, context->deferred, "Failed to queue video initialization");
+    if (context->reference != nullptr) napi_delete_reference(env, context->reference);
+    if (context->work != nullptr) napi_delete_async_work(env, context->work);
+    delete context;
+  }
+  return promise;
 }
 }  // namespace
 
