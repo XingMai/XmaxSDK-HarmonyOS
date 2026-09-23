@@ -114,7 +114,9 @@ export class CameraFrameOutput {
   private formatForDisplay(format: RealtimeVideoFormat, currentDisplay: display.Display): RealtimeVideoFormat {
     const shortSide: number = Math.min(format.width, format.height);
     const longSide: number = Math.max(format.width, format.height);
-    return currentDisplay.width > currentDisplay.height ?
+    const isLandscape: boolean = currentDisplay.orientation === display.Orientation.LANDSCAPE ||
+      currentDisplay.orientation === display.Orientation.LANDSCAPE_INVERTED;
+    return isLandscape ?
       format.resized(longSide, shortSide) :
       format.resized(shortSide, longSide);
   }

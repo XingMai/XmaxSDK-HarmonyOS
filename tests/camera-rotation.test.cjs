@@ -13,7 +13,9 @@ function fixture(position = 'back') {
       ROTATION_90: 90, ROTATION_180: 180, ROTATION_270: 270
     } } },
     '@kit.ArkUI': { display: {
+      Orientation: { PORTRAIT: 0, LANDSCAPE: 1, PORTRAIT_INVERTED: 2, LANDSCAPE_INVERTED: 3 },
       getDefaultDisplaySync: () => ({ id: 1, rotation: displayRotation,
+        orientation: displayRotation % 2 ? 1 : 0,
         width: displayRotation % 2 ? 1920 : 1080, height: displayRotation % 2 ? 1080 : 1920 }),
       on(event, callback) { assert.equal(event, 'change'); calls.push('on'); listener = callback; },
       off(event, callback) {
