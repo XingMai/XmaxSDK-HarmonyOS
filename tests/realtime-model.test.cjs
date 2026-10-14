@@ -21,6 +21,7 @@ test('model defaults and resolution buckets match iOS without media-source restr
   const f = fixture();
   for (const [name, buckets, maximum, fps, width, height] of [
     [f.Model.X2_0, [], 1280000, 30, 832, 1472],
+    [f.Model.X2_0_PRO, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920],
     [f.Model.X2_0_SLA, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920]
   ]) {
     const model = f.Models.realtime(name);
@@ -35,7 +36,8 @@ test('model defaults and resolution buckets match iOS without media-source restr
     assert.deepEqual(model.resolutionBuckets.map(size => [size.width, size.height]), buckets);
     assert.equal(model.supportedMediaSources, undefined);
   }
-  for (const name of ['unknown-model', 'x2.0-pro']) {
+  assert.equal(f.Model.X2_0_PRO, 'x2.0-pro');
+  for (const name of ['unknown-model']) {
     assert.throws(() => f.Models.realtime(name), { code: 'INVALID_CONFIGURATION' });
   }
 });
@@ -138,7 +140,7 @@ function mediaFixture() {
   } };
 }
 
-for (const name of ['x2.0', 'x2.0-sla']) {
+for (const name of ['x2.0', 'x2.0-pro', 'x2.0-sla']) {
   test(`shared ${name} rules reach camera capture, image frames and rotated video playback`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const model = f.Models.realtime(name), service = new f.MediaService(model);
@@ -211,7 +213,7 @@ test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () =
   assert.equal(selected, 'x2.0-sla');
 });
 
-for (const name of ['x2.0', 'x2.0-sla']) {
+for (const name of ['x2.0', 'x2.0-pro', 'x2.0-sla']) {
   test(`${name} camera/image/video resolved formats preserve upload encoding settings`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const expected = new f.MediaService(f.Models.realtime(name)).resolveModelInputSize(new f.Size(1024, 1920));
