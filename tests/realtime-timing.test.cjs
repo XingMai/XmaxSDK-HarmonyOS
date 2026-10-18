@@ -42,9 +42,10 @@ test('startup timing uses monotonic nanoseconds and reports connection, signal a
   for (const line of ['总耗时：210.0 ms', '实时连接：75.0 ms',
     '等待生成结果流确认：100.0 ms',
     '结果流确认到首帧就绪：25.0 ms']) assert.ok(f.logs[0].includes(line), line);
-  assert.equal(f.logs[0].split('\n').length, 5);
+  assert.equal(f.logs[0].split('\n').slice(0, -1).length, 5);
+  assert.ok(f.logs[0].endsWith('\n\u200B'));
   assert.doesNotMatch(f.logs[0], /调用与本地准备|服务端会话创建|RTC 房间连接|媒体发布与连接准备|连接后生成准备|生成前准备|发送生成请求/);
-  assert.ok(f.logs[0].split('\n').every(line => line.startsWith('[Xmax][Timing]')));
+  assert.ok(f.logs[0].split('\n').slice(0, -1).every(line => line.startsWith('[Xmax][Timing]')));
   assert.ok(f.clockCalls.length > 0 && f.clockCalls.every(([type, nanos]) => type === 7 && nanos === true));
   t.finish('task');
   assert.equal(f.logs.length, 1);

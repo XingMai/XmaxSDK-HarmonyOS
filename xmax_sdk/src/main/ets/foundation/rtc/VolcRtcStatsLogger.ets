@@ -18,7 +18,7 @@ import {
 import { XmaxLogger } from '../logging/XmaxLogger';
 import { XmaxLoggerOption } from '../logging/XmaxLoggerOption';
 
-const VOLC_LOG_CATEGORY: string = 'RTC/VolcEngine';
+const VOLC_LOG_CATEGORY: string = 'RTC';
 
 /** 火山 RTC 网络质量与性能告警日志；公共视频指标由 RtcStatsLogger 输出。 */
 export class VolcRtcStatsLogger {

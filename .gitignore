@@ -10,3 +10,6 @@ local.properties
 *.har
 xmax_sdk/libs/
 xmax_sdk/oh-package-lock.json5
+
+# Local internal documentation
+/docs/

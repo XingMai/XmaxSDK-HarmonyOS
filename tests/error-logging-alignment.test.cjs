@@ -184,10 +184,25 @@ test('logs prefix each line, omit blank categories and retain credential redacti
   const f = fixture(); f.Logger.configure(f.Option.ALL);
   f.Logger.info('first\nsecond', '  Storage ');
   f.Logger.info('ready', '   ');
-  assert.equal(f.logs[0].message, '[Xmax][Storage] first\n[Xmax][Storage] second');
-  assert.equal(f.logs[1].message, '[Xmax] ready');
+  assert.equal(f.logs[0].message, '[Xmax][Storage] first\n[Xmax][Storage] second\n\u200B');
+  assert.equal(f.logs[1].message, '[Xmax] ready\n\u200B');
   f.Logger.error('Authorization: Bearer bearer-credential\n{"token":"json-credential"}\napi_key=plain-credential');
   assert.doesNotMatch(f.logs[2].message, /bearer-credential|json-credential|plain-credential/);
+});
+
+test('all log levels retain one visually blank line through empty-line filtering', () => {
+  const f = fixture(); f.Logger.configure(f.Option.ALL);
+  for (const level of ['debug', 'info', 'warn', 'error']) {
+    for (const suffix of ['', '\n', '\n\n', '\r\n', '\r\n\r\n', '\n\u200B']) {
+      f.Logger[level](`Stats${suffix}`, 'RTC');
+      const log = f.logs.at(-1).message;
+      assert.equal(log, '[Xmax][RTC] Stats\n\u200B');
+      assert.deepEqual(log.split('\n').filter(line => line.trim().length > 0),
+        ['[Xmax][RTC] Stats', '\u200B']);
+    }
+  }
+  f.Logger.info('first\r\nsecond\rthird', 'RTC');
+  assert.equal(f.logs.at(-1).message, '[Xmax][RTC] first\n[Xmax][RTC] second\n[Xmax][RTC] third\n\u200B');
 });
 
 test('RTC statistics/alarm logging is performance-only and does no formatting when disabled', () => {
@@ -205,7 +220,7 @@ test('RTC statistics/alarm logging is performance-only and does no formatting wh
   f.Logger.configure(f.Option.PERFORMANCE);
   VolcRtcStatsLogger.logPerformanceAlarm(0, { width: 1024, height: 1920, frame_rate: 30 });
   assert.equal(f.logs.length, 1);
-  assert.match(f.logs[0].message, /RTC.*性能告警/);
+  assert.match(f.logs[0].message, /^\[Xmax\]\[RTC\] 性能告警/);
 });
 
 test('API response logging uses business option only', () => {
@@ -390,6 +405,8 @@ test('RTC performance details follow the global log language and retain bilingua
   f.Logger.configure(f.Option.PERFORMANCE, Environment.GLOBAL);
   VolcRtcStatsLogger.logNetworkQuality({ tx_quality: 1, fraction_lost: 0, total_bandwidth: 1000, rtt: 20 }, []);
   const log = f.logs.at(-1).message;
+  assert.ok(log.split('\n').slice(0, -1).every(line => line.startsWith('[Xmax][RTC] ')));
+  assert.equal(log.split('\n').at(-1), '\u200B');
   assert.match(log, /网络质量 \(Network Quality\)/);
   assert.match(log, /Quality: Good/);
   assert.match(log, /RTT 20 ms, Bandwidth/);

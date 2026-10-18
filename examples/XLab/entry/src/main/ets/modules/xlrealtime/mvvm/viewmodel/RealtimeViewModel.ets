@@ -501,7 +501,7 @@ export class RealtimeViewModel {
       this.selectedReferenceItem = null;
       this.state.selectedReferenceId = '';
     }
-    this.submittedPrompt = '让画面自然动起来';
+    this.submittedPrompt = '';
     this.generationInputMode = GenerationInputMode.MOX;
     this.scheduleGenerationUpdate();
   }
@@ -683,6 +683,9 @@ export class RealtimeViewModel {
   }
 
   private hasGenerationInput(): boolean {
+    if (this.generationInputMode === GenerationInputMode.MOX) {
+      return true;
+    }
     if (this.generationInputMode === GenerationInputMode.REFERENCE) {
       return this.selectedReferenceItem?.reference.remoteUrl !== undefined;
     }
@@ -713,8 +716,8 @@ export class RealtimeViewModel {
           if (revision !== this.generationRevision || this.realtimeManager !== manager) {
             continue;
           }
-          const shouldGenerate: boolean = usesPrompt || usesMox ?
-            prompt.length > 0 : referencePath !== undefined;
+          const shouldGenerate: boolean = usesMox || (usesPrompt ?
+            prompt.length > 0 : referencePath !== undefined);
           if (shouldGenerate) {
             this.state.isMoxGenerationActive = usesMox;
             if (manager.currentState.connectionState !== RealtimeConnectionState.GENERATING) {

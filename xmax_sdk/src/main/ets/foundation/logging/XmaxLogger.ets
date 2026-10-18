@@ -157,7 +157,7 @@ export class XmaxLogger {
   }
 
   /**
-   * 构造日志文本，添加 SDK 分类标记并遮蔽敏感字段。
+   * 构造日志文本，添加 SDK 分类标记、遮蔽敏感字段，并在末尾保留一行空白。
    *
    * @param message 直接日志文本或按需构造日志文本的函数。
    * @param category 可选的日志业务分类。
@@ -171,12 +171,13 @@ export class XmaxLogger {
     const normalizedCategory: string = category?.trim() ?? '';
     const categoryPrefix: string = normalizedCategory.length === 0 ? '' : `[${normalizedCategory}]`;
     const prefix: string = `${LOG_PREFIX}${categoryPrefix}`;
-    const prefixed: string = redacted.replace(
-      /\n/g,
+    const prefixed: string = redacted.replace(/[\r\n\u200B]+$/, '').replace(
+      /\r\n|\r|\n/g,
       `\n${prefix} `
     );
 
-    return `${prefix} ${prefixed}`;
+    // DevEco 会忽略纯空行；用零宽空格保留日志之间的视觉空行。
+    return `${prefix} ${prefixed}\n\u200B`;
   }
 
   /**
