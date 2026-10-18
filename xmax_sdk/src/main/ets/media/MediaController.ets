@@ -124,6 +124,11 @@ export class MediaController implements MediaControlling {
     return this.currentTrack?.videoFormat;
   }
 
+  get usesContainPadding(): boolean {
+    const controller = this.activeSource?.controller;
+    return controller === this.imageController || controller === this.videoController;
+  }
+
   /** @returns 当前来源是否使用相机麦克风或包含文件音轨。 */
   get hasAudio(): boolean {
     if (this.activeSource?.controller === this.cameraController) {

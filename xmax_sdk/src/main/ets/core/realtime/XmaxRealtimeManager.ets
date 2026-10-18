@@ -151,7 +151,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     );
     this.generationManager = new XmaxRealtimeGenerationManager(
       this.mediaController,
-      this.streamController
+      this.streamController,
+      new MediaService(options.model)
     );
     this.coordinator = new RealtimeCoordinator(this.errorManager,
       (scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> =>

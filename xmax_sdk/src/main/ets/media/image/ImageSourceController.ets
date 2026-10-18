@@ -1,3 +1,4 @@
+import { RealtimeMediaSource } from '../../service/realtime/RealtimeMediaSource';
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
@@ -228,8 +229,8 @@ export class ImageSourceController implements ImageSourceControlling {
       );
     }
 
-    const targetSize: ImageSize = this.mediaService.resolveModelInputSize(
-      new ImageSize(requestedFormat.width, requestedFormat.height)
+    const targetSize: ImageSize = this.mediaService.resolveMediaSize(
+      new ImageSize(requestedFormat.width, requestedFormat.height), RealtimeMediaSource.IMAGE
     );
 
     const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(targetSize.width, targetSize.height);

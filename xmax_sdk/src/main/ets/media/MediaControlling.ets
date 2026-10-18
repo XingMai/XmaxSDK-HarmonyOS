@@ -19,6 +19,9 @@ export interface MediaControlling extends InteractionControlling {
   /** @returns 当前本地视频格式；没有活动轨道时返回空值。 */
   readonly currentVideoFormat: RealtimeVideoFormat | undefined;
 
+  /** 图片和视频使用 contain 适配生成画布；摄像头保持固定桶约束。 */
+  readonly usesContainPadding: boolean;
+
   /** @returns 当前媒体来源是否包含由 SDK 管理的本地音频。 */
   readonly hasAudio: boolean;
 

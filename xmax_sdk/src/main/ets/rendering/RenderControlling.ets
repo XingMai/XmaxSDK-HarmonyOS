@@ -1,3 +1,4 @@
+import { ImageSize } from '../service/media/ImageSize';
 import { RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { XmaxError } from '../foundation/errors/XmaxError';
@@ -38,11 +39,13 @@ export interface RenderControlling {
    *
    * @param track 需要注册的远端视频轨道。
    * @param interactionController 接收轨迹交互输入的统一媒体组件。
+   * @param resolvedMediaSize 处理后的本地媒体尺寸，作为独立于回传分辨率的交互基准。
    * @returns 无返回值。
    */
   registerRemoteTrack(
     track: RealtimeVideoTrack,
-    interactionController: InteractionControlling
+    interactionController: InteractionControlling,
+    resolvedMediaSize: ImageSize
   ): void;
 
   /**

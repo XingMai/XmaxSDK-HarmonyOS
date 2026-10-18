@@ -1,3 +1,4 @@
+import { ImageSize } from '../../service/media/ImageSize';
 import { RuntimeInfo, RuntimeInfoPayload } from '../../foundation/runtime/RuntimeInfo';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
@@ -17,11 +18,15 @@ class GenerationParameters {
   ref_image_path?: string;
   detection: boolean;
   face_replace: boolean;
+  target_size?: number[];
+  padding?: string;
 
   constructor(
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean
+    faceRestoration: boolean,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ) {
     this.size = [videoFormat.width, videoFormat.height];
     this.prompt = context.prompt;
@@ -30,6 +35,8 @@ class GenerationParameters {
     }
     this.detection = context.faceDetection ?? false;
     this.face_replace = faceRestoration;
+    this.target_size = targetSize === undefined ? undefined : [targetSize.width, targetSize.height];
+    this.padding = paddingContain ? 'contain' : undefined;
   }
 }
 
@@ -44,10 +51,12 @@ class StartRoomEvent extends RuntimeRoomEvent {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean
+    faceRestoration: boolean,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -64,10 +73,12 @@ class ChangeConditionRoomEvent extends RuntimeRoomEvent {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean
+    faceRestoration: boolean,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -122,9 +133,11 @@ export class RoomEvent {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): string {
-    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration));
+    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration, targetSize, paddingContain));
   }
 
   static changeCondition(
@@ -132,14 +145,18 @@ export class RoomEvent {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): string {
     return JSON.stringify(new ChangeConditionRoomEvent(
       userId,
       taskId,
       videoFormat,
       context,
-      faceRestoration
+      faceRestoration,
+      targetSize,
+      paddingContain
     ));
   }
 

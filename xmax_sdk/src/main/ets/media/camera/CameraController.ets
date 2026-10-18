@@ -1,3 +1,4 @@
+import { RealtimeMediaSource } from '../../service/realtime/RealtimeMediaSource';
 import { common } from '@kit.AbilityKit';
 import { camera } from '@kit.CameraKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -507,8 +508,8 @@ export class CameraController {
   /** 校验视频格式并将尺寸调整为模型支持的输入规格。 */
   private resolveVideoFormat(videoFormat: RealtimeVideoFormat): RealtimeVideoFormat {
     videoFormat.validate();
-    const targetSize: ImageSize = this.mediaService.resolveModelInputSize(
-      new ImageSize(videoFormat.width, videoFormat.height)
+    const targetSize: ImageSize = this.mediaService.resolveMediaSize(
+      new ImageSize(videoFormat.width, videoFormat.height), RealtimeMediaSource.CAMERA
     );
     return videoFormat.resized(targetSize.width, targetSize.height);
   }

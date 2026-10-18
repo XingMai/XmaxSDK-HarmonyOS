@@ -72,6 +72,7 @@ export {
   XmaxStorageProgressListener,
   XmaxUploadedFile
 } from './src/main/ets/core/storage/XmaxStorageModel';
+export { RealtimeMediaSource } from './src/main/ets/service/realtime/RealtimeMediaSource';
 export { ImageSize } from './src/main/ets/service/media/ImageSize';
 export { MediaServicing } from './src/main/ets/service/media/MediaServicing';
 export { XmaxClient } from './src/main/ets/core/XmaxClient';

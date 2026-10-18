@@ -53,7 +53,7 @@ Camera switching preserves it. Microphone audio is not played back locally, and
 `localAudioVolume` continues to control file-video preview audio only.
 
 
-For `x2.0`, still images and local video files can also be used as input sources:
+For both models, still images and local video files can also be used as input sources:
 
 ```ts
 const imageStream = await realtime.createLocalImageStream(imageFilePath);
@@ -68,34 +68,56 @@ Only one local input stream may be active at a time.
 input resolutions, pixel bounds, alignment, default frame rate and camera format.
 Camera, video and image inputs are available for both models.
 
-| Model | Input resolution rules | Default FPS | Default camera |
-| --- | --- | --- | --- |
-| `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 30 | 832 × 1472 |
-| `x2.0-sla` | Exactly 1024 × 1920 or 1920 × 1024 | 30 | 1024 × 1920 |
+| Model | Generation canvas | Local media pixel limit | Default FPS | Default camera |
+| --- | --- | --- | --- | --- |
+| `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 1,280,000 | 30 | 832 × 1472 |
+| `x2.0-sla` | 1024 × 1920 or 1920 × 1024 | 2,100,000 | 30 | 1024 × 1920 |
 
 ```ts
-import { ImageSize } from '@xmax/sdk';
+import { ImageSize, RealtimeMediaSource } from '@xmax/sdk';
 
 const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
-const supportedResolutions = model.resolutionBuckets;
 const realtime = client.createRealtimeManager(new RealtimeConfiguration(model));
-const localStream = await realtime.createLocalCameraStream();
+const localStream = await realtime.createLocalImageStream(imageFilePath);
 
+// SDK preparation and generation already apply these rules automatically.
 const mediaService = client.createMediaService(RealtimeModel.X2_0_SLA);
-const inputSize = mediaService.resolveModelInputSize(new ImageSize(1024, 1920));
+const mediaSize = mediaService.resolveMediaSize(new ImageSize(3840, 2160), RealtimeMediaSource.IMAGE);
+// mediaSize: 1920 × 1080
+const generationSize = mediaService.resolveGenerationSize(mediaSize);
+// generationSize: 1920 × 1024
+const targetSize = mediaService.resolveTargetSize(mediaSize, mediaSize);
+// targetSize: 1920 × 1080
 ```
 
-A nonempty `resolutionBuckets` list requires an exact width/height match.
-Unsupported SLA dimensions reject with `INVALID_CONFIGURATION`; the SDK does not
-round or resize them to a supported bucket. An empty list, as in `x2.0`, uses
-pixel bounds and alignment to calculate the input size.
+### Media, generation, and return sizes
 
-`createMediaService()` defaults to `x2.0`; pass the model when calculating sizes
-for another model. These rules apply to camera, image and video preparation.
-Image and video inputs use their display dimensions unless an explicit
-`RealtimeVideoFormat` is supplied; for SLA, supply a supported output format when
-the source dimensions do not match a bucket. CameraKit raw capture can still use
-16:9 profiles; the fixed-resolution rule applies to the prepared model input.
+`resolveMediaSize(size, source)` limits local frames to the model's maximum pixel
+area without enlarging smaller inputs. Dimensions are aligned to multiples of 4,
+with the exact source aspect ratio preserved whenever possible. Only camera
+requests must exactly match a configured resolution bucket. Image and video
+sources do not need to match a bucket. Video rotation is applied before sizing.
+An explicitly supplied image/video output format still overrides source dimensions;
+omit it to preserve the source's display ratio automatically.
+
+`resolveGenerationSize(size)` selects the closest generation bucket by aspect
+ratio. When the model has no buckets, its generation pixel bounds and 32-pixel
+alignment apply. This does not resize or crop the local media into that canvas.
+Image and video generation signals include `padding: "contain"`, and the initial
+`start` includes a separate `target_size` derived from the media dimensions.
+Condition updates preserve containment and the existing return size.
+
+`resolveTargetSize(size, maximumSize, frameInterpolationEnabled)` calculates a
+separate return size without upscaling. It combines the width/height bound and an
+optional 900,000-pixel interpolation bound before applying 4-pixel alignment.
+Harmony currently returns the bounded media size; it does not enable iOS frame
+interpolation or automatically change downlink size tiers. Interaction geometry and coordinates
+use the processed local media size, independently of the return frame dimensions.
+
+`createMediaService()` continues to default to `x2.0`. The legacy
+`resolveModelInputSize()` is deprecated and retains its previous strict input
+rules for compatibility; new integrations should use the three methods above.
+These frame limits do not limit memory needed to decode the original file.
 
 The former `x2.0-pro` model is replaced by `x2.0-sla`. XLab migrates a saved Pro
 selection to SLA and keeps all three media entries available.
@@ -371,6 +393,18 @@ During an active generation task, the remote view in `XmaxRealtimeVideoView` (or
 a standalone `XmaxVideoView`) captures multi-touch trajectories
 over the generated video and submits them to the active task. The host application
 does not need to implement gesture tracking or coordinate conversion.
+
+Camera, image, and video trajectories use the processed local media size returned
+by `resolveMediaSize` as their coordinate basis. Fit/Fill geometry and the effect
+renderer use this same media region; source-file dimensions, generation buckets,
+return dimensions and remote track metadata do not change it. A local camera
+orientation change updates the basis to the new local media dimensions.
+
+The SDK sends `"tracks": [[x, y], ...]` with normalized coordinates in `[0, 1]`,
+retaining fractional precision. The top-left corner is `(0, 0)` and the bottom-right
+corner is `(1, 1)`. The server must interpret these as normalized media coordinates
+and map them to the actual uplink frame dimensions, rather than treating them as
+pixel coordinates. Fit letterbox taps are ignored; Fill includes the crop offset.
 
 Trajectory interaction is enabled by default. Disable it when touch input must be
 handled by the surrounding user interface:

@@ -1,3 +1,4 @@
+import { RealtimeMediaSource } from '../service/realtime/RealtimeMediaSource';
 import { fileIo } from '@kit.CoreFileKit';
 import { media } from '@kit.MediaKit';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
@@ -476,13 +477,13 @@ export class MediaSourceController implements MediaSourceControlling {
       displaySize.height,
       this.mediaService.model.defaultFrameRate
     );
-    requestedFormat.validate();
-
-    const targetSize: ImageSize = this.mediaService.resolveModelInputSize(
-      new ImageSize(requestedFormat.width, requestedFormat.height)
+    const targetSize: ImageSize = this.mediaService.resolveMediaSize(
+      new ImageSize(requestedFormat.width, requestedFormat.height), RealtimeMediaSource.VIDEO
     );
 
-    return requestedFormat.resized(targetSize.width, targetSize.height);
+    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(targetSize.width, targetSize.height);
+    resolvedFormat.validate();
+    return resolvedFormat;
   }
 
   /**

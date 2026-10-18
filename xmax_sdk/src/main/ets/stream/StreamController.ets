@@ -1,3 +1,4 @@
+import { ImageSize } from '../service/media/ImageSize';
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { RealtimeTiming } from '../core/realtime/RealtimeTiming';
 import { util } from '@kit.ArkTS';
@@ -203,12 +204,14 @@ export class StreamController implements StreamControlling, RtcEventListener {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): Promise<void> {
     this.timing.beginSignal(taskId);
     const confirmation: Promise<void> = this.beginGenerationConfirmation(taskId);
     try {
-      this.roomController.startGeneration(taskId, videoFormat, context, faceRestoration);
+      this.roomController.startGeneration(taskId, videoFormat, context, faceRestoration, targetSize, paddingContain);
       this.timing.finishSignal(taskId);
       return confirmation;
     } catch (error) {
@@ -233,13 +236,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): void {
     this.roomController.changeGenerationCondition(
       taskId,
       videoFormat,
       context,
-      faceRestoration
+      faceRestoration,
+      targetSize,
+      paddingContain
     );
   }
 

@@ -1,3 +1,6 @@
+import { ImageSize } from '../../service/media/ImageSize';
+import { MediaService } from '../../service/media/MediaService';
+import { MediaServicing } from '../../service/media/MediaServicing';
 import { util } from '@kit.ArkTS';
 import { RUNTIME_PLATFORM } from '../../foundation/runtime/RuntimeInfo';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
@@ -21,6 +24,7 @@ export class XmaxRealtimeGenerationManager {
   // 业务层组件
   private readonly mediaController: MediaControlling;
   private readonly streamController: StreamControlling;
+  private readonly mediaService: MediaServicing;
 
   // 生成资源
   private currentContext: RealtimeContext | null = null;
@@ -37,11 +41,13 @@ export class XmaxRealtimeGenerationManager {
    */
   constructor(
     mediaController: MediaControlling,
-    streamController: StreamControlling
+    streamController: StreamControlling,
+    mediaService: MediaServicing = new MediaService()
   ) {
     // 业务层组件
     this.mediaController = mediaController;
     this.streamController = streamController;
+    this.mediaService = mediaService;
   }
 
   /** 在开始生成和修改资源前验证首次生成所需的条件。 */
@@ -82,7 +88,8 @@ export class XmaxRealtimeGenerationManager {
     this.startingFaceRestoration = faceRestoration ?? this.currentFaceRestoration;
     try {
       const confirmation: Promise<void> = this.streamController.beginGeneration(
-        taskId, videoFormat, resolvedContext, this.startingFaceRestoration);
+        taskId, this.generationFormat(videoFormat), resolvedContext, this.startingFaceRestoration,
+        this.targetSize(videoFormat), this.mediaController.usesContainPadding);
       await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
@@ -112,8 +119,8 @@ export class XmaxRealtimeGenerationManager {
     if (taskId.length === 0 || context === null) {
       return;
     }
-    this.streamController.updateGeneration(taskId, format, context,
-      this.startingFaceRestoration ?? this.currentFaceRestoration);
+    this.streamController.updateGeneration(taskId, this.generationFormat(format), context,
+      this.startingFaceRestoration ?? this.currentFaceRestoration, undefined, this.mediaController.usesContainPadding);
     if (this.startingContext !== null) {
       this.startingVideoFormat = format;
     } else {
@@ -151,9 +158,11 @@ export class XmaxRealtimeGenerationManager {
 
     this.streamController.updateGeneration(
       taskId,
-      videoFormat,
+      this.generationFormat(videoFormat),
       resolvedContext,
-      resolvedFaceRestoration
+      resolvedFaceRestoration,
+      undefined,
+      this.mediaController.usesContainPadding
     );
     // 等待确认中的启动以 startingContext 为准，确认时统一落地，避免覆盖新条件。
     if (this.startingContext !== null) {
@@ -163,6 +172,18 @@ export class XmaxRealtimeGenerationManager {
       this.currentContext = resolvedContext;
       this.currentFaceRestoration = resolvedFaceRestoration;
     }
+  }
+
+  private generationFormat(format: RealtimeVideoFormat): RealtimeVideoFormat {
+    const size: ImageSize = this.mediaService.resolveGenerationSize(new ImageSize(format.width, format.height));
+    return size.width === format.width && size.height === format.height ? format :
+      format.resized(size.width, size.height);
+  }
+
+  private targetSize(format: RealtimeVideoFormat): ImageSize {
+    const size: ImageSize = new ImageSize(format.width, format.height);
+    // 鸿蒙当前无插帧或自动下行尺寸档位，按媒体基准回传，预留独立的回传尺寸计算。
+    return this.mediaService.resolveTargetSize(size, size);
   }
 
   /**

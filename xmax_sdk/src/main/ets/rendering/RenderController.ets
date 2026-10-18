@@ -1,3 +1,4 @@
+import { ImageSize } from '../service/media/ImageSize';
 import { RealtimeVideoFrame, RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
 import { RealtimeVideoFrameDispatcher } from './video/RealtimeVideoFrameDispatcher';
@@ -309,7 +310,8 @@ export class RenderController implements RenderControlling {
   /** @inheritdoc */
   registerRemoteTrack(
     track: RealtimeVideoTrack,
-    interactionController: InteractionControlling
+    interactionController: InteractionControlling,
+    resolvedMediaSize: ImageSize
   ): void {
     const binding = new VideoRenderBinding(
       this.rtcManager.renderLibraryName(),
@@ -332,7 +334,7 @@ export class RenderController implements RenderControlling {
     VideoRenderRegistry.register(track, binding);
     TrajectoryRegistry.register(
       track,
-      new TrajectoryBinding(interactionController)
+      new TrajectoryBinding(interactionController, resolvedMediaSize)
     );
   }
 

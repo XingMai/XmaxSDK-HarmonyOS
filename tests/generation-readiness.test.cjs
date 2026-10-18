@@ -39,7 +39,11 @@ function fixture(t, timingOptions = {}) {
     }
   }
   class FakeMedia {
-    constructor() { media = this; this.hasAudio = false; }
+    constructor(_context, _rtc, stream) {
+      media = this; this.hasAudio = false;
+      const { InteractionController } = load('media/interaction/InteractionController.ets');
+      this.interaction = new InteractionController((task, points) => stream.sendTracks(task, points));
+    }
     get currentTrack() { return this.track ?? null; }
     setCameraPreviewReadyHandler(listener) { listener?.(); }
     get currentVideoFormat() { return this.track?.videoFormat; }
@@ -47,9 +51,15 @@ function fixture(t, timingOptions = {}) {
       this.track = new Track('local', format, position);
       return new MediaStream('local', this.track);
     }
+    async createLocalImageStream(_path) {
+      this.usesContainPadding = true;
+      this.track = new Track('local', new Format(1080, 1920, 30));
+      return new MediaStream('local', this.track);
+    }
     owns(local) { return local.videoTrack === this.track; }
-    start(id) { this.task = id; }
-    stop() { this.task = null; }
+    start(id, format) { this.task = id; this.interaction.start(id, format); }
+    stop() { this.task = null; this.interaction.stop(); }
+    submit(frame) { this.interaction.submit(frame); }
     setLocalAudioPreviewEnabled(enabled) { this.previewAudio = enabled; }
     updateCameraOrientation() {}
     startMicrophoneCapture() {}
@@ -457,3 +467,46 @@ for (const action of ['disconnect', 'close']) {
     assert.equal(f.observations.at(-1).enabled, false);
   });
 }
+
+test('SLA image generation separates media, canvas and return sizes through the real room signaling chain', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const local = await f.manager.createLocalImageStream('image');
+  const pending = outcome(f.manager.startGeneration(local, new RealtimeContext('first'), true));
+  await settle();
+  const message = f.messages.find(m => m.event === 'start');
+  assert.deepEqual(message.params.size, [1024, 1920]);
+  assert.deepEqual(message.params.target_size, [1080, 1920]);
+  assert.equal(message.params.padding, 'contain');
+  assert.equal(message.params.face_replace, true);
+  assert.equal(local.videoTrack.videoFormat.width, 1080);
+  f.sei(message.uid); await settle();
+  f.frame();
+  const result = await pending;
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.videoTrack.videoFormat.width, 1080);
+  assert.equal(result.value.videoTrack.videoFormat.height, 1920);
+  await f.manager.startGeneration(new RealtimeContext('second'), false);
+  const changed = f.messages.at(-1);
+  assert.equal(changed.event, 'change_condition');
+  assert.deepEqual(changed.params.size, [1024, 1920]);
+  assert.equal(changed.params.padding, 'contain');
+  assert.equal(changed.params.face_replace, false);
+  assert.equal(changed.params.target_size, undefined);
+  assert.equal(f.media.currentVideoFormat.width, 1080);
+  const { TrajectoryRegistry } = f.load('rendering/trajectory/TrajectoryRegistry.ets');
+  const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
+  const { updateRealtimeVideoTrackFormat } = f.load('service/realtime/RealtimeVideoTrack.ets');
+  const { RealtimeVideoFormat } = f.load('service/realtime/RealtimeVideoFormat.ets');
+  const binding = TrajectoryRegistry.binding(result.value.videoTrack);
+  assert.deepEqual({ ...binding.resolvedMediaSize }, { width: 1080, height: 1920 });
+  for (const [width, height] of [[684, 1216], [1024, 1920], [800, 600]]) {
+    updateRealtimeVideoTrackFormat(result.value.videoTrack, new RealtimeVideoFormat(width, height, 30));
+    binding.submit([{ x: 0.431231 * 108, y: 0.56931 * 192 }], 108, 192, VideoContentMode.FIT);
+    const tracks = f.messages.at(-1);
+    assert.equal(tracks.event, 'tracks');
+    assert.equal(tracks.uid, message.uid);
+    assert.ok(Math.abs(tracks.tracks[0][0] - 0.431231) < 1e-12);
+    assert.ok(Math.abs(tracks.tracks[0][1] - 0.56931) < 1e-12);
+  }
+});

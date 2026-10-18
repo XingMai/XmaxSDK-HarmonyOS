@@ -1,3 +1,4 @@
+import { InteractionCoordinateMapper, InteractionMediaFrame } from '../../media/interaction/InteractionCoordinateMapper';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { InteractionPoint } from '../../media/interaction/InteractionPoint';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
@@ -26,7 +27,7 @@ export struct TrajectoryOverlayView {
   isInteractionEnabled: boolean = true;
 
   /** 视频内容显示模式。 */
-  @Prop
+  @Prop @Watch('onContentModeChanged')
   contentMode: VideoContentMode = VideoContentMode.FILL;
 
   /** 轨迹效果渲染器。 */
@@ -47,6 +48,10 @@ export struct TrajectoryOverlayView {
   }
 
   private onTrackChanged(): void {
+    this.cancelInteraction();
+  }
+
+  private onContentModeChanged(): void {
     this.cancelInteraction();
   }
 
@@ -137,10 +142,9 @@ export struct TrajectoryOverlayView {
     touch: ActiveTouch,
     timestamp: number
   ): TrajectoryPoint {
-    const normalizedX: number = this.viewportWidth > 0 ?
-      touch.x / this.viewportWidth : 0;
-    const normalizedY: number = this.viewportHeight > 0 ?
-      touch.y / this.viewportHeight : 0;
+    const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
+    const normalizedX: number = frame === null ? 0 : (touch.x - frame.x) / frame.width;
+    const normalizedY: number = frame === null ? 0 : (touch.y - frame.y) / frame.height;
 
     return new TrajectoryPoint(
       touch.identifier,
@@ -152,15 +156,35 @@ export struct TrajectoryOverlayView {
     );
   }
 
+  private displayedMediaFrame(): InteractionMediaFrame | null {
+    const track: RealtimeVideoTrack | undefined = this.track;
+    const binding: TrajectoryBinding | null = track === undefined ? null : TrajectoryRegistry.binding(track);
+    return binding === null ? null : InteractionCoordinateMapper.displayedFrame(
+      this.viewportWidth, this.viewportHeight, binding.resolvedMediaSize, this.contentMode);
+  }
+
   private clampX(value: number): number {
-    return Math.max(0, Math.min(this.viewportWidth, value));
+    const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
+    const minimum: number = frame === null ? 0 : Math.max(0, frame.x);
+    const maximum: number = frame === null ? this.viewportWidth : Math.min(this.viewportWidth, frame.x + frame.width);
+    return Math.max(minimum, Math.min(maximum, value));
   }
 
   private clampY(value: number): number {
-    return Math.max(0, Math.min(this.viewportHeight, value));
+    const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
+    const minimum: number = frame === null ? 0 : Math.max(0, frame.y);
+    const maximum: number = frame === null ? this.viewportHeight : Math.min(this.viewportHeight, frame.y + frame.height);
+    return Math.max(minimum, Math.min(maximum, value));
   }
 
   private beginTouch(touchObject: TouchObject): void {
+    const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
+    if (frame === null || touchObject.x < Math.max(0, frame.x) ||
+      touchObject.x > Math.min(this.viewportWidth, frame.x + frame.width) ||
+      touchObject.y < Math.max(0, frame.y) ||
+      touchObject.y > Math.min(this.viewportHeight, frame.y + frame.height)) {
+      return;
+    }
     const timestamp: number = Date.now();
     const touch: ActiveTouch = {
       identifier: new TrajectoryId(touchObject.id),

@@ -1,3 +1,4 @@
+import { ImageSize } from '../../service/media/ImageSize';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
@@ -15,24 +16,24 @@ type InteractionSender = (
 class ActiveInteraction {
 
   readonly taskId: string;
-  readonly videoFormat: RealtimeVideoFormat;
+  readonly resolvedMediaSize: ImageSize;
 
   /**
    * 创建交互上下文。
    *
    * @param taskId 生成任务标识。
-   * @param videoFormat 模型输入视频格式。
+   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
    */
   constructor(
     taskId: string,
     videoFormat: RealtimeVideoFormat
   ) {
     this.taskId = taskId;
-    this.videoFormat = videoFormat;
+    this.resolvedMediaSize = new ImageSize(videoFormat.width, videoFormat.height);
   }
 }
 
-/** 将渲染容器中的交互行为转换为模型输入坐标并发送。 */
+/** 将渲染容器中的交互行为转换为处理后媒体的 [0, 1] 坐标并发送。 */
 export class InteractionController implements InteractionControlling {
 
   // 交互发送器
@@ -55,7 +56,7 @@ export class InteractionController implements InteractionControlling {
    * 开始处理指定生成任务的交互输入。
    *
    * @param taskId 生成任务标识。
-   * @param videoFormat 模型输入视频格式。
+   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
    * @returns 无返回值。
    */
   start(
@@ -92,7 +93,7 @@ export class InteractionController implements InteractionControlling {
         point,
         frame.viewportWidth,
         frame.viewportHeight,
-        interaction.videoFormat,
+        interaction.resolvedMediaSize,
         frame.contentMode
       );
       if (mappedPoint !== null) {

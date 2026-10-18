@@ -21,7 +21,7 @@ export class ModelDefinition {
     return undefined;
   }
 
-  /** 支持的固定输入尺寸；非空时必须精确匹配，空数组按像素量和对齐规则计算。 */
+  /** 模型生成画布的固定尺寸；摄像头请求须精确匹配，图片和视频保留媒体比例。 */
   get resolutionBuckets(): ImageSize[] {
     switch (this.name) {
       case RealtimeModel.X2_0:
@@ -34,10 +34,10 @@ export class ModelDefinition {
     }
   }
 
-  /** 输入宽高乘积的下限；仅用于没有固定分辨率的模型。 */
+  /** 生成画布像素面积下限；仅用于无固定桶的模型，不放大小尺寸媒体。 */
   get minimumInputPixels(): number { return 600000; }
 
-  /** 输入宽高乘积的上限；仅用于没有固定分辨率的模型。 */
+  /** 本地媒体最大像素面积；无固定桶时也限制生成画布。 */
   get maximumInputPixels(): number {
     switch (this.name) {
       case RealtimeModel.X2_0:
@@ -47,7 +47,7 @@ export class ModelDefinition {
     }
   }
 
-  /** 输入宽高的对齐倍数；仅用于没有固定分辨率的模型。 */
+  /** 无固定桶时生成画布的宽高对齐倍数；本地媒体统一按 4 对齐。 */
   get inputSizeAlignment(): number { return 32; }
 
   /** 未指定视频规格时使用的帧率。 */

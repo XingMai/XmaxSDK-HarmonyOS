@@ -1,3 +1,4 @@
+import { RealtimeMediaSource } from '../realtime/RealtimeMediaSource';
 import { ImageSize } from './ImageSize';
 import { MediaServicing } from './MediaServicing';
 import { ModelDefinition, RealtimeModel, RealtimeModels } from '../../core/realtime/RealtimeModel';
@@ -12,7 +13,88 @@ export class MediaService implements MediaServicing {
     this.model = model;
   }
 
+  /** 计算本地媒体帧尺寸：不放大、限制像素面积、优先精确等比并按 4 对齐。 */
+  resolveMediaSize(size: ImageSize, source: RealtimeMediaSource): ImageSize {
+    this.validateSize(size);
+    const buckets: ImageSize[] = this.model.resolutionBuckets;
+    if (source === RealtimeMediaSource.CAMERA && buckets.length > 0 &&
+      !buckets.some((bucket: ImageSize): boolean => bucket.width === size.width && bucket.height === size.height)) {
+      const supportedSizes: string = buckets.map((bucket: ImageSize): string =>
+        `${bucket.width}×${bucket.height}`).join(', ');
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        `Model ${this.model.name} does not support camera resolution ${size.width}×${size.height}. ` +
+        `Supported resolutions: ${supportedSizes}`);
+    }
+    const scale: number = Math.min(1, Math.sqrt(this.model.maximumInputPixels / (size.width * size.height)));
+    return this.alignedSize(size, scale);
+  }
+
+  /** 选择模型生成画布，不改变本地媒体规格。 */
+  resolveGenerationSize(size: ImageSize): ImageSize {
+    this.validateSize(size);
+    const aspect: number = size.width / size.height;
+    const buckets: ImageSize[] = this.model.resolutionBuckets;
+    if (buckets.length > 0) {
+      let best: ImageSize = buckets[0];
+      let distance: number = Math.abs(Math.log(aspect / (best.width / best.height)));
+      for (let index: number = 1; index < buckets.length; index++) {
+        const candidate: ImageSize = buckets[index];
+        const candidateDistance: number = Math.abs(Math.log(aspect / (candidate.width / candidate.height)));
+        if (candidateDistance < distance) {
+          best = candidate;
+          distance = candidateDistance;
+        }
+      }
+      return best;
+    }
+    return this.resolveModelInputSize(size);
+  }
+
+  /** 根据回传宽高上限及可选的 90 万像素插帧限制计算尺寸，不改变本地媒体。 */
+  resolveTargetSize(size: ImageSize, maximumSize: ImageSize, frameInterpolationEnabled: boolean = false): ImageSize {
+    this.validateSize(size);
+    if (!Number.isFinite(maximumSize.width) || !Number.isFinite(maximumSize.height) ||
+      maximumSize.width <= 0 || maximumSize.height <= 0) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Target bounds must be positive and finite');
+    }
+    let scale: number = Math.min(1, maximumSize.width / size.width, maximumSize.height / size.height);
+    const pixels: number = size.width * scale * size.height * scale;
+    if (frameInterpolationEnabled && pixels > 900000) {
+      scale *= Math.sqrt(900000 / pixels);
+    }
+    return this.alignedSize(size, scale);
+  }
+
+  private validateSize(size: ImageSize): void {
+    if (!Number.isSafeInteger(size.width) || !Number.isSafeInteger(size.height) ||
+      size.width <= 0 || size.height <= 0 || !Number.isSafeInteger(size.width * size.height)) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Media dimensions must be positive integers');
+    }
+  }
+
+  /** 使用最简宽高比的整数倍；无法精确等比时分别向下对齐。 */
+  private alignedSize(size: ImageSize, scale: number): ImageSize {
+    let divisor: number = size.width;
+    let remainder: number = size.height;
+    while (remainder !== 0) {
+      const next: number = divisor % remainder;
+      divisor = remainder;
+      remainder = next;
+    }
+    const alignedScale: number = Math.floor(divisor * scale / 4) * 4;
+    if (alignedScale >= 4) {
+      return new ImageSize(size.width / divisor * alignedScale, size.height / divisor * alignedScale);
+    }
+    const width: number = Math.floor(size.width * scale / 4) * 4;
+    const height: number = Math.floor(size.height * scale / 4) * 4;
+    if (width < 4 || height < 4) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'No aligned video size is available within the size limits');
+    }
+    return new ImageSize(width, height);
+  }
+
   /**
+   * @deprecated 使用 resolveMediaSize 或 resolveGenerationSize 区分媒体帧与生成画布。
    * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
    *
    * @param size 原始媒体尺寸；宽高必须为有限且大于零的数值。

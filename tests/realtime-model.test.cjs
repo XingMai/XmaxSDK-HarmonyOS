@@ -139,7 +139,7 @@ test('the public media-service factory accepts a model and defaults to x2.0', ()
   assert.deepEqual(service.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
 });
 
-function mediaFixture() {
+function mediaFixture(imageSize = [1024, 1920], videoSize = [1920, 1024]) {
   const calls = [], intervals = new Map();
   const cameraKit = createCameraKitFixture(calls);
   const f = fixture({
@@ -150,12 +150,12 @@ function mediaFixture() {
       statSync: () => ({ size: 100 }), closeSync() {}
     } },
     '@kit.MediaKit': { media: { async createAVMetadataExtractor() {
-      return { async fetchMetadata() { return { videoWidth: '1920', videoHeight: '1024',
+      return { async fetchMetadata() { return { videoWidth: String(videoSize[0]), videoHeight: String(videoSize[1]),
         videoOrientation: '90', duration: '1000', hasAudio: 'false' }; }, async release() {} };
     } } },
     PermissionManager: { PermissionManager: class { async ensureCameraPermission() {} } },
     ImageManager: { ImageManager: class { async decodeFile() {
-      return { width: 1024, height: 1920, async release() {}, async makeVideoFrameData(width, height) {
+      return { width: imageSize[0], height: imageSize[1], async release() {}, async makeVideoFrameData(width, height) {
         calls.push(['image', width, height]);
         return { width, height, pixelFormat: 'RGBA', bytesPerRow: width * 4,
           data: new ArrayBuffer(width * height * 4) };
@@ -186,7 +186,7 @@ for (const name of ['x2.0', 'x2.0-sla']) {
   test(`shared ${name} rules reach camera capture, image frames and rotated video playback`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const model = f.Models.realtime(name), service = new f.MediaService(model);
-    const expected = service.resolveModelInputSize(new f.Size(1024, 1920));
+    const expected = service.resolveMediaSize(new f.Size(1024, 1920), 'camera');
     const camera = await media.createLocalCameraStream(new f.Format(1024, 1920, 25), 'front');
     assert.deepEqual(camera.videoTrack.videoFormat, new f.Format(expected.width, expected.height, 25));
     assert.deepEqual(f.calls.find(call => call[0] === 'camera'), ['camera', expected.width, expected.height, 30]);
@@ -212,7 +212,7 @@ for (const name of ['x2.0', 'x2.0-sla']) {
   });
 }
 
-test('SLA rejects unsupported camera input before permission or capture, and rejects image/video output sizes', async () => {
+test('SLA rejects unsupported camera input before capture but accepts non-bucket image/video formats', async () => {
   const calls = [];
   const kit = createCameraKitFixture(calls);
   const f = fixture({
@@ -227,11 +227,13 @@ test('SLA rejects unsupported camera input before permission or capture, and rej
   assert.equal(camera.currentTrack, null);
   for (const source of ['Image', 'Video']) {
     const mf = mediaFixture(), media = mf.createMedia('x2.0-sla');
-    await assert.rejects(media[`createLocal${source}Stream`]('source', new mf.Format(1920, 1080, 30)),
-      { code: 'INVALID_CONFIGURATION' });
+    const stream = await media[`createLocal${source}Stream`]('source', new mf.Format(1920, 1080, 30));
+    assert.deepEqual(stream.videoTrack.videoFormat, new mf.Format(1920, 1080, 30));
+    assert.equal(media.usesContainPadding, true);
+    await media.stopLocalStream();
     assert.equal(media.currentTrack, null);
+    assert.equal(media.usesContainPadding, false);
     assert.equal(mf.intervals.size, 0);
-    assert.equal(mf.calls.some(call => call[0] === 'image' || call[0] === 'video'), false);
   }
 });
 
@@ -258,7 +260,7 @@ test('XLab lists supported models and migrates a persisted Pro selection to SLA'
 for (const name of ['x2.0', 'x2.0-sla']) {
   test(`${name} camera/image/video resolved formats preserve upload encoding settings`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
-    const expected = new f.MediaService(f.Models.realtime(name)).resolveModelInputSize(new f.Size(1024, 1920));
+    const expected = new f.MediaService(f.Models.realtime(name)).resolveMediaSize(new f.Size(1024, 1920), 'camera');
     const requested = new f.Format(1024, 1920, 30, 1500, 6000, 'MaintainQuality');
     for (const source of ['Camera', 'Image', 'Video']) {
       const stream = source === 'Camera' ? await media.createLocalCameraStream(requested, 'front') :
@@ -269,3 +271,19 @@ for (const name of ['x2.0', 'x2.0-sla']) {
     }
   });
 }
+
+test('SLA automatically prepares non-bucket photographs and rotated videos without forcing a generation crop', async () => {
+  for (const [width, height, expectedWidth, expectedHeight] of [[1080, 1920, 1080, 1920],
+    [3840, 2160, 1920, 1080], [320, 180, 320, 180], [1001, 1000, 1000, 1000]]) {
+    const f = mediaFixture([width, height], [height, width]), media = f.createMedia('x2.0-sla');
+    for (const source of ['Image', 'Video']) {
+      const stream = await media[`createLocal${source}Stream`]('source');
+      assert.deepEqual(stream.videoTrack.videoFormat, new f.Format(expectedWidth, expectedHeight, 30));
+      assert.equal(media.usesContainPadding, true);
+      if (source === 'Image') assert.deepEqual(f.calls.at(-1), ['image', expectedWidth, expectedHeight]);
+      else assert.deepEqual(f.calls.at(-1), ['video', 'source', 90, expectedWidth, expectedHeight, 30, true]);
+      await media.stopLocalStream();
+      assert.equal(media.usesContainPadding, false);
+    }
+  }
+});

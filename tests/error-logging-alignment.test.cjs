@@ -35,7 +35,7 @@ function imageFixture(t) {
         };
       }
     } },
-    MediaService: { MediaService: class { model = { defaultFrameRate: 24 }; resolveModelInputSize(size) { return size; } } },
+    MediaService: { MediaService: class { model = { defaultFrameRate: 24 }; resolveMediaSize(size) { return size; } } },
     MediaTimeline: { MediaTimeline: { currentTimestampUs: () => 1000 } }
   }, {
     setInterval: callback => { intervals.set(++intervalId, callback); return intervalId; },
@@ -313,7 +313,7 @@ test('remote surface bind failure reaches the runtime failure listener without e
     unbindRemoteVideo() {}
   }, error => received.push(error));
   const track = new RealtimeVideoTrack('remote');
-  render.registerRemoteTrack(track, {});
+  render.registerRemoteTrack(track, {}, new (f.load('service/media/ImageSize.ets').ImageSize)(1080, 1920));
   render.setRemoteStream(new RemoteStream('room', 'bot'));
   assert.doesNotThrow(() => VideoRenderRegistry.attach(track, 'surface', 0, () => {}, () => {}));
   assert.equal(received.length, 1);

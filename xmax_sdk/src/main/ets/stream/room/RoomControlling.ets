@@ -1,3 +1,4 @@
+import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessionConnection';
@@ -37,7 +38,9 @@ export interface RoomControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    targetSize?: ImageSize,
+    paddingContain?: boolean
   ): void;
 
   /**
@@ -52,7 +55,9 @@ export interface RoomControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    targetSize?: ImageSize,
+    paddingContain?: boolean
   ): void;
 
   /**
@@ -69,7 +74,7 @@ export interface RoomControlling {
    * 发送生成任务的交互轨迹。
    *
    * @param taskId 生成任务标识。
-   * @param points 模型输入坐标中的轨迹点。
+   * @param points 相对于处理后完整媒体区域的 [0, 1] 轨迹点。
    * @returns 无返回值。
    */
   sendTracks(

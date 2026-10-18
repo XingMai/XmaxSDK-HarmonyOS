@@ -1,3 +1,4 @@
+import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
 import {
   XmaxError,
@@ -98,14 +99,18 @@ export class RoomController implements RoomControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): void {
     this.send(RoomEvent.start(
       this.requireUserId(),
       taskId,
       videoFormat,
       context,
-      faceRestoration
+      faceRestoration,
+      targetSize,
+      paddingContain
     ));
   }
 
@@ -121,14 +126,18 @@ export class RoomController implements RoomControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration: boolean = false
+    faceRestoration: boolean = false,
+    targetSize?: ImageSize,
+    paddingContain: boolean = false
   ): void {
     this.send(RoomEvent.changeCondition(
       this.requireUserId(),
       taskId,
       videoFormat,
       context,
-      faceRestoration
+      faceRestoration,
+      targetSize,
+      paddingContain
     ));
   }
 
@@ -158,7 +167,7 @@ export class RoomController implements RoomControlling {
    * 发送实时生成任务的交互轨迹。
    *
    * @param taskId 生成任务标识。
-   * @param points 模型输入坐标中的轨迹点。
+   * @param points 相对于处理后完整媒体区域的 [0, 1] 轨迹点。
    * @returns 无返回值。
    */
   sendTracks(

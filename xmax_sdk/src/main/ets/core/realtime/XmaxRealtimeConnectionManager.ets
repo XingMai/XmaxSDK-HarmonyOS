@@ -1,3 +1,5 @@
+import { ImageSize } from '../../service/media/ImageSize';
+import { TrajectoryRegistry } from '../../rendering/trajectory/TrajectoryRegistry';
 import { RealtimeTiming } from './RealtimeTiming';
 import {
   XmaxError,
@@ -86,6 +88,8 @@ export class XmaxRealtimeConnectionManager {
     if (this.activeRemoteTrack !== null) {
       updateRealtimeVideoTrackFormat(this.activeRemoteTrack, format);
       VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
+      // 此入口仅由本地相机格式变化触发，不能用回传帧尺寸更新交互基准。
+      TrajectoryRegistry.binding(this.activeRemoteTrack)?.updateResolvedMediaSize(new ImageSize(format.width, format.height));
     }
   }
 
@@ -155,13 +159,15 @@ export class XmaxRealtimeConnectionManager {
 
       this.sessionService.startHeartbeat(session.id, onHeartbeatFailure);
 
+      const resolvedMediaFormat: RealtimeVideoFormat = this.mediaController.currentVideoFormat ?? videoFormat;
       const remoteTrack = new RealtimeVideoTrack(
         connection.botName ?? 'video-remote',
-        this.mediaController.currentVideoFormat ?? videoFormat
+        resolvedMediaFormat
       );
       this.renderController.registerRemoteTrack(
         remoteTrack,
-        this.mediaController
+        this.mediaController,
+        new ImageSize(resolvedMediaFormat.width, resolvedMediaFormat.height)
       );
 
       this.activeSession = session;

@@ -85,8 +85,8 @@ test('all room events include the same top-level runtime and preserve SLA size a
     [f.RoomEvent.changeCondition(user, task, f.format, context),
       { event: 'change_condition', params, user_id: user, uid: task }],
     [f.RoomEvent.stop(user, task), { event: 'stop', user_id: user, uid: task }],
-    [f.RoomEvent.tracks(user, task, [{ x: 10, y: 20 }, { x: 1023, y: 1919 }]),
-      { event: 'tracks', tracks: [[10, 20], [1023, 1919]], user_id: user, uid: task }],
+    [f.RoomEvent.tracks(user, task, [{ x: 0.431231, y: 0.56931 }, { x: 0, y: 1 }]),
+      { event: 'tracks', tracks: [[0.431231, 0.56931], [0, 1]], user_id: user, uid: task }],
     [f.RoomEvent.heartbeat(user), { event: 'heartbeat', user_id: user }]
   ];
   for (const [json, payload] of cases) {
@@ -166,7 +166,8 @@ test('task IDs encode all 16 UUID bytes using unpadded Base64URL and the runtime
   const starts = [], mediaStarts = [];
   const manager = new XmaxRealtimeGenerationManager({ start: task => mediaStarts.push(task) }, {
     async beginGeneration(task) { starts.push(task); }
-  });
+  }, new (f.load('service/media/MediaService.ets').MediaService)(
+    f.load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   for (const uuid of uuids) {
     const id = await manager.start(f.format, new f.Context('prompt'), () => {});
     const bytes = Buffer.from(uuid.replaceAll('-', ''), 'hex');
@@ -204,7 +205,8 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
   const stream = new StreamController(rtc, remote => remoteStreams.push(remote));
   const manager = new XmaxRealtimeGenerationManager({
     start: (id, format) => { mediaStarts.push(id); mediaFormats.push(format); }, stop() {}
-  }, stream);
+  }, stream, new (f.load('service/media/MediaService.ets').MediaService)(
+    f.load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   await stream.connect({ roomId: 'room', userId: 'user', token: 'test', botName: 'bot' }, false, () => {});
   const frame = { id: 'frame' };
   stream.pushLocalVideoFrame(frame);
@@ -229,7 +231,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     stream.onSeiMessageReceived({ roomId: 'room', userId: 'other-bot' }, task);
     assert.deepEqual(remoteStreams, []);
     assert.deepEqual([...timers.values()].map(t => t.ms), [30000]);
-    const landscape = { width: f.format.height, height: f.format.width, fps: f.format.fps };
+    const landscape = new f.format.constructor(f.format.height, f.format.width, f.format.fps);
     manager.updateVideoFormat(landscape);
     assert.equal(messages.at(-1).params.face_replace, true);
     assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
@@ -249,7 +251,8 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
     stream.pushLocalVideoFrame(frame);
     assert.equal(Buffer.from(frames.at(-1).sei).toString('utf8'), `${task}&index=2`);
-    stream.sendTracks(task, [{ x: 10, y: 20 }]);
+    stream.sendTracks(task, [{ x: 0.431231, y: 0.56931 }]);
+    assert.deepEqual(messages.at(-1).tracks, [[0.431231, 0.56931]]);
     manager.stop(task);
     assert.deepEqual(messages.map(message => message.event), ['start', 'change_condition', 'change_condition', 'change_condition', 'tracks', 'stop']);
     for (const message of messages) {

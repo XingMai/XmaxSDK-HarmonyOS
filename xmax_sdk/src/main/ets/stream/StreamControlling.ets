@@ -1,3 +1,4 @@
+import { ImageSize } from '../service/media/ImageSize';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
 import { VideoFrame } from '../foundation/media/video/VideoFrame';
 import { RealtimeContext } from '../service/realtime/RealtimeContext';
@@ -100,7 +101,9 @@ export interface StreamControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    targetSize?: ImageSize,
+    paddingContain?: boolean
   ): Promise<void>;
 
   /** 首帧可用后激活已匹配生成流的远端音频。 */
@@ -118,7 +121,9 @@ export interface StreamControlling {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    targetSize?: ImageSize,
+    paddingContain?: boolean
   ): void;
 
   /**
