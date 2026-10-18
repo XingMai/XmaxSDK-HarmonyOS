@@ -1,3 +1,14 @@
+//
+//  DecodedImage.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
@@ -9,6 +20,7 @@ import { ImageVideoFrameData } from './ImageVideoFrameData';
 /** 定义 SDK 内部统一使用的已解码图片能力。 */
 export interface DecodedImage {
 
+  /** 解码图像尺寸 */
   /** 图片宽度。 */
   readonly width: number;
 
@@ -38,14 +50,14 @@ export interface DecodedImage {
 /** 使用 SDK 自有 PixelMap 实现已解码图片。 */
 export class PixelMapDecodedImage implements DecodedImage {
 
-  // 平台资源
+  /** 平台图像资源 */
   private readonly pixelMap: image.PixelMap;
 
-  // 图片信息
+  /** 图像尺寸 */
   readonly width: number;
   readonly height: number;
 
-  // 运行状态
+  /** 资源释放状态 */
   private isReleased: boolean = false;
 
   /**
@@ -54,6 +66,7 @@ export class PixelMapDecodedImage implements DecodedImage {
    * @param pixelMap 由 SDK 创建并负责释放的可编辑 RGBA PixelMap。
    * @param width 图片宽度。
    * @param height 图片高度。
+   * @returns 新建的 PixelMapDecodedImage 实例。
    */
   constructor(
     pixelMap: image.PixelMap,
@@ -146,7 +159,11 @@ export class PixelMapDecodedImage implements DecodedImage {
     await this.pixelMap.release();
   }
 
-  /** 确认图片资源仍可使用。 */
+  /**
+   * 确认图片资源仍可使用。
+   *
+   * @returns 无返回值。
+   */
   private ensureAvailable(): void {
     if (this.isReleased) {
       throw new XmaxError(
@@ -161,6 +178,7 @@ export class PixelMapDecodedImage implements DecodedImage {
    *
    * @param width 目标视频帧宽度。
    * @param height 目标视频帧高度。
+   * @returns 无返回值。
    */
   private validateTargetSize(width: number, height: number): void {
     if (!Number.isFinite(width) || !Number.isFinite(height) ||

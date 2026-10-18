@@ -1,20 +1,41 @@
+//
+//  DefaultTrajectoryEffectRenderer.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { TrajectoryEffectRendering } from './TrajectoryEffectRendering';
 import { TrajectoryId } from './TrajectoryId';
 import { TrajectoryPoint } from './TrajectoryPoint';
 
+/** 记录单个活动触点的位置与起始时间，供轨迹动画绘制。 */
 interface ActiveTrajectory {
+
+  /** 触点位置与动画起点 */
   x: number;
   y: number;
   startTime: number;
 }
 
+/** 集中定义默认轨迹的颜色、线宽、光晕和衰减节奏。 */
 class TrajectoryEffectStyle {
+
+  /** 轨迹采样与衰减节奏 */
   static readonly TICK_MS: number = 16;
   static readonly INTERPOLATE_STEP: number = 1.5;
   static readonly FADE_STEP: number = 0.05;
+
+  /** 绿色轨迹颜色 */
   static readonly GLOW_R: number = 0;
   static readonly GLOW_G: number = 255;
   static readonly GLOW_B: number = 100;
+
+  /** 轨迹线宽与光晕半径 */
   static readonly CORE_WIDTH: number = 3;
   static readonly OUTER_GLOW_WIDTH: number = 18;
   static readonly MID_GLOW_WIDTH: number = 10;
@@ -22,7 +43,10 @@ class TrajectoryEffectStyle {
   static readonly HEAD_GLOW_RADIUS: number = 14;
 }
 
+/** 绘制绿色发光轨迹、触点光晕与粒子，并在触摸结束后逐步消退。 */
 export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRendering {
+
+  /** 刷新节奏与双层绘图上下文 */
   readonly tickIntervalMs: number = TrajectoryEffectStyle.TICK_MS;
   readonly trailContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(
     new RenderingContextSettings(true)
@@ -31,15 +55,24 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     new RenderingContextSettings(true)
   );
 
-  // 渲染资源
+  /** 活动触点记录 */
   private readonly activeTrajectories: Map<number, ActiveTrajectory> = new Map();
+
+  /** 绘制区域尺寸 */
   private width: number = 0;
   private height: number = 0;
 
-  // 渲染状态
+  /** 轨迹残留与消退状态 */
   private hasTrailPixels: boolean = false;
   private idleFadeTicks: number = 0;
 
+  /**
+   * 更新渲染区域尺寸。
+   *
+   * @param width 渲染区域宽度。
+   * @param height 渲染区域高度。
+   * @returns 无返回值。
+   */
   resize(
     width: number,
     height: number
@@ -54,6 +87,12 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     this.reset();
   }
 
+  /**
+   * 渲染轨迹起点。
+   *
+   * @param points 新开始的轨迹点。
+   * @returns 无返回值。
+   */
   renderBegan(points: TrajectoryPoint[]): void {
     points.forEach((point: TrajectoryPoint): void => {
       this.activeTrajectories.set(point.id.rawValue, {
@@ -64,6 +103,12 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     });
   }
 
+  /**
+   * 渲染移动中的轨迹点。
+   *
+   * @param points 发生移动的轨迹点。
+   * @returns 无返回值。
+   */
   renderMoved(points: TrajectoryPoint[]): void {
     points.forEach((point: TrajectoryPoint): void => {
       const activeTrajectory: ActiveTrajectory | undefined =
@@ -89,21 +134,43 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     });
   }
 
+  /**
+   * 结束指定轨迹。
+   *
+   * @param identifiers 已结束的轨迹标识。
+   * @returns 无返回值。
+   */
   renderEnded(identifiers: TrajectoryId[]): void {
     identifiers.forEach((identifier: TrajectoryId): void => {
       this.activeTrajectories.delete(identifier.rawValue);
     });
   }
 
+  /**
+   * 推进一帧动态轨迹效果。
+   *
+   * @param timestamp 当前时间戳，单位为毫秒。
+   * @returns 无返回值。
+   */
   tick(timestamp: number): void {
     this.fadeTrail();
     this.drawEffects(timestamp);
   }
 
+  /**
+   * 判断是否仍有需要持续刷新的轨迹效果。
+   *
+   * @returns 仍有活动触点或残留轨迹需要消退时返回 true。
+   */
   isAnimating(): boolean {
     return this.activeTrajectories.size > 0 || this.hasTrailPixels;
   }
 
+  /**
+   * 清理全部轨迹效果。
+   *
+   * @returns 无返回值。
+   */
   reset(): void {
     this.activeTrajectories.clear();
     this.hasTrailPixels = false;
@@ -115,11 +182,29 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     }
   }
 
+  /**
+   * 按指定透明度生成默认轨迹的绿色光晕颜色。
+   *
+   * @param alpha 透明度，范围为 0～1。
+   * @returns 可供画布使用的 RGBA 颜色文本。
+   */
   private glowColor(alpha: number): string {
     return `rgba(${TrajectoryEffectStyle.GLOW_R},${TrajectoryEffectStyle.GLOW_G},` +
       `${TrajectoryEffectStyle.GLOW_B},${alpha})`;
   }
 
+  /**
+   * 绘制一层指定线宽、模糊半径和透明度的轨迹线段。
+   *
+   * @param x0 线段起点横坐标。
+   * @param y0 线段起点纵坐标。
+   * @param x1 线段终点横坐标。
+   * @param y1 线段终点纵坐标。
+   * @param width 画面宽度，单位像素。
+   * @param blur 笔触模糊半径。
+   * @param alpha 透明度，范围为 0～1。
+   * @returns 无返回值。
+   */
   private strokeLayer(
     x0: number,
     y0: number,
@@ -155,6 +240,15 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.stroke();
   }
 
+  /**
+   * 叠加多层发光笔触绘制一段轨迹。
+   *
+   * @param x0 线段起点横坐标。
+   * @param y0 线段起点纵坐标。
+   * @param x1 线段终点横坐标。
+   * @param y1 线段终点纵坐标。
+   * @returns 无返回值。
+   */
   private drawTrail(
     x0: number,
     y0: number,
@@ -204,6 +298,11 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     this.idleFadeTicks = 0;
   }
 
+  /**
+   * 逐步衰减轨迹画布，使已结束的轨迹自然消退。
+   *
+   * @returns 无返回值。
+   */
   private fadeTrail(): void {
     if (!this.hasTrailPixels || this.width <= 0 || this.height <= 0) {
       return;
@@ -228,6 +327,12 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     }
   }
 
+  /**
+   * 清空效果层并绘制活动触点的光晕、圆环和粒子。
+   *
+   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
+   * @returns 无返回值。
+   */
   private drawEffects(timestamp: number): void {
     if (this.width <= 0 || this.height <= 0) {
       return;
@@ -249,6 +354,14 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.restore();
   }
 
+  /**
+   * 绘制触点中心与外围光晕。
+   *
+   * @param context 承载当前绘制的画布上下文。
+   * @param x 横坐标。
+   * @param y 纵坐标。
+   * @returns 无返回值。
+   */
   private drawHead(
     context: CanvasRenderingContext2D,
     x: number,
@@ -289,6 +402,14 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.fill();
   }
 
+  /**
+   * 按触点持续时间绘制扩散圆环。
+   *
+   * @param context 承载当前绘制的画布上下文。
+   * @param trajectory 需要绘制的活动轨迹。
+   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
+   * @returns 无返回值。
+   */
   private drawRings(
     context: CanvasRenderingContext2D,
     trajectory: ActiveTrajectory,
@@ -316,6 +437,14 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     }
   }
 
+  /**
+   * 按触点持续时间绘制周围粒子。
+   *
+   * @param context 承载当前绘制的画布上下文。
+   * @param trajectory 需要绘制的活动轨迹。
+   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
+   * @returns 无返回值。
+   */
   private drawParticles(
     context: CanvasRenderingContext2D,
     trajectory: ActiveTrajectory,

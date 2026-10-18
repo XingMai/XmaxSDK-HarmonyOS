@@ -1,3 +1,14 @@
+//
+//  AudioManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { audio } from '@kit.AudioKit';
 import { XmaxLogger } from '../../logging/XmaxLogger';
 import { AudioFrame } from './AudioFrame';
@@ -6,17 +17,21 @@ import { AudioManaging } from './AudioManaging';
 /** 使用平台音频渲染器播放本地 PCM 音频帧。 */
 export class AudioManager implements AudioManaging {
 
-  // 音频配置
+  /** 音量默认配置 */
   private static readonly DEFAULT_VOLUME: number = 0.45;
 
-  // 平台资源
+  /** 播放器资源与音量 */
   private renderer: audio.AudioRenderer | null = null;
   private configuredVolume: number = AudioManager.DEFAULT_VOLUME;
+
+  /** 播放器操作串行化 */
   private pendingOperation: Promise<void> = Promise.resolve();
 
-  // 音频缓冲
+  /** 待播放帧队列与读取位置 */
   private pendingFrames: Uint8Array[] = [];
   private pendingFrameOffset: number = 0;
+
+  /** 播放开关与队列排空状态 */
   private isPlaybackEnabled: boolean = true;
   private pendingFrameWaiters: Array<() => void> = [];
   private isDraining: boolean = false;
@@ -30,6 +45,11 @@ export class AudioManager implements AudioManaging {
     return this.enqueueOperation((): Promise<void> => this.startRenderer());
   }
 
+  /**
+   * 创建并启动系统 PCM 播放器，连接待播放音频帧队列。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   private async startRenderer(): Promise<void> {
     if (this.renderer !== null) {
       return;
@@ -110,12 +130,21 @@ export class AudioManager implements AudioManaging {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取本地音频当前配置的播放音量。
+   *
+   * @returns 0～1 的音量比例，0 为静音，1 为原始音量。
+   */
   get volume(): number {
     return this.configuredVolume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置播放器音量（0～1），播放器停止后保留设置。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   setVolume(volume: number): Promise<void> {
     return this.enqueueOperation(async (): Promise<void> => {
       if (this.renderer !== null) {
@@ -125,7 +154,13 @@ export class AudioManager implements AudioManaging {
     });
   }
 
-  // 顺序执行音量与资源操作，避免连续拖动滑块或换视频时写入旧值、访问已释放播放器。
+  /** 顺序执行音量与资源操作，避免连续拖动滑块或换视频时写入旧值、访问已释放播放器。 */
+  /**
+   * 串行执行播放器操作，避免启停和写入并发访问资源。
+   *
+   * @param operation 需要完成或清理的实时操作记录。
+   * @returns 操作完成时兑现的 Promise。
+   */
   private enqueueOperation(operation: () => Promise<void>): Promise<void> {
     const result: Promise<void> = this.pendingOperation.then(operation);
     this.pendingOperation = result.catch((): void => {});
@@ -147,7 +182,11 @@ export class AudioManager implements AudioManaging {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 等待已提交的本地音频播放完，不清空尾部音频。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   async drain(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     if (renderer === null || !this.isPlaybackEnabled) {
@@ -170,6 +209,11 @@ export class AudioManager implements AudioManaging {
     }
   }
 
+  /**
+   * 结束音频队列排空等待，释放所有已登记的等待回调。
+   *
+   * @returns 无返回值。
+   */
   private finishPendingFrameWaiters(): void {
     const waiters: Array<() => void> = this.pendingFrameWaiters;
     this.pendingFrameWaiters = [];
@@ -185,6 +229,11 @@ export class AudioManager implements AudioManaging {
     return this.enqueueOperation((): Promise<void> => this.stopRenderer());
   }
 
+  /**
+   * 停止音频播放并释放系统播放器资源。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   private async stopRenderer(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     this.renderer = null;

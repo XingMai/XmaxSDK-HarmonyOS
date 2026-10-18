@@ -1,3 +1,14 @@
+//
+//  StorageManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
@@ -27,6 +38,7 @@ import { StoredFile } from './StoredFile';
 /** 保存第三方存储上传任务的统一结果。 */
 class UploadOutcome {
 
+  /** 上传结果与失败说明 */
   readonly file?: StoredFile;
   readonly errorMessage?: string;
 
@@ -35,6 +47,7 @@ class UploadOutcome {
    *
    * @param file 上传成功后的文件信息。
    * @param errorMessage 上传失败时的错误信息。
+   * @returns 新建的 UploadOutcome 实例。
    */
   constructor(
     file?: StoredFile,
@@ -48,12 +61,14 @@ class UploadOutcome {
 /** 封装第三方对象存储的文件上传和 HTTP 文件下载能力。 */
 export class StorageManager implements StorageManaging {
 
+  /** 本地文件与应用目录访问 */
   private readonly context: common.Context;
 
   /**
    * 创建存储 Manager。
    *
    * @param context 第三方存储客户端使用的平台上下文。
+   * @returns 新建的 StorageManager 实例。
    */
   constructor(context: common.Context) {
     this.context = context;

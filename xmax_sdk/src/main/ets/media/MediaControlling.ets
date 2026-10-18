@@ -1,3 +1,14 @@
+//
+//  MediaControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../foundation/media/camera/CameraPosition';
 import { CameraPreviewReadyHandler } from './camera/CameraPreviewReadyHandler';
@@ -10,9 +21,11 @@ import { InteractionControlling } from './interaction/InteractionControlling';
 /** 定义媒体层向 Core 暴露的统一能力。 */
 export interface MediaControlling extends InteractionControlling {
 
+  /** 本地播放音量 */
   /** 当前本地视频预览音量（0～1），默认 0.45。 */
   readonly localAudioVolume: number;
 
+  /** 输入轨道与媒体能力 */
   /** @returns 当前活动的本地视频轨道；没有媒体来源时返回空值。 */
   readonly currentTrack: RealtimeVideoTrack | null;
 
@@ -37,7 +50,11 @@ export interface MediaControlling extends InteractionControlling {
    */
   prepareForClose(): void;
 
-  /** @returns 当前本地媒体来源及 RTC Engine 释放完成后的 Promise。 */
+  /**
+   * 停止当前本地输入，等待采集、解码和发布资源释放完成。
+   *
+   * @returns 当前本地媒体来源及 RTC Engine 释放完成后的 Promise。
+   */
   stopLocalStream(): Promise<void>;
 
   /**
@@ -66,19 +83,39 @@ export interface MediaControlling extends InteractionControlling {
     observeDisplayChange?: boolean
   ): Promise<RealtimeMediaStream>;
 
-  /** 按当前显示方向同步相机采集及轨道规格；其他来源不操作。 */
+  /**
+   * 按当前显示方向同步相机采集及轨道规格；其他来源不操作。
+   *
+   * @returns 无返回值。
+   */
   updateCameraOrientation(): void;
 
-  /** 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。 */
+  /**
+   * 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。
+   *
+   * @returns 无返回值。
+   */
   startMicrophoneCapture(): void;
 
-  /** 停止相机麦克风采集，保留重连所需的配置。 */
+  /**
+   * 停止相机麦克风采集，保留重连所需的配置。
+   *
+   * @returns 无返回值。
+   */
   stopMicrophoneCapture(): void;
 
-  /** @returns 当前相机来源停止并释放完成后的 Promise。 */
+  /**
+   * 停止本地相机流并释放预览资源。
+   *
+   * @returns 当前相机来源停止并释放完成后的 Promise。
+   */
   stopLocalCameraStream(): Promise<void>;
 
-  /** @returns 前后置摄像头切换完成后的本地媒体流。 */
+  /**
+   * 切换摄像头，生成中切换时保留连接并恢复当前生成条件。
+   *
+   * @returns 前后置摄像头切换完成后的本地媒体流。
+   */
   switchCamera(): Promise<RealtimeMediaStream>;
 
   /**
@@ -86,6 +123,7 @@ export interface MediaControlling extends InteractionControlling {
    *
    * @param filePath 可读取的本地视频文件路径。
    * @param videoFormat 可选的目标视频格式；未传入时根据文件信息计算。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 包含循环输出文件音视频帧的本地媒体流。
    */
   createLocalVideoStream(
@@ -94,13 +132,25 @@ export interface MediaControlling extends InteractionControlling {
     loop?: boolean
   ): Promise<RealtimeMediaStream>;
 
-  /** @returns 当前视频文件来源停止并释放完成后的 Promise。 */
+  /**
+   * 停止本地视频流并释放预览资源。
+   *
+   * @returns 当前视频文件来源停止并释放完成后的 Promise。
+   */
   stopLocalVideoStream(): Promise<void>;
 
-  /** 暂停当前视频文件流并开始冻结帧发布。 */
+  /**
+   * 暂停当前视频文件流并开始冻结帧发布。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   pauseLocalVideoStream(): Promise<void>;
 
-  /** 从原媒体位置恢复当前视频文件流。 */
+  /**
+   * 从原媒体位置恢复当前视频文件流。
+   *
+   * @returns 无返回值。
+   */
   resumeLocalVideoStream(): void;
 
   /**
@@ -115,7 +165,11 @@ export interface MediaControlling extends InteractionControlling {
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeMediaStream>;
 
-  /** @returns 当前图片来源停止并释放完成后的 Promise。 */
+  /**
+   * 停止本地图片流并释放预览资源。
+   *
+   * @returns 当前图片来源停止并释放完成后的 Promise。
+   */
   stopLocalImageStream(): Promise<void>;
 
   /**
@@ -134,6 +188,11 @@ export interface MediaControlling extends InteractionControlling {
    */
   setLocalAudioPreviewEnabled(enabled: boolean): void;
 
-  /** 设置并保留本地视频预览音量，范围为 0～1。 */
+  /**
+   * 设置并保留本地视频预览音量，范围为 0～1。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   setLocalAudioVolume(volume: number): Promise<void>;
 }

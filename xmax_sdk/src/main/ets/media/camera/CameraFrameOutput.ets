@@ -1,3 +1,14 @@
+//
+//  CameraFrameOutput.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { display } from '@kit.ArkUI';
 import { camera } from '@kit.CameraKit';
 import xmaxVideoNative, {
@@ -17,23 +28,48 @@ import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat'
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
+/**
+ * 接收经过尺寸和方向处理的摄像头视频帧。
+ *
+ * @param frame 需要处理或交付的媒体帧。
+ * @returns 无返回值。
+ */
 export type CameraFrameListener = (frame: VideoFrame) => void;
 
 /** 管理相机原始视频帧输出。 */
 export class CameraFrameOutput {
-  // 平台资源
+
+  /** 平台输出与原生接收资源 */
   readonly output: camera.PreviewOutput;
   private readonly receiver: NativeFrameReceiver;
+
+  /** 摄像头位置与输出格式 */
   private readonly position: camera.CameraPosition;
   private videoFormat: RealtimeVideoFormat | null = null;
   private captureFrameRate: number = 0;
   private rotation: VideoRotation = VideoRotation.ROTATION_0;
+
+  /** 显示监听与资源释放状态 */
   private isListeningForDisplayChanges: boolean = false;
   private isReleased: boolean = false;
+  /**
+   * 接收系统显示变化并更新摄像头输出方向。
+   *
+   * @param displayId 发生变化的显示设备标识。
+   * @returns 无返回值。
+   */
   private readonly displayChangeListener = (displayId: number): void => {
     this.handleDisplayChange(displayId);
   };
 
+  /**
+   * 创建摄像头原始帧输出组件。
+   *
+   * @param output 平台摄像头输出资源。
+   * @param receiver 负责接收和转换摄像头帧的原生资源。
+   * @param position 使用的摄像头位置。
+   * @returns 新建的 CameraFrameOutput 实例。
+   */
   private constructor(
     output: camera.PreviewOutput,
     receiver: NativeFrameReceiver,
@@ -44,6 +80,16 @@ export class CameraFrameOutput {
     this.position = position;
   }
 
+  /**
+   * 创建摄像头输出与原生帧接收器，将帧和错误交付给监听器。
+   *
+   * @param manager 用于创建摄像头输出的平台 CameraManager。
+   * @param profile 摄像头采集规格。
+   * @param position 使用的摄像头位置。
+   * @param listener 接收媒体帧与解码状态的监听器。
+   * @param errorListener 接收组件错误的监听器。
+   * @returns 可连接到摄像头会话的帧输出组件。
+   */
   static create(
     manager: camera.CameraManager,
     profile: camera.Profile,
@@ -90,6 +136,14 @@ export class CameraFrameOutput {
     }
   }
 
+  /**
+   * 配置摄像头目标格式、采集帧率和显示方向监听。
+   *
+   * @param videoFormat 媒体输出或传输所需的视频规格。
+   * @param captureFrameRate 采集帧率，单位 fps。
+   * @param observeDisplayChange 是否跟随设备显示方向更新输出格式。
+   * @returns 无返回值。
+   */
   configure(
     videoFormat: RealtimeVideoFormat,
     captureFrameRate: number,
@@ -107,10 +161,22 @@ export class CameraFrameOutput {
     this.configureNative(this.formatForDisplay(videoFormat, currentDisplay), captureFrameRate, rotation);
   }
 
+  /**
+   * 读取已配置的摄像头输出格式。
+   *
+   * @returns 当前输出格式；尚未配置时返回 null。
+   */
   get currentVideoFormat(): RealtimeVideoFormat | null {
     return this.videoFormat;
   }
 
+  /**
+   * 根据显示方向调整目标格式的宽高方向。
+   *
+   * @param format 需要使用的视频格式。
+   * @param currentDisplay 提供当前设备显示方向的信息。
+   * @returns 适合当前显示方向的视频格式。
+   */
   private formatForDisplay(format: RealtimeVideoFormat, currentDisplay: display.Display): RealtimeVideoFormat {
     const shortSide: number = Math.min(format.width, format.height);
     const longSide: number = Math.max(format.width, format.height);
@@ -121,6 +187,14 @@ export class CameraFrameOutput {
       format.resized(shortSide, longSide);
   }
 
+  /**
+   * 将目标尺寸、旋转角度与采集帧率提交给原生帧接收器。
+   *
+   * @param videoFormat 媒体输出或传输所需的视频规格。
+   * @param captureFrameRate 采集帧率，单位 fps。
+   * @param rotation 视频画面需要应用的旋转方向。
+   * @returns 无返回值。
+   */
   private configureNative(
     videoFormat: RealtimeVideoFormat,
     captureFrameRate: number,
@@ -138,6 +212,12 @@ export class CameraFrameOutput {
     this.rotation = rotation;
   }
 
+  /**
+   * 在显示设备方向变化时更新摄像头输出规格。
+   *
+   * @param displayId 发生变化的显示设备标识。
+   * @returns 无返回值。
+   */
   private handleDisplayChange(displayId: number): void {
     const videoFormat: RealtimeVideoFormat | null = this.videoFormat;
     if (this.isReleased || videoFormat === null) {
@@ -159,6 +239,11 @@ export class CameraFrameOutput {
     }
   }
 
+  /**
+   * 停止显示方向监听与帧回调，释放摄像头输出和原生接收器。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   async release(): Promise<void> {
     if (this.isReleased) {
       return;
@@ -186,6 +271,18 @@ export class CameraFrameOutput {
     }
   }
 
+  /**
+   * 验证原生回调并交付 NV12 帧；处理失败时通知错误监听器。
+   *
+   * @param listener 接收媒体帧与解码状态的监听器。
+   * @param errorListener 接收组件错误的监听器。
+   * @param data 当前帧的有效媒体数据。
+   * @param width 画面宽度，单位像素。
+   * @param height 画面高度，单位像素。
+   * @param timestampUs 媒体帧时间戳，单位微秒。
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private static handleNativeFrame(
     listener: CameraFrameListener,
     errorListener: XmaxErrorListener,
@@ -243,6 +340,12 @@ export class CameraFrameOutput {
     }
   }
 
+  /**
+   * 根据显示方向和摄像头位置计算帧旋转方向。
+   *
+   * @param displayRotation 系统显示方向枚举值。
+   * @returns 用于原生视频转换的旋转方向。
+   */
   private rotationForDisplay(displayRotation: number): VideoRotation {
     let rotation: number = this.output.getPreviewRotation(
       displayRotation
@@ -265,6 +368,13 @@ export class CameraFrameOutput {
     }
   }
 
+  /**
+   * 记录摄像头帧输出操作失败的原因。
+   *
+   * @param action 正在执行的资源操作名称或操作函数。
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private logError(
     action: string,
     error: Object

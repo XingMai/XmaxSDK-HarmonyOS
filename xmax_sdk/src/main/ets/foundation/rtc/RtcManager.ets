@@ -1,3 +1,14 @@
+//
+//  RtcManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
@@ -60,15 +71,44 @@ import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 const JOIN_TIMEOUT_MS: number = 15000;
 const SNAPSHOT_TIMEOUT_MS: number = 1500;
 
+/** 表示日志格式化所需的房间事件字段。 */
 interface LoggedRoomEvent {
+
+  /** 房间信令事件名称 */
   event?: string;
 }
 
+/** 保存远端截图请求的流标识、超时任务和结果回调。 */
 class RemoteSnapshotRequest {
+
+  /** 截图超时与目标流 */
   timer: number = -1;
   readonly streamKey: string;
+
+  /** 截图结果通知 */
+  /**
+   * 完成当前资源或媒体结果的异步等待。
+   *
+   * @param pixelMap 截图结果，由接收方负责释放。
+   * @returns 无返回值。
+   */
   readonly resolve: (pixelMap: image.PixelMap) => void;
+  /**
+   * 以指定错误结束当前媒体结果的异步等待。
+   *
+   * @param error 导致当前等待或媒体输出失败的 SDK 错误。
+   * @returns 无返回值。
+   */
   readonly reject: (error: XmaxError) => void;
+
+  /**
+   * 创建远端截图等待记录。
+   *
+   * @param streamKey 由房间与用户标识组成的远端流键。
+   * @param resolve 操作成功时完成等待的回调。
+   * @param reject 操作失败时拒绝等待的回调。
+   * @returns 新建的 RemoteSnapshotRequest 实例。
+   */
   constructor(
     streamKey: string,
     resolve: (pixelMap: image.PixelMap) => void,
@@ -83,33 +123,51 @@ class RemoteSnapshotRequest {
 /** 封装第三方 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
 export class RtcManager implements RtcManaging {
 
-  // 平台资源
+  /** 平台上下文与引擎资源 */
   private readonly context: common.UIAbilityContext;
 
-  // RTC 资源
+  /** 远端发布流记录 */
   private readonly remoteStreamKeys: Map<string, RemoteStreamKey> = new Map();
+
+  /** 引擎租约与房间生命周期 */
   private engineLease: RtcEngineLease | null = null;
   private room: RTCRoom | null = null;
   private pendingRoom: RTCRoom | null = null;
+  /**
+   * 取消当前尚未完成的 RTC 入房等待。
+   *
+   * @returns 无返回值。
+   */
   private pendingJoinCancellation: (() => void) | null = null;
 
-  // 事件监听
+  /** 房间业务事件监听 */
   private listener: RtcEventListener | null = null;
+
+  /** 远端首帧渲染通知 */
   private remoteVideoRenderedListener: RtcRemoteVideoRenderedListener | null = null;
   private readonly renderedRemoteStreams: Set<string> = new Set();
+
+  /** 逐帧观察与数据交付 */
   private remoteVideoFrameListener: RtcRemoteVideoFrameListener | null = null;
   private readonly observedRemoteStreams: Set<string> = new Set();
+
+  /** 远端截图等待 */
   private readonly snapshotRequests: Map<number, RemoteSnapshotRequest> = new Map();
+
+  /** 网络与性能监控 */
   private qualityListener: RtcQualityListener | null = null;
 
-  // 运行状态
+  /** 本地视频镜像配置 */
   private localVideoMirrorType: MirrorType = MirrorType.kMirrorTypeNone;
+
+  /** 当前房间身份 */
   private activeRoomId: string = '';
 
   /**
    * 创建 RTC Manager。
    *
    * @param context 创建 RTC Engine 使用的平台上下文。
+   * @returns 新建的 RtcManager 实例。
    */
   constructor(context: common.UIAbilityContext) {
     this.context = context;
@@ -249,7 +307,13 @@ export class RtcManager implements RtcManaging {
     }
   }
 
-  /** 单个事件解绑失败只记日志，不影响其余解绑和引擎释放。 */
+  /**
+   * 单个事件解绑失败只记日志，不影响其余解绑和引擎释放。
+   *
+   * @param action 正在执行的资源操作名称或操作函数。
+   * @param eventName 需要解绑或记录的事件名称。
+   * @returns 无返回值。
+   */
   private offEngineEventSafely(action: () => void, eventName: string): void {
     try {
       action();
@@ -305,34 +369,59 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /** @inheritdoc */
+  /**
+   * 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。
+   *
+   * @returns 无返回值。
+   */
   startMicrophoneCapture(): void {
     this.startAudioSource(AudioSourceType.kAudioSourceTypeInternal);
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止 RTC 麦克风采集。
+   *
+   * @returns 无返回值。
+   */
   stopMicrophoneCapture(): void {
     this.stopAudioCapture();
   }
 
-  /** @inheritdoc */
+  /**
+   * 启动 RTC 外部音频源。
+   *
+   * @returns 无返回值。
+   */
   startExternalAudioSource(): void {
     this.startAudioSource(AudioSourceType.kAudioSourceTypeExternal);
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止 RTC 外部音频源。
+   *
+   * @returns 无返回值。
+   */
   stopExternalAudioSource(): void {
     this.stopAudioCapture();
   }
 
-  /** 显式选择音频来源，避免相机麦克风与文件 PCM 输入互相沿用配置。 */
+  /**
+   * 显式选择音频来源，避免相机麦克风与文件 PCM 输入互相沿用配置。
+   *
+   * @param source 媒体输入类型，用于选择尺寸处理规则。
+   * @returns 无返回值。
+   */
   private startAudioSource(source: AudioSourceType): void {
     const engine: RTCEngine = this.requireEngine();
     this.checkResult(engine.setAudioSourceType(source), 'setAudioSourceType');
     this.checkResult(engine.startAudioCapture(), 'startAudioCapture');
   }
 
-  /** 停止当前音频采集通道；引擎已经销毁时无需操作。 */
+  /**
+   * 停止当前音频采集通道；引擎已经销毁时无需操作。
+   *
+   * @returns 无返回值。
+   */
   private stopAudioCapture(): void {
     const engine: RTCEngine | null = this.engine;
     if (engine !== null) {
@@ -707,7 +796,12 @@ export class RtcManager implements RtcManaging {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @returns 截图完成后返回由调用方负责释放的 PixelMap；超时或失败时拒绝的 Promise。
+   */
   takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap> {
     const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(stream.key());
     if (key === undefined || key.room_id !== this.activeRoomId) {
@@ -734,6 +828,12 @@ export class RtcManager implements RtcManaging {
     });
   }
 
+  /**
+   * 释放不再使用的远端截图，避免持有图像内存。
+   *
+   * @param pixelMap 需要持有或释放的平台图像对象。
+   * @returns 无返回值。
+   */
   private releaseSnapshot(pixelMap: image.PixelMap | null): void {
     if (pixelMap !== null) {
       void pixelMap.release().catch((error: Object): void => {
@@ -742,22 +842,43 @@ export class RtcManager implements RtcManaging {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 监听 RTC 已将远端首帧渲染到视图的事件。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void {
     this.remoteVideoRenderedListener = listener;
   }
 
-  /** @inheritdoc */
+  /**
+   * 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @returns 指定流在当前发布周期已成功渲染首帧时返回 true。
+   */
   hasRenderedRemoteVideo(stream: RemoteStream): boolean {
     return this.renderedRemoteStreams.has(stream.key());
   }
 
-  /** @inheritdoc */
+  /**
+   * 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void {
     this.remoteVideoFrameListener = listener;
   }
 
-  /** @inheritdoc */
+  /**
+   * 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @param enabled 是否开启该能力。
+   * @returns 无返回值。
+   */
   observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void {
     const streamId: string = stream.key();
     if (!enabled && !this.observedRemoteStreams.delete(streamId)) {
@@ -910,7 +1031,13 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  // 临时调试房间广播与点对点文本信令，不改变生成状态。
+  /**
+   * 记录当前房间收到的业务信令，供接入方查看事件类型与内容。
+   *
+   * @param room 当前 RTC 房间实例。
+   * @param message 日志内容、错误说明或收到的信令文本。
+   * @returns 无返回值。
+   */
   private logReceivedRoomSignal(room: RTCRoom, message: string): void {
     if (this.room !== room && this.pendingRoom !== room) {
       return;

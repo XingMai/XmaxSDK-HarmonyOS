@@ -1,3 +1,14 @@
+//
+//  native_audio_file_decoder.cpp
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 #include "native_audio_file_decoder.h"
 
 #include <algorithm>
@@ -24,21 +35,54 @@
 #include "multimedia/player_framework/native_avsource.h"
 
 namespace {
+/**
+ * 携带 PCM 音频、播放时间戳及结束或错误通知。
+ */
 struct DecodedAudioPacket {
+
+  /** PCM 数据与播放时间 */
   std::vector<uint8_t> data;
   int64_t timestampUs = 0;
+
+  /** 结束与错误通知 */
   bool endOfStream = false;
   std::string error;
 };
 
+/**
+ * 连续解码本地音频，转换为 48 kHz 单声道 PCM 并按播放时间轴输出。
+ */
 class NativeAudioFileDecoder {
  public:
+  /**
+   * 创建音频文件解码器。
+   *
+   * @returns 无返回值；完成实例初始化。
+   */
   NativeAudioFileDecoder() = default;
 
+  /**
+   * 停止媒体输出并释放实例持有的原生资源与缓存。
+   *
+   * @returns 无返回值。
+   */
   ~NativeAudioFileDecoder() {
     Stop();
   }
 
+  /**
+   * 创建并配置原生媒体资源，准备按目标规格输出媒体数据。
+   *
+   * @param env 当前 ArkTS N-API 执行环境。
+   * @param listener 用于交付媒体帧、结束或错误通知的 ArkTS 函数。
+   * @param sourceFd 由调用方打开的文件描述符；解码器会复制描述符以独立管理生命周期。
+   * @param sourceSize 源文件的字节长度。
+   * @param playbackAnchorUs 媒体起点对应的单调播放锚点，单位微秒。
+   * @param mediaStartUs 源媒体时间轴起点，单位微秒。
+   * @param cycleDurationUs 一轮媒体播放时长，单位微秒。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 初始化成功时返回 true；失败返回 false 并写入错误说明。
+   */
   bool Initialize(
       napi_env env,
       napi_value listener,
@@ -131,6 +175,11 @@ class NativeAudioFileDecoder {
     return true;
   }
 
+  /**
+   * 暂停连续媒体输出并唤醒节奏等待，使工作线程响应暂停状态。
+   *
+   * @returns 无返回值。
+   */
   void Pause() {
     if (!running_.load()) {
       return;
@@ -139,6 +188,12 @@ class NativeAudioFileDecoder {
     pacingCondition_.notify_all();
   }
 
+  /**
+   * 按暂停时长平移播放锚点，恢复连续媒体输出。
+   *
+   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
+   * @returns 无返回值。
+   */
   void Resume(int64_t pausedDurationUs) {
     if (!running_.load()) {
       return;
@@ -150,6 +205,11 @@ class NativeAudioFileDecoder {
     pacingCondition_.notify_all();
   }
 
+  /**
+   * 停止媒体输出与相关线程，并释放文件、系统媒体资源和回调引用。
+   *
+   * @returns 无返回值。
+   */
   void Stop() {
     const bool wasRunning = running_.exchange(false);
     paused_.store(false);
@@ -193,6 +253,12 @@ class NativeAudioFileDecoder {
   }
 
  private:
+  /**
+   * 查找并选择有效音频轨道，保存其格式和轨道索引。
+   *
+   * @param error 写入失败原因的字符串指针。
+   * @returns 找到有效音轨时返回 true，否则返回 false 并写入错误。
+   */
   bool SelectAudioTrack(std::string* error) {
     OH_AVFormat* sourceFormat = OH_AVSource_GetSourceFormat(source_);
     int32_t trackCount = 0;
@@ -231,6 +297,14 @@ class NativeAudioFileDecoder {
     return false;
   }
 
+  /**
+   * 创建用于向 ArkTS 线程交付媒体结果的线程安全回调。
+   *
+   * @param env 当前 ArkTS N-API 执行环境。
+   * @param listener 用于交付媒体帧、结束或错误通知的 ArkTS 函数。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 回调创建成功时返回 true，失败时返回 false 并写入错误。
+   */
   bool CreateListener(
       napi_env env,
       napi_value listener,
@@ -260,6 +334,13 @@ class NativeAudioFileDecoder {
     return true;
   }
 
+  /**
+   * 接收系统解码错误，将错误码转换为媒体失败通知。
+   *
+   * @param errorCode 系统解码器返回的错误码。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnError(
       OH_AVCodec*,
       int32_t errorCode,
@@ -271,6 +352,13 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 同步系统解码器报告的输出格式，供后续帧读取和转换使用。
+   *
+   * @param format 系统解码器报告的媒体格式。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnStreamChanged(
       OH_AVCodec*,
       OH_AVFormat* format,
@@ -291,6 +379,15 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 从选中媒体轨道读取压缩数据，填入解码器请求的输入缓冲区。
+   *
+   * @param codec 请求或交付缓冲区的系统解码器。
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnNeedInputBuffer(
       OH_AVCodec* codec,
       uint32_t index,
@@ -338,6 +435,15 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 处理系统解码器输出的媒体缓冲区，并在完成后归还缓冲区索引。
+   *
+   * @param codec 请求或交付缓冲区的系统解码器。
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnNewOutputBuffer(
       OH_AVCodec* codec,
       uint32_t index,
@@ -355,6 +461,12 @@ class NativeAudioFileDecoder {
     OH_AudioCodec_FreeOutputBuffer(codec, index);
   }
 
+  /**
+   * 读取解码缓冲数据及时间戳，转换并按播放时间轴交付媒体帧。
+   *
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @returns 无返回值。
+   */
   void HandleOutputBuffer(OH_AVBuffer* buffer) {
     if (!running_.load() || converter_ == nullptr) {
       return;
@@ -403,6 +515,13 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 将 PCM 数据与对应播放时间封装为音频包并交付到 ArkTS。
+   *
+   * @param data 需要转移所有权的 PCM 数据。
+   * @param timestampUs 媒体输出时间戳，单位微秒。
+   * @returns 无返回值。
+   */
   void DispatchAudioPacket(
       std::vector<uint8_t> data,
       int64_t timestampUs) {
@@ -426,6 +545,12 @@ class NativeAudioFileDecoder {
     Dispatch(packet);
   }
 
+  /**
+   * 按目标播放时间等待，同时响应暂停和停止请求，避免解码输出快于播放进度。
+   *
+   * @param timestampUs 媒体输出时间戳，单位微秒。
+   * @returns 无返回值。
+   */
   void Pace(int64_t timestampUs) {
     std::unique_lock<std::mutex> lock(pacingMutex_);
     while (running_.load()) {
@@ -445,6 +570,11 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 等待媒体恢复播放或停止，供解码回调遵守暂停状态。
+   *
+   * @returns 仍在运行且允许播放时返回 true，已经停止时返回 false。
+   */
   bool WaitUntilPlaying() {
     std::unique_lock<std::mutex> lock(pacingMutex_);
     pacingCondition_.wait(lock, [this] {
@@ -453,12 +583,24 @@ class NativeAudioFileDecoder {
     return running_.load();
   }
 
+  /**
+   * 将媒体时间戳映射为包含暂停补偿的单调播放时间。
+   *
+   * @param mediaTimestampUs 源媒体时间戳，单位微秒。
+   * @returns 以微秒为单位的播放时间戳。
+   */
   int64_t PlaybackTimestampUs(int64_t mediaTimestampUs) const {
     return playbackAnchorUs_.load() + std::max<int64_t>(
         mediaTimestampUs - mediaStartUs_,
         0);
   }
 
+  /**
+   * 仅通知一次媒体处理错误，避免重复错误回调。
+   *
+   * @param message 需要交付或记录的错误原因。
+   * @returns 无返回值。
+   */
   void ReportError(const std::string& message) {
     if (reportedError_.exchange(true)) {
       return;
@@ -469,6 +611,12 @@ class NativeAudioFileDecoder {
     Dispatch(packet);
   }
 
+  /**
+   * 将媒体数据包提交到 ArkTS 线程安全回调队列；提交失败时释放数据包。
+   *
+   * @param packet 需要消费、交付或释放的媒体数据包。
+   * @returns 无返回值。
+   */
   void Dispatch(DecodedAudioPacket* packet) {
     if (listener_ == nullptr ||
         napi_call_threadsafe_function(
@@ -477,6 +625,14 @@ class NativeAudioFileDecoder {
     }
   }
 
+  /**
+   * 在 ArkTS 线程交付媒体数据或状态通知，并按交付结果转移或释放数据包。
+   *
+   * @param env 当前 ArkTS N-API 执行环境。
+   * @param callback 需要在 ArkTS 线程调用的函数。
+   * @param data 关联的原生数据包或异步任务上下文。
+   * @returns 无返回值。
+   */
   static void CallListener(
       napi_env env,
       napi_value callback,
@@ -542,27 +698,44 @@ class NativeAudioFileDecoder {
     delete packet;
   }
 
+  /** 文件、解封装与音频解码资源 */
   int32_t fd_ = -1;
   OH_AVSource* source_ = nullptr;
   OH_AVDemuxer* demuxer_ = nullptr;
   OH_AVCodec* decoder_ = nullptr;
   OH_AVFormat* trackFormat_ = nullptr;
   uint32_t trackIndex_ = 0;
+
+  /** ArkTS 结果通知 */
   napi_threadsafe_function listener_ = nullptr;
 
+  /** 运行、暂停与错误去重状态 */
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> reportedError_{false};
+
+  /** 解封装并发访问与输入结束状态 */
   std::mutex demuxerMutex_;
   bool inputEnded_ = false;
+
+  /** 播放节奏等待与单调时间轴 */
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
 
   std::atomic<int64_t> playbackAnchorUs_{0};
   int64_t mediaStartUs_ = 0;
+
+  /** PCM 重采样与组包 */
   std::unique_ptr<xmax::AudioPcmConverter> converter_;
 };
 
+/**
+ * 从 ArkTS 对象中读取其绑定的原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns 有效解码器指针；调用无效时返回空指针并抛出异常。
+ */
 NativeAudioFileDecoder* UnwrapDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -589,6 +762,13 @@ NativeAudioFileDecoder* UnwrapDecoder(
   return decoder;
 }
 
+/**
+ * 将 ArkTS 暂停请求转交给原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns ArkTS undefined。
+ */
 napi_value PauseDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -603,6 +783,13 @@ napi_value PauseDecoder(
   return result;
 }
 
+/**
+ * 读取暂停时长并恢复原生文件解码输出。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns ArkTS undefined；参数无效时抛出异常。
+ */
 napi_value ResumeDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -631,10 +818,23 @@ napi_value ResumeDecoder(
   return result;
 }
 
+/**
+ * 在 ArkTS 解码器对象回收时删除原生实例并释放媒体资源。
+ *
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void FinalizeDecoder(napi_env, void* data, void*) {
   delete static_cast<NativeAudioFileDecoder*>(data);
 }
 
+/**
+ * 释放 ArkTS 对象绑定的原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns ArkTS undefined。
+ */
 napi_value ReleaseDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -648,6 +848,13 @@ napi_value ReleaseDecoder(
   return result;
 }
 
+/**
+ * 解析文件与播放参数，创建并启动原生 PCM 音频解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns 包装原生音频解码器的 ArkTS 对象；失败时抛出异常。
+ */
 napi_value CreateAudioFileDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -743,9 +950,16 @@ napi_value CreateAudioFileDecoder(
       nullptr);
   return result;
 }
-}  // namespace
+}  /** namespace */
 
 namespace xmax {
+/**
+ * 向原生模块导出音频文件解码器的创建入口。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param exports 需要挂载 SDK 原生入口的模块导出对象。
+ * @returns 无返回值。
+ */
 void DefineNativeAudioFileDecoder(
     napi_env env,
     napi_value exports) {
@@ -761,4 +975,4 @@ void DefineNativeAudioFileDecoder(
   };
   napi_define_properties(env, exports, 1, &descriptor);
 }
-}  // namespace xmax
+}  /** namespace xmax */

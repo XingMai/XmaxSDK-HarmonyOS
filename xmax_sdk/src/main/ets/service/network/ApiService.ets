@@ -1,3 +1,14 @@
+//
+//  ApiService.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { http } from '@kit.NetworkKit';
 import { ErrorMessageFormatter } from '../../foundation/errors/ErrorMessageFormatter';
 import { RuntimeInfo } from '../../foundation/runtime/RuntimeInfo';
@@ -13,6 +24,7 @@ const API_TIMEOUT_MS: number = 15000;
 /** 表示 Xmax API 的统一响应结构。 */
 interface ApiEnvelope {
 
+  /** 服务端响应状态与业务数据 */
   success?: boolean;
   code?: number;
   message?: string;
@@ -22,6 +34,7 @@ interface ApiEnvelope {
 /** 负责发送 Xmax API 请求并统一处理响应、日志和错误。 */
 export class ApiService implements ApiServicing {
 
+  /** 服务访问凭证与基础地址 */
   private readonly apiKey: string;
   private readonly baseURL: string;
 
@@ -30,6 +43,7 @@ export class ApiService implements ApiServicing {
    *
    * @param apiKey 调用 Xmax API 使用的访问密钥。
    * @param baseURL Xmax API 基础地址。
+   * @returns 新建的 ApiService 实例。
    */
   constructor(apiKey: string, baseURL: string) {
     this.apiKey = apiKey;

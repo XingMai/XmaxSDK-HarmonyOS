@@ -1,10 +1,31 @@
+//
+//  EncodingBitratePolicy.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { XmaxError, XmaxErrorCode } from '../../foundation/errors/XmaxError';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
+/** 定义插值表中像素量或帧率对应的参考码率。 */
 class BitratePoint {
+
+  /** 插值输入与参考码率 */
   readonly value: number;
   readonly bitrate: number;
 
+  /**
+   * 创建码率参考点。
+   *
+   * @param value 待校验、转换或保存的数值。
+   * @param bitrate 参考码率，单位 kbps。
+   * @returns 新建的 BitratePoint 实例。
+   */
   constructor(value: number, bitrate: number) {
     this.value = value;
     this.bitrate = bitrate;
@@ -13,16 +34,32 @@ class BitratePoint {
 
 /** 上下行共用的码率预算，单位 kbps。 */
 export class VideoBitrateBudget {
+
+  /** 编码码率范围 */
   readonly minimum: number;
   readonly maximum: number;
+
+  /**
+   * 创建视频码率预算。
+   *
+   * @param minimum 码率下限，单位 kbps。
+   * @param maximum 码率上限，单位 kbps。
+   * @returns 新建的 VideoBitrateBudget 实例。
+   */
   constructor(minimum: number, maximum: number) {
     this.minimum = minimum;
     this.maximum = maximum;
   }
 }
 
-/** 与 iOS 对齐：默认最低 100，最高为画质优先参考值的 0.6 倍。 */
+/** 按画面尺寸与帧率计算编码码率；默认下限 100 kbps，上限取清晰度优先参考值的 0.6 倍且至少为 100 kbps。 */
 export class EncodingBitratePolicy {
+  /**
+   * 校验视频格式并计算编码码率范围，优先使用显式设置。
+   *
+   * @param format 需要使用的视频格式。
+   * @returns 码率下限和上限，单位 kbps。
+   */
   static resolve(format: RealtimeVideoFormat): VideoBitrateBudget {
     format.validate();
     let maximum: number;
@@ -46,6 +83,7 @@ export class EncodingBitratePolicy {
     return new VideoBitrateBudget(minimum, maximum);
   }
 
+  /** 不同像素量与帧率的参考码率表 */
   private static readonly REFERENCE_15_FPS: BitratePoint[] = [
     new BitratePoint(120 * 120, 50),
     new BitratePoint(160 * 120, 65),
@@ -74,6 +112,13 @@ export class EncodingBitratePolicy {
     new BitratePoint(1920 * 1080, 3150)
   ];
 
+  /**
+   * 按像素量和帧率对参考表插值，计算均衡与清晰度优先码率。
+   *
+   * @param pixels 画面总像素数。
+   * @param fps 视频帧率，单位 fps。
+   * @returns 均衡、清晰度优先的两个参考码率，单位 kbps。
+   */
   private static resolveBitrates(pixels: number, fps: number): number[] {
     const bitrate15: number = EncodingBitratePolicy.interpolate(pixels, EncodingBitratePolicy.REFERENCE_15_FPS);
     const first30: BitratePoint = EncodingBitratePolicy.REFERENCE_30_FPS[0];
@@ -93,6 +138,13 @@ export class EncodingBitratePolicy {
     ];
   }
 
+  /**
+   * 在参考点间线性插值，并按端点比例处理表外值。
+   *
+   * @param value 待校验、转换或保存的数值。
+   * @param points 本次提交或绘制的触点集合。
+   * @returns 对应输入值的参考码率。
+   */
   private static interpolate(value: number, points: BitratePoint[]): number {
     const first: BitratePoint = points[0];
     if (value <= first.value) {

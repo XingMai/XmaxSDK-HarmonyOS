@@ -1,3 +1,14 @@
+//
+//  PermissionManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   abilityAccessCtrl,
   common,
@@ -16,12 +27,14 @@ const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE';
 /** 检查并申请 SDK 使用相机和麦克风所需的平台权限。 */
 export class PermissionManager implements PermissionManaging {
 
+  /** 权限请求所需的平台上下文 */
   private readonly context: common.UIAbilityContext;
 
   /**
    * 创建权限 Manager。
    *
    * @param context 用于检查和申请权限的页面上下文。
+   * @returns 新建的 PermissionManager 实例。
    */
   constructor(context: common.UIAbilityContext) {
     this.context = context;

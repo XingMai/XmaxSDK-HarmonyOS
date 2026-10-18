@@ -1,3 +1,14 @@
+//
+//  MediaSourceController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { RealtimeMediaSource } from '../service/realtime/RealtimeMediaSource';
 import { fileIo } from '@kit.CoreFileKit';
 import { media } from '@kit.MediaKit';
@@ -24,14 +35,23 @@ import { MediaSourceConfiguration } from './MediaSourceConfiguration';
 import { MediaSourceControlling } from './MediaSourceControlling';
 import { MediaTimeline } from './MediaTimeline';
 
+/**
+ * 接收按播放时间轴输出的 PCM 音频帧。
+ *
+ * @param frame 需要处理或交付的媒体帧。
+ * @returns 无返回值。
+ */
 export type MediaSourceAudioFrameListener = (frame: AudioFrame) => void;
 
 /** 保存本地媒体文件的音视频元数据。 */
 class MediaSourceMetadata {
 
+  /** 原始视频规格与方向 */
   readonly width: number;
   readonly height: number;
   readonly rotation: VideoRotation;
+
+  /** 文件时长与音轨信息 */
   readonly durationUs: number;
   readonly hasAudio: boolean;
 
@@ -43,6 +63,7 @@ class MediaSourceMetadata {
    * @param rotation 视频源旋转方向。
    * @param durationUs 媒体文件时长，单位为微秒。
    * @param hasAudio 媒体文件是否包含可用音轨。
+   * @returns 新建的 MediaSourceMetadata 实例。
    */
   constructor(
     width: number,
@@ -62,25 +83,36 @@ class MediaSourceMetadata {
 /** 协调本地媒体文件的音视频解码、同步和循环输出。 */
 export class MediaSourceController implements MediaSourceControlling {
 
-  // 基础层组件
+  /** 音视频源与尺寸计算依赖 */
   private readonly audioManager: AudioManaging;
 
-  // 服务层组件
+  /** 服务层组件 */
   private readonly mediaService: MediaServicing;
 
-  // 媒体层组件
+  /** 媒体层组件 */
   private readonly videoSourceController: VideoSourceControlling;
   private readonly audioSourceController: AudioSourceControlling;
 
-  // 媒体文件资源
+  /** 文件元数据与播放时间轴 */
   private metadata: MediaSourceMetadata | null = null;
   private timeline: MediaTimeline | null = null;
+
+  /** 音视频播放及结束协同 */
   private isPaused: boolean = false;
   private videoEnded: boolean = false;
   private audioEnded: boolean = false;
   private completionPending: boolean = false;
   private completionNotified: boolean = false;
+
+  /** 异步播放版本 */
   private playbackVersion: number = 0;
+
+  /** 播放结果与错误通知 */
+  /**
+   * 通知本地媒体已完成当前播放。
+   *
+   * @returns 无返回值。
+   */
   private readonly endedListener: () => void;
   private readonly errorListener: VideoSourceErrorListener;
 
@@ -92,6 +124,8 @@ export class MediaSourceController implements MediaSourceControlling {
    * @param videoFrameListener 视频帧输出监听器。
    * @param audioFrameListener 音频帧输出监听器。
    * @param errorListener 媒体源错误监听器。
+   * @param endedListener 当前媒体播放结束时执行的回调。
+   * @returns 新建的 MediaSourceController 实例。
    */
   constructor(
     mediaService: MediaServicing,
@@ -140,6 +174,11 @@ export class MediaSourceController implements MediaSourceControlling {
     return this.metadata?.hasAudio ?? false;
   }
 
+  /**
+   * 判断本地文件的音视频输出是否全部结束。
+   *
+   * @returns 所有有效媒体轨道均已结束时返回 true。
+   */
   get hasEnded(): boolean {
     return this.completionNotified;
   }
@@ -149,6 +188,7 @@ export class MediaSourceController implements MediaSourceControlling {
    *
    * @param filePath 本地媒体文件路径。
    * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 文件实际使用的媒体源配置。
    */
   async prepare(
@@ -240,7 +280,11 @@ export class MediaSourceController implements MediaSourceControlling {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 暂停文件音视频时间轴并清空本地音频余量。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   async pause(): Promise<void> {
     if (this.isPaused) {
       return;
@@ -279,7 +323,11 @@ export class MediaSourceController implements MediaSourceControlling {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 从原媒体位置恢复文件音视频时间轴。
+   *
+   * @returns 无返回值。
+   */
   resume(): void {
     if (!this.isPaused) {
       return;
@@ -300,6 +348,11 @@ export class MediaSourceController implements MediaSourceControlling {
     void this.finishPlaybackIfEnded();
   }
 
+  /**
+   * 在音视频轨道均结束且播放队列排空后通知播放完成。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   private async finishPlaybackIfEnded(): Promise<void> {
     if (!this.videoEnded || !this.audioEnded || this.isPaused || this.timeline === null ||
       this.completionPending || this.completionNotified) {
@@ -337,12 +390,21 @@ export class MediaSourceController implements MediaSourceControlling {
     this.audioManager.setPlaybackEnabled(enabled);
   }
 
-  /** @inheritdoc */
+  /**
+   * 当前配置的本地视频预览音量。
+   *
+   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
+   */
   get localAudioVolume(): number {
     return this.audioManager.volume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置本地预览音量，不改变输出给其他消费者的音频帧。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async setLocalAudioVolume(volume: number): Promise<void> {
     await this.audioManager.setVolume(volume);
   }

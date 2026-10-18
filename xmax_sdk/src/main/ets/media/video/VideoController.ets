@@ -1,3 +1,14 @@
+//
+//  VideoController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { common } from '@kit.AbilityKit';
 import { AudioFrame } from '../../foundation/media/audio/AudioFrame';
 import { AudioManager } from '../../foundation/media/audio/AudioManager';
@@ -33,26 +44,36 @@ import { MediaTimeline } from '../MediaTimeline';
 /** 协调本地视频文件、音轨、编码、传输和预览资源。 */
 export class VideoController {
 
-  // 基础层组件
+  /** 文件媒体、权限与传输依赖 */
   private readonly rtcManager: RtcManaging;
   private readonly audioManager: AudioManaging;
   private readonly permissionManager: PermissionManaging;
+  /**
+   * 交付视频输入或发布过程中的 SDK 错误。
+   *
+   * @param error 导致当前等待或媒体输出失败的 SDK 错误。
+   * @returns 无返回值。
+   */
   private readonly errorListener: (error: XmaxError) => void;
 
-  // 服务层组件
+  /** 服务层组件 */
   private readonly mediaService: MediaServicing;
 
-  // 业务层组件
+  /** 业务层组件 */
   private readonly mediaSourceController: MediaSourceControlling;
   private readonly streamController: StreamControlling;
 
-  // 本地资源
+  /** 本地视频轨道与发布状态 */
   private activeTrack: RealtimeVideoTrack | null = null;
   private acceptsFrames: boolean = false;
   private currentPlaybackState: LocalVideoPlaybackState | undefined = undefined;
+
+  /** 视频缓存与已发布时间戳 */
   private lastVideoFrame: VideoFrame | null = null;
   private lastVideoTimestampUs: number = -1;
   private lastAudioTimestampUs: number = -1;
+
+  /** 暂停期间的静止画面与静音发送 */
   private frozenVideoTimer: number = -1;
   private silentAudioTimer: number = -1;
   private readonly silentAudioData: Uint8Array = new Uint8Array(
@@ -67,6 +88,8 @@ export class VideoController {
    * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
    * @param errorListener 持续媒体输出错误监听器。
    * @param mediaService 当前模型的媒体输入规则。
+   * @param videoEndedListener 本地视频播放结束时执行的回调。
+   * @returns 新建的 VideoController 实例。
    */
   constructor(
     context: common.UIAbilityContext,
@@ -118,17 +141,29 @@ export class VideoController {
     );
   }
 
-  /** @returns 当前活动的本地视频轨道；尚未创建时返回空值。 */
+  /**
+   * 读取当前本地输入提供的视频轨道。
+   *
+   * @returns 当前轨道；尚无本地媒体时返回 null。
+   */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
   }
 
-  /** @returns 当前视频文件是否包含并输出音轨。 */
+  /**
+   * 获取当前媒体文件是否包含可用音轨。
+   *
+   * @returns 当前视频文件是否包含并输出音轨。
+   */
   get hasAudio(): boolean {
     return this.mediaSourceController.hasAudio;
   }
 
-  /** @returns 当前文件视频播放状态；尚未创建视频流时返回空值。 */
+  /**
+   * 读取本地视频的播放状态。
+   *
+   * @returns 播放状态；尚未创建本地视频时返回 undefined。
+   */
   get playbackState(): LocalVideoPlaybackState | undefined {
     return this.currentPlaybackState;
   }
@@ -138,6 +173,7 @@ export class VideoController {
    *
    * @param filePath 本地视频文件路径。
    * @param videoFormat 可选的视频输出格式；未传入时根据文件信息计算。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 创建完成后的本地视频媒体流。
    */
   async createLocalVideoStream(
@@ -201,7 +237,11 @@ export class VideoController {
     }
   }
 
-  /** 暂停文件播放并持续发布最后一帧与静音音频。 */
+  /**
+   * 暂停文件播放并持续发布最后一帧与静音音频。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   async pauseLocalVideoStream(): Promise<void> {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PAUSE) {
       return;
@@ -225,7 +265,11 @@ export class VideoController {
     this.currentPlaybackState = LocalVideoPlaybackState.PAUSE;
   }
 
-  /** 停止冻结帧发布并从原媒体位置恢复播放。 */
+  /**
+   * 停止冻结帧发布并从原媒体位置恢复播放。
+   *
+   * @returns 无返回值。
+   */
   resumeLocalVideoStream(): void {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PLAYING) {
       return;
@@ -259,12 +303,21 @@ export class VideoController {
     this.mediaSourceController.setLocalAudioPreviewEnabled(enabled);
   }
 
-  /** 当前配置的本地视频预览音量。 */
+  /**
+   * 当前配置的本地视频预览音量。
+   *
+   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
+   */
   get localAudioVolume(): number {
     return this.mediaSourceController.localAudioVolume;
   }
 
-  /** 设置本地视频预览音量，未创建媒体源时缓存到后续播放。 */
+  /**
+   * 设置本地视频预览音量，未创建媒体源时缓存到后续播放。
+   *
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async setLocalAudioVolume(volume: number): Promise<void> {
     await this.mediaSourceController.setLocalAudioVolume(volume);
   }
@@ -274,6 +327,7 @@ export class VideoController {
    *
    * @param filePath 本地视频文件路径。
    * @param videoFormat 可选的视频输出格式。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 完成底层资源装配后的本地视频媒体流。
    */
   private async createStream(
@@ -345,6 +399,12 @@ export class VideoController {
     }
   }
 
+  /**
+   * 缓存并向 RTC 提交解码视频帧，保持时间戳递增。
+   *
+   * @param frame 需要处理或交付的媒体帧。
+   * @returns 无返回值。
+   */
   private publishDecodedVideoFrame(frame: VideoFrame): void {
     if (!this.acceptsFrames) {
       return;
@@ -364,6 +424,12 @@ export class VideoController {
     this.streamController.pushLocalVideoFrame(output);
   }
 
+  /**
+   * 向 RTC 提交播放时间轴上的解码音频帧。
+   *
+   * @param frame 需要处理或交付的媒体帧。
+   * @returns 无返回值。
+   */
   private publishDecodedAudioFrame(frame: AudioFrame): void {
     if (!this.acceptsFrames) {
       return;
@@ -377,6 +443,11 @@ export class VideoController {
     this.streamController.pushLocalAudioFrame(output);
   }
 
+  /**
+   * 暂停本地视频期间定时发送静止画面和静音，维持传输连续性。
+   *
+   * @returns 无返回值。
+   */
   private startFrozenPublishing(): void {
     const track: RealtimeVideoTrack | null = this.activeTrack;
     if (track === null || this.frozenVideoTimer >= 0) {
@@ -396,6 +467,11 @@ export class VideoController {
     }
   }
 
+  /**
+   * 停止暂停期间的静止画面和静音发送定时器。
+   *
+   * @returns 无返回值。
+   */
   private stopFrozenPublishing(): void {
     if (this.frozenVideoTimer >= 0) {
       clearInterval(this.frozenVideoTimer);
@@ -407,6 +483,11 @@ export class VideoController {
     }
   }
 
+  /**
+   * 用递增时间戳重复发送最近一帧，维持暂停期间的视频传输。
+   *
+   * @returns 无返回值。
+   */
   private publishFrozenVideoFrame(): void {
     const frame: VideoFrame | null = this.lastVideoFrame;
     if (!this.acceptsFrames || frame === null) {
@@ -428,6 +509,11 @@ export class VideoController {
     }
   }
 
+  /**
+   * 发送一帧静音 PCM，维持暂停期间的音频时间轴。
+   *
+   * @returns 无返回值。
+   */
   private publishSilentAudioFrame(): void {
     if (!this.acceptsFrames || !this.hasAudio) {
       return;
@@ -446,6 +532,12 @@ export class VideoController {
     }
   }
 
+  /**
+   * 将帧提交异常转换为媒体错误并通知监听器。
+   *
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private reportPublishingError(error: Object): void {
     this.errorListener(new XmaxError(
       XmaxErrorCode.MEDIA_ERROR,
@@ -453,6 +545,11 @@ export class VideoController {
     ));
   }
 
+  /**
+   * 清除本地视频缓存帧和已提交的音视频时间戳。
+   *
+   * @returns 无返回值。
+   */
   private resetPlaybackFrames(): void {
     this.lastVideoFrame = null;
     this.lastVideoTimestampUs = -1;

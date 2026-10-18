@@ -1,3 +1,14 @@
+//
+//  XmaxClient.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { common } from '@kit.AbilityKit';
 import {
@@ -20,13 +31,14 @@ import { XmaxStorageManager } from './storage/XmaxStorageManager';
 /** SDK 的统一入口，负责创建实时、存储和媒体业务组件。 */
 export class XmaxClient {
 
+  /** 全局配置 */
   /** 客户端使用的全局配置。 */
   readonly configuration: XmaxConfiguration;
 
-  // 平台资源
+  /** 平台资源 */
   private readonly context?: common.UIAbilityContext;
 
-  // 服务层组件
+  /** 服务依赖 */
   private readonly apiService: ApiServicing;
 
   /**
@@ -34,6 +46,7 @@ export class XmaxClient {
    *
    * @param configuration SDK 全局配置。
    * @param context 可选的平台页面上下文；创建依赖平台能力的 Manager 时必须提供。
+   * @returns 新建的 XmaxClient 实例。
    */
   constructor(
     configuration: XmaxConfiguration,

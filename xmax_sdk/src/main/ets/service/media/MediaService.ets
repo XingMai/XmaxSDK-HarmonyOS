@@ -1,3 +1,14 @@
+//
+//  MediaService.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { RealtimeMediaSource } from '../realtime/RealtimeMediaSource';
 import { ImageSize } from './ImageSize';
 import { MediaServicing } from './MediaServicing';
@@ -7,13 +18,26 @@ import { XmaxError, XmaxErrorCode } from '../../foundation/errors/XmaxError';
 /** 提供与模型输入约束相关的媒体业务规则。 */
 export class MediaService implements MediaServicing {
 
+  /** 模型媒体约束 */
   readonly model: ModelDefinition;
 
+  /**
+   * 创建实时生成业务配置。
+   *
+   * @param model 实时生成业务使用的模型定义。
+   * @returns 新建的 MediaService 实例。
+   */
   constructor(model: ModelDefinition = RealtimeModels.realtime(RealtimeModel.X2_0)) {
     this.model = model;
   }
 
-  /** 计算本地媒体帧尺寸：不放大、限制像素面积、优先精确等比并按 4 对齐。 */
+  /**
+   * 计算本地媒体帧尺寸：不放大、限制像素面积、优先精确等比并按 4 对齐。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @param source 媒体输入类型，用于选择尺寸处理规则。
+   * @returns 计算得到的媒体宽高。
+   */
   resolveMediaSize(size: ImageSize, source: RealtimeMediaSource): ImageSize {
     this.validateSize(size);
     const buckets: ImageSize[] = this.model.resolutionBuckets;
@@ -29,7 +53,12 @@ export class MediaService implements MediaServicing {
     return this.alignedSize(size, scale);
   }
 
-  /** 选择模型生成画布，不改变本地媒体规格。 */
+  /**
+   * 选择模型生成画布，不改变本地媒体规格。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @returns 计算得到的媒体宽高。
+   */
   resolveGenerationSize(size: ImageSize): ImageSize {
     this.validateSize(size);
     const aspect: number = size.width / size.height;
@@ -50,7 +79,14 @@ export class MediaService implements MediaServicing {
     return this.resolveModelInputSize(size);
   }
 
-  /** 根据回传宽高上限及可选的 90 万像素插帧限制计算尺寸，不改变本地媒体。 */
+  /**
+   * 根据回传宽高上限及可选的 90 万像素插帧限制计算尺寸，不改变本地媒体。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @param maximumSize 允许的结果流宽高上限。
+   * @param frameInterpolationEnabled 是否将插帧能力纳入目标尺寸约束。
+   * @returns 计算得到的媒体宽高。
+   */
   resolveTargetSize(size: ImageSize, maximumSize: ImageSize, frameInterpolationEnabled: boolean = false): ImageSize {
     this.validateSize(size);
     if (!Number.isFinite(maximumSize.width) || !Number.isFinite(maximumSize.height) ||
@@ -65,6 +101,12 @@ export class MediaService implements MediaServicing {
     return this.alignedSize(size, scale);
   }
 
+  /**
+   * 验证媒体宽高为安全正整数且总像素数可安全表示；非法时抛出配置错误。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @returns 无返回值。
+   */
   private validateSize(size: ImageSize): void {
     if (!Number.isSafeInteger(size.width) || !Number.isSafeInteger(size.height) ||
       size.width <= 0 || size.height <= 0 || !Number.isSafeInteger(size.width * size.height)) {
@@ -72,7 +114,13 @@ export class MediaService implements MediaServicing {
     }
   }
 
-  /** 使用最简宽高比的整数倍；无法精确等比时分别向下对齐。 */
+  /**
+   * 使用最简宽高比的整数倍；无法精确等比时分别向下对齐。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @param scale 应用到媒体宽高的缩放比例。
+   * @returns 计算得到的媒体宽高。
+   */
   private alignedSize(size: ImageSize, scale: number): ImageSize {
     let divisor: number = size.width;
     let remainder: number = size.height;
@@ -94,11 +142,12 @@ export class MediaService implements MediaServicing {
   }
 
   /**
-   * @deprecated 使用 resolveMediaSize 或 resolveGenerationSize 区分媒体帧与生成画布。
-   * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
+   * 计算符合模型固定分辨率或像素量约束的输入尺寸。
    *
    * @param size 原始媒体尺寸；宽高必须为有限且大于零的数值。
    * @returns 满足模型固定分辨率或像素量与对齐约束的尺寸。
+   * @deprecated 使用 resolveMediaSize 或 resolveGenerationSize 区分媒体帧与生成画布。
+   * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
    */
   resolveModelInputSize(size: ImageSize): ImageSize {
     const buckets: ImageSize[] = this.model.resolutionBuckets;
@@ -147,7 +196,13 @@ export class MediaService implements MediaServicing {
     return this.boundedAlignedSize(sourceWidth * scale, sourceHeight * scale);
   }
 
-  /** 对齐造成面积越界时，选择面积合法且相对目标偏差最小的尺寸。 */
+  /**
+   * 对齐造成面积越界时，选择面积合法且相对目标偏差最小的尺寸。
+   *
+   * @param width 画面宽度，单位像素。
+   * @param height 画面高度，单位像素。
+   * @returns 计算得到的媒体宽高。
+   */
   private boundedAlignedSize(width: number, height: number): ImageSize {
     const alignment: number = this.model.inputSizeAlignment;
     const unitPixels: number = alignment * alignment;

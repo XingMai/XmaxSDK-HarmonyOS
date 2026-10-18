@@ -1,7 +1,24 @@
+//
+//  video_frame_geometry.cpp
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 #include "video_frame_geometry.h"
 
 namespace xmax {
 namespace internal {
+/**
+ * 按目标宽高比与旋转方向计算源裁剪矩形及转换几何参数。
+ *
+ * @param configuration 源图像布局、旋转角度和目标尺寸配置。
+ * @returns 可供转换计划使用的源布局、裁剪和目标几何信息。
+ */
 VideoFrameTransformGeometry MakeVideoFrameTransformGeometry(
     const VideoFrameTransformConfiguration& configuration) {
   const bool swapsDimensions = configuration.rotation == 90 ||
@@ -72,5 +89,5 @@ VideoFrameTransformGeometry MakeVideoFrameTransformGeometry(
       sourceCrop
   };
 }
-}  // namespace internal
-}  // namespace xmax
+}  /** namespace internal */
+}  /** namespace xmax */

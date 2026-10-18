@@ -1,3 +1,14 @@
+//
+//  StorageServicing.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { DownloadedFile } from '../../foundation/storage/DownloadedFile';
 import { StorageProgressListener } from '../../foundation/storage/StorageProgressListener';
 import { StoredFile } from '../../foundation/storage/StoredFile';

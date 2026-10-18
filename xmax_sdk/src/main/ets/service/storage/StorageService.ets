@@ -1,3 +1,14 @@
+//
+//  StorageService.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   uri,
   util
@@ -22,6 +33,7 @@ import { StorageServicing } from './StorageServicing';
 /** 保存一次上传使用的临时存储配置和对象路径前缀。 */
 class TemporaryStorageConfiguration {
 
+  /** 上传目标路径与访问配置 */
   readonly prefix: string;
   readonly configuration: StorageConfiguration;
 
@@ -30,6 +42,7 @@ class TemporaryStorageConfiguration {
    *
    * @param prefix 上传对象使用的路径前缀。
    * @param configuration 基础层存储 Manager 使用的配置。
+   * @returns 新建的 TemporaryStorageConfiguration 实例。
    */
   constructor(
     prefix: string,
@@ -50,10 +63,10 @@ enum StorageMediaType {
 /** 协调图片和视频的上传、下载、临时凭证及图片安全检查。 */
 export class StorageService implements StorageServicing {
 
-  // 服务层组件
+  /** 上传凭证与文件操作依赖 */
   private readonly apiService: ApiServicing;
 
-  // 基础层组件
+  /** 基础层组件 */
   private readonly storageManager: StorageManaging;
 
   /**
@@ -61,6 +74,7 @@ export class StorageService implements StorageServicing {
    *
    * @param apiService 提供临时凭证和图片安全检查请求能力的 API Service。
    * @param storageManager 提供文件上传和下载能力的存储 Manager。
+   * @returns 新建的 StorageService 实例。
    */
   constructor(
     apiService: ApiServicing,

@@ -1,3 +1,14 @@
+//
+//  RtcManaging.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
 import { AudioFrame } from '../media/audio/AudioFrame';
@@ -10,8 +21,21 @@ import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
+/**
+ * 远端视频首次完成渲染时接收对应媒体流的回调。
+ *
+ * @param stream 需要绑定或处理的媒体流。
+ * @returns 无返回值。
+ */
 export type RtcRemoteVideoRenderedListener = (stream: RemoteStream) => void;
-/** copyFrame 只能在当前 RTC 回调内调用，按需复制帧数据。 */
+
+/**
+ * copyFrame 只能在当前 RTC 回调内调用，按需复制帧数据。
+ *
+ * @param stream 需要绑定或处理的媒体流。
+ * @param copyFrame 按需复制当前原生帧的函数；仅可在回调期间调用。
+ * @returns 无返回值。
+ */
 export type RtcRemoteVideoFrameListener = (stream: RemoteStream, copyFrame: () => RealtimeVideoFrame) => void;
 
 /** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
@@ -46,10 +70,18 @@ export interface RtcManaging {
    */
   useExternalVideoSource(): void;
 
-  /** 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。 */
+  /**
+   * 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。
+   *
+   * @returns 无返回值。
+   */
   startMicrophoneCapture(): void;
 
-  /** 停止 RTC 麦克风采集。 */
+  /**
+   * 停止 RTC 麦克风采集。
+   *
+   * @returns 无返回值。
+   */
   stopMicrophoneCapture(): void;
 
   /**
@@ -214,7 +246,12 @@ export interface RtcManaging {
    */
   unbindRemoteVideo(stream: RemoteStream): void;
 
-  /** 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。 */
+  /**
+   * 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @returns 截图完成后返回由调用方负责释放的 PixelMap；超时或失败时拒绝的 Promise。
+   */
   takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap>;
 
   /**
@@ -224,16 +261,37 @@ export interface RtcManaging {
    */
   renderLibraryName(): string;
 
-  /** 监听 RTC 已将远端首帧渲染到视图的事件。 */
+  /**
+   * 监听 RTC 已将远端首帧渲染到视图的事件。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void;
 
-  /** 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。 */
+  /**
+   * 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @returns 指定流在当前发布周期已成功渲染首帧时返回 true。
+   */
   hasRenderedRemoteVideo(stream: RemoteStream): boolean;
 
-  /** 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。 */
+  /**
+   * 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void;
 
-  /** 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。 */
+  /**
+   * 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @param enabled 是否开启该能力。
+   * @returns 无返回值。
+   */
   observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void;
 
   /**

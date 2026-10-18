@@ -1,3 +1,14 @@
+//
+//  XmaxRealtimeConnectionManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { ImageSize } from '../../service/media/ImageSize';
 import { TrajectoryRegistry } from '../../rendering/trajectory/TrajectoryRegistry';
 import { RealtimeTiming } from './RealtimeTiming';
@@ -20,7 +31,20 @@ import { VideoRenderRegistry } from '../../rendering/video/VideoRenderRegistry';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 
+/**
+ * 判断连接操作是否仍有效，用于忽略连接过程中的过期结果。
+ *
+ * @returns 当前连接操作仍有效时返回 true，否则返回 false。
+ */
 type ConnectionValidity = () => boolean;
+
+/**
+ * 连接心跳失败时接收会话标识和错误的回调。
+ *
+ * @param sessionId 服务端实时会话标识。
+ * @param error 当前操作失败或终止的原因。
+ * @returns 操作完成时兑现的 Promise。
+ */
 type ConnectionHeartbeatFailureHandler = (
   sessionId: string,
   error: XmaxError
@@ -29,26 +53,40 @@ type ConnectionHeartbeatFailureHandler = (
 /** 协调服务端会话、RTC 房间、本地发布和远端媒体资源。 */
 export class XmaxRealtimeConnectionManager {
 
+  /** 连接服务与媒体依赖 */
   private readonly timing: RealtimeTiming;
 
-  // 服务层组件
+  /** 服务层组件 */
   private readonly sessionService: RealtimeSessionServicing;
 
-  // 业务层组件
+  /** 业务层组件 */
   private readonly mediaController: MediaControlling;
   private readonly streamController: StreamControlling;
 
-  // 渲染层组件
+  /** 渲染层组件 */
   private readonly renderController: RenderControlling;
 
-  // 连接资源
+  /** 已建立的连接资源 */
   private activeRemoteTrack: RealtimeVideoTrack | null = null;
   private activeSession: RealtimeSession | null = null;
+
+  /** 结果流目标尺寸 */
   private activeTargetSize: ImageSize | undefined;
 
+  /**
+   * 读取当前会话请求的结果流目标尺寸。
+   *
+   * @returns 已设置的目标尺寸；未设置时返回 undefined。
+   */
   get currentTargetSize(): ImageSize | undefined { return this.activeTargetSize; }
 
-  /** 仅更新预期回传规格，不能改动轨迹的本地媒体基准。 */
+  /**
+   * 仅更新预期回传规格，不能改动轨迹的本地媒体基准。
+   *
+   * @param size 需要计算或发送的画面尺寸。
+   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
+   * @returns 无返回值。
+   */
   updateTargetSize(size: ImageSize, baseline: RealtimeVideoFormat): void {
     this.activeTargetSize = size;
     if (this.activeRemoteTrack !== null) {
@@ -65,6 +103,7 @@ export class XmaxRealtimeConnectionManager {
    * @param renderController 视频轨道、远端画面和轨迹绑定的统一渲染组件。
    * @param streamController RTC 房间、媒体流和信令的统一流组件。
    * @param timing 与实时 Manager 共享的启动耗时记录。
+   * @returns 新建的 XmaxRealtimeConnectionManager 实例。
    */
   constructor(
     apiService: ApiServicing,
@@ -85,17 +124,31 @@ export class XmaxRealtimeConnectionManager {
     this.renderController = renderController;
   }
 
-  /** @returns 当前活动的服务端会话标识；没有连接时返回空字符串。 */
+  /**
+   * 读取当前已建立连接的服务端会话标识。
+   *
+   * @returns 会话标识；尚未连接时返回空字符串。
+   */
   get currentSessionId(): string {
     return this.activeSession?.id ?? '';
   }
 
-  /** @returns 当前连接对应的远端流；未连接时返回空值。 */
+  /**
+   * 读取当前连接对应的远端媒体流。
+   *
+   * @returns 远端媒体流；尚未连接时返回 null。
+   */
   get currentRemoteStream(): RealtimeMediaStream | null {
     return this.activeRemoteTrack === null ? null :
       new RealtimeMediaStream(StreamId.REMOTE, this.activeRemoteTrack);
   }
 
+  /**
+   * 同步远端轨道的预期格式和交互媒体基准，供本地摄像头方向变化后继续生成。
+   *
+   * @param format 需要使用的视频格式。
+   * @returns 无返回值。
+   */
   updateVideoFormat(format: RealtimeVideoFormat): void {
     if (this.activeRemoteTrack !== null) {
       updateRealtimeVideoTrackFormat(this.activeRemoteTrack, this.activeTargetSize === undefined ? format :
@@ -129,11 +182,12 @@ export class XmaxRealtimeConnectionManager {
   /**
    * 创建服务端会话、加入 RTC 房间并发布本地媒体流。
    *
-   * @param model 服务端使用的实时生成模型名称。
+   * @param model 生成模型名称，用于隔离各模型的历史档位。
    * @param videoFormat 本地输入及远端结果使用的视频格式。
    * @param includeLocalAudio 是否同时发布本地音频流。
    * @param isCurrent 判断当前连接操作是否仍然有效的回调。
    * @param onHeartbeatFailure 会话心跳失败时执行的处理回调。
+   * @param targetSize 可选的生成结果流目标尺寸。
    * @returns 完成连接并注册渲染能力后的远端媒体流。
    */
   async connect(

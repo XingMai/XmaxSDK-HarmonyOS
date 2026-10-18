@@ -1,3 +1,14 @@
+//
+//  ImageController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { image } from '@kit.ImageKit';
 import {
   XmaxError,
@@ -25,18 +36,18 @@ import { StreamId } from '../../stream/StreamId';
 /** 协调本地图片解码、循环帧输出、编码和预览资源。 */
 export class ImageController {
 
-  // 基础层组件
+  /** 图片解码与传输依赖 */
   private readonly rtcManager: RtcManaging;
   private readonly imageManager: ImageManaging;
 
-  // 服务层组件
+  /** 服务层组件 */
   private readonly mediaService: MediaServicing;
 
-  // 业务层组件
+  /** 业务层组件 */
   private readonly imageSourceController: ImageSourceControlling;
   private readonly streamController: StreamControlling;
 
-  // 本地资源
+  /** 图片输出轨道与帧开关 */
   private activeTrack: RealtimeVideoTrack | null = null;
   private acceptsFrames: boolean = false;
 
@@ -47,6 +58,7 @@ export class ImageController {
    * @param streamController 提供编码配置和视频帧传输能力的统一流组件。
    * @param errorListener 持续图片帧输出错误监听器。
    * @param mediaService 当前模型的媒体输入规则。
+   * @returns 新建的 ImageController 实例。
    */
   constructor(
     rtcManager: RtcManaging,
@@ -81,7 +93,11 @@ export class ImageController {
     );
   }
 
-  /** @returns 当前活动的本地图片视频轨道；尚未创建时返回空值。 */
+  /**
+   * 读取当前本地输入提供的视频轨道。
+   *
+   * @returns 当前轨道；尚无本地媒体时返回 null。
+   */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
   }

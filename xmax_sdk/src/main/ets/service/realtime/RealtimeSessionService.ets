@@ -1,3 +1,14 @@
+//
+//  RealtimeSessionService.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   XmaxError,
   XmaxErrorCode
@@ -15,10 +26,10 @@ const SESSION_HEARTBEAT_INTERVAL_MS: number = 10000;
 /** 管理实时生成会话的创建、心跳维持和关闭。 */
 export class RealtimeSessionService implements RealtimeSessionServicing {
 
-  // 服务层组件
+  /** 服务端会话访问 */
   private readonly apiService: ApiServicing;
 
-  // 运行状态
+  /** 会话心跳与版本隔离 */
   private heartbeatTimer: number = -1;
   private heartbeatVersion: number = 0;
 
@@ -26,6 +37,7 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
    * 创建实时生成会话 Service。
    *
    * @param apiService 提供会话 API 请求能力的 API Service。
+   * @returns 新建的 RealtimeSessionService 实例。
    */
   constructor(apiService: ApiServicing) {
     this.apiService = apiService;
@@ -34,7 +46,7 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   /**
    * 为指定实时生成模型创建会话。
    *
-   * @param model 实时生成模型标识。
+   * @param model 生成模型名称，用于隔离各模型的历史档位。
    * @returns 创建的实时生成会话。
    */
   async createSession(model: string): Promise<RealtimeSession> {

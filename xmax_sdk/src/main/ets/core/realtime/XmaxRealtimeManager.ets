@@ -1,3 +1,14 @@
+//
+//  XmaxRealtimeManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { ImageSize } from '../../service/media/ImageSize';
 import { QualityConfiguration, QualityChange } from '../../stream/quality/QualityConfiguration';
@@ -55,28 +66,30 @@ import { XmaxRealtimeManaging } from './XmaxRealtimeManaging';
 /** 实时生成业务公共入口，统一编排本地媒体、连接、生成和状态通知。 */
 export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
-  // 公共配置
+  /** 公开业务配置 */
   readonly options: RealtimeConfiguration;
 
-  // 基础层组件
+  /** 平台与业务组件 */
   private readonly rtcManager: RtcManaging;
 
-  // 错误管理组件
+  /** 错误管理组件 */
   private readonly errorManager: XmaxRealtimeErrorManager;
 
-  // 渲染层组件
+  /** 渲染层组件 */
   private readonly renderController: RenderControlling;
 
-  // 业务层组件
+  /** 业务层组件 */
   private readonly streamController: StreamControlling;
   private readonly mediaController: MediaControlling;
 
-  // 实时管理组件
+  /** 实时管理组件 */
   private readonly connectionManager: XmaxRealtimeConnectionManager;
   private readonly generationManager: XmaxRealtimeGenerationManager;
 
+  /** 生成计时与内部配置操作 */
   private readonly timing: RealtimeTiming = new RealtimeTiming();
 
+  /** 方向重建与调档调度状态 */
   /** 转屏重启的采集稳定等待定时器挂起标志，避免重复调度。 */
   private orientationRestartPending: boolean = false;
   private qualityPending: boolean = false;
@@ -84,11 +97,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /** 转屏重启重新提交的操作句柄；非空时用户新条件并入该任务而不是新建操作。 */
   private orientationRestartCompletion: Promise<void> | null = null;
 
+  /** 最近提交的生成格式 */
   /** 当前生成任务提交时使用的视频格式，用于发现确认等待期的方向漂移。 */
   private lastSubmittedFormat: RealtimeVideoFormat | undefined = undefined;
 
-  // 生命周期协调
+  /** 生命周期操作协调 */
   private readonly coordinator: RealtimeCoordinator;
+
+  /** 本地播放状态通知 */
   private localVideoPlaybackStateListener: LocalVideoPlaybackStateListener | null = null;
 
   /**
@@ -97,6 +113,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @param context 访问 RTC、权限和渲染能力所需的页面上下文。
    * @param options 实时生成模型等业务配置。
    * @param apiService 创建和关闭实时会话使用的网络服务。
+   * @returns 新建的 XmaxRealtimeManager 实例。
    */
   constructor(
     context: common.UIAbilityContext,
@@ -168,7 +185,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       (): boolean => this.mediaController.currentTrack !== null);
   }
 
-  /** @returns 当前实时连接与生成状态。 */
+  /**
+   * 读取实时业务最近一次已提交的状态。
+   *
+   * @returns 当前实时业务状态。
+   */
   get currentState(): RealtimeState {
     return this.coordinator.currentState;
   }
@@ -183,12 +204,21 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.coordinator.setStateListener(listener);
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取当前本地视频的播放状态。
+   *
+   * @returns 本地视频播放状态；当前输入不是视频时返回 undefined。
+   */
   get localVideoPlaybackState(): LocalVideoPlaybackState | undefined {
     return this.mediaController.localVideoPlaybackState;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置本地视频文件播放状态监听器；设置后立即回调当前有效状态。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setLocalVideoPlaybackStateListener(listener: LocalVideoPlaybackStateListener | null): void {
     this.localVideoPlaybackStateListener = listener;
     const state: LocalVideoPlaybackState | undefined = this.localVideoPlaybackState;
@@ -198,7 +228,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
 
-  /** @inheritdoc */
+  /**
+   * 异步交付当前生成流的 RTC 后处理帧；null 取消监听，未监听时不复制像素。
+   * 缓冲区可在回调后持有；按接收顺序逐帧交付，不合并待交付帧。
+   * 回调运行在 ArkTS 事件循环中，耗时处理应移交 Worker。
+   * 断开后停止交付，监听器配置保留以供后续生成使用。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void {
     try {
       this.renderController.setRemoteVideoFrameListener(listener);
@@ -208,18 +246,31 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /**
-   * 设置实时网络质量监听器。
+   * 设置上行视频统计监听器；传入 null 清除，停止发布或断开时以 undefined 清空统计。
    *
-   * @param listener 网络质量监听器；传入空值时清除监听器。
+   * @param listener 异步接收上行统计或 undefined 清空通知的监听器；null 表示移除。
    * @returns 无返回值。
    */
   setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
     this.streamController.setUplinkVideoStatisticsListener(listener);
   }
+
+  /**
+   * 设置当前生成流的下行视频统计监听器；传入 null 清除，流清理时以 undefined 清空统计。
+   *
+   * @param listener 异步接收当前生成流下行统计或 undefined 清空通知的监听器；null 表示移除。
+   * @returns 无返回值。
+   */
   setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
     this.streamController.setDownlinkVideoStatisticsListener(listener);
   }
 
+  /**
+   * 设置实时网络质量监听器。
+   *
+   * @param listener 网络质量监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
     this.streamController.setNetworkQualityListener(listener);
   }
@@ -234,12 +285,22 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.streamController.setPerformanceAlarmListener(listener);
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取本地视频音频的播放音量。
+   *
+   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
+   */
   get localAudioVolume(): number {
     return this.mediaController.localAudioVolume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置本地视频文件的预览音量，不影响上传的音频和生成期间的自动静音。
+   * 可在创建本地流前设置，停止或替换视频后保留。
+   *
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async setLocalAudioVolume(volume: number): Promise<void> {
     try {
       this.validateAudioVolume(volume);
@@ -249,12 +310,22 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取生成结果流的播放音量。
+   *
+   * @returns 0～1 的音量比例，0 为静音，1 为原始音量。
+   */
   get remoteAudioVolume(): number {
     return this.streamController.remoteAudioVolume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置远端生成结果的播放音量，后续订阅和重连沿用该值。
+   * 新建相机/图片流成功后重置为 0，新建视频流成功后重置为 1；自定义音量请在创建流后设置。
+   *
+   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量；尚未创建本地流时为 1。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async setRemoteAudioVolume(volume: number): Promise<void> {
     try {
       this.validateAudioVolume(volume);
@@ -264,6 +335,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
+  /**
+   * 验证音量为 0～1 范围内的有限数值；非法时抛出配置错误。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 无返回值。
+   */
   private validateAudioVolume(volume: number): void {
     if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
       throw new XmaxError(
@@ -274,7 +351,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
 
-  /** 创建并启动本地相机流。 */
+  /**
+   * 创建并启动本地相机流。
+   *
+   * @param videoFormat 本地视频格式；省略时使用当前模型默认相机规格。
+   * @param position 初始相机位置；未传入时使用前置相机。
+   * @param useMicrophone 是否启用麦克风，默认 false；创建时申请权限，连接时开始采集，断开时停止。
+   * @param observeDisplayChange 是否监听屏幕变化，默认 true；false 时转屏不切换采集比例与方向，也不会因转屏重启生成。
+   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   */
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat = this.options.model.defaultCameraVideoFormat,
     position: CameraPosition = CameraPosition.FRONT,
@@ -304,7 +389,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 停止本地相机流并释放预览资源。 */
+  /**
+   * 停止本地相机流并释放预览资源。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   stopLocalCameraStream(): Promise<void> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
@@ -320,7 +409,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 切换摄像头，生成中切换时保留连接并恢复当前生成条件。 */
+  /**
+   * 切换摄像头，生成中切换时保留连接并恢复当前生成条件。
+   *
+   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   */
   switchCamera(): Promise<RealtimeMediaStream> {
     const operation: Promise<RealtimeMediaStream> = this.coordinator.run(RealtimeOperationKind.CAMERA_SWITCH, null,
       async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
@@ -353,7 +446,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     });
   }
 
-  /** 从本地视频文件创建并启动媒体流，使用当前模型的输入规则。 */
+  /**
+   * 从本地视频文件创建并启动媒体流，使用当前模型的输入规则。
+   *
+   * @param filePath 本地视频文件路径。
+   * @param videoFormat 期望的视频输出格式；未传入时按文件显示尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
+   * @param loop 是否循环播放，默认 true；false 时自然结束停止音视频推帧并通知 ENDED，不自动停止生成或断开会话。
+   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   */
   async createLocalVideoStream(filePath: string, videoFormat?: RealtimeVideoFormat,
     loop: boolean = true): Promise<RealtimeMediaStream> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
@@ -375,7 +475,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 停止本地视频流并释放预览资源。 */
+  /**
+   * 停止本地视频流并释放预览资源。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   stopLocalVideoStream(): Promise<void> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
@@ -391,7 +495,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** @inheritdoc */
+  /**
+   * 暂停本地视频文件，保持 RTC 发送冻结帧和静音音频。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   pauseLocalVideoStream(): Promise<void> {
     return this.coordinator.run(RealtimeOperationKind.PLAYBACK, null,
       async (token: RealtimeOperationToken): Promise<void> => {
@@ -405,7 +513,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** @inheritdoc */
+  /**
+   * 从暂停位置恢复本地视频文件。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   resumeLocalVideoStream(): Promise<void> {
     return this.coordinator.run(RealtimeOperationKind.PLAYBACK, null,
       async (token: RealtimeOperationToken): Promise<void> => {
@@ -420,13 +532,23 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** @inheritdoc */
+  /**
+   * 在播放和暂停之间切换。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   toggleLocalVideoStreamPlayback(): Promise<void> {
     return this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE ?
       this.resumeLocalVideoStream() : this.pauseLocalVideoStream();
   }
 
-  /** 从图片输入创建持续输出帧的媒体流。 */
+  /**
+   * 从图片输入创建持续输出帧的媒体流。
+   *
+   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
+   * @param videoFormat 期望的视频输出格式；未传入时按图片尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
+   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   */
   async createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
@@ -449,7 +571,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 停止本地图片流并释放预览资源。 */
+  /**
+   * 停止本地图片流并释放预览资源。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   stopLocalImageStream(): Promise<void> {
     return this.coordinator.run(RealtimeOperationKind.MEDIA, null,
       async (token: RealtimeOperationToken): Promise<void> => {
@@ -465,12 +591,24 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       });
   }
 
-  /** 使用当前 Manager 创建的本地流建立实时连接。 */
+  /**
+   * 使用当前 Manager 创建的本地流建立实时连接。
+   *
+   * @param localStream 当前 Manager 创建的本地媒体流。
+   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   */
   connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream> {
     return this.coordinator.run(RealtimeOperationKind.CONNECTION, null,
       (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => this.performConnect(localStream, token));
   }
 
+  /**
+   * 配置媒体传输与连接，并在有效操作中提交已连接状态。
+   *
+   * @param localStream 已创建的本地媒体流。
+   * @param token 用于校验操作所有权和处理取消的令牌。
+   * @returns 连接完成后可用于生成和展示的远端媒体流。
+   */
   private async performConnect(localStream: RealtimeMediaStream,
     token: RealtimeOperationToken): Promise<RealtimeMediaStream> {
     token.ensureCurrent();
@@ -513,6 +651,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return remoteStream;
   }
 
+  /**
+   * 为当前本地轨道注册方向变化处理，触发必要的生成重建。
+   *
+   * @param stream 需要绑定或处理的媒体流。
+   * @returns 无返回值。
+   */
   private observeLocalOrientation(stream: RealtimeMediaStream): void {
     if (stream.videoTrack === undefined) {
       return;
@@ -525,7 +669,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     });
   }
 
-  /** 转屏先同步 Native 方向；相机尺寸翻转后经帧格式变化入口重启生成，其他来源不受影响。 */
+  /**
+   * 转屏先同步 Native 方向；相机尺寸翻转后经帧格式变化入口重启生成，其他来源不受影响。
+   *
+   * @returns 无返回值。
+   */
   private handleLocalOrientationChange(): void {
     try {
       this.mediaController.updateCameraOrientation();
@@ -537,6 +685,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /**
    * 转屏重启第一步：检测到方向漂移时用一个短操作停止任务、保留连接并提交 CONNECTED，
    * 随即释放协调器，采集稳定等待由定时器接力。change_condition 无法修改尺寸，方向翻转必须重建任务。
+   *
+   * @param format 需要使用的视频格式。
+   * @returns 无返回值。
    */
   private restartGenerationIfOrientationDrifted(format?: RealtimeVideoFormat): void {
     // 协调器被用户操作占用时跳过，其收尾的漂移自检会兜底重新触发。
@@ -573,6 +724,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /**
    * 在协调器外等待采集稳定。等待窗口不占用协调器，用户操作（如更换参考图）可随时插入；
    * 用户提交会刷新提交格式，使挂起的重启在接力时因漂移消失而自动作废。
+   *
+   * @returns 无返回值。
    */
   private scheduleOrientationRestart(): void {
     if (this.orientationRestartPending || this.coordinator.isClosing) {
@@ -588,6 +741,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /**
    * 转屏重启第二步：延时结束后按最新状态接力。仍停在 CONNECTED 且协调器空闲时，
    * 用最新采集格式和缓存条件重新 start；完成后自检漂移，确认等待期又转屏则重新走停止流程。
+   *
+   * @returns 无返回值。
    */
   private resumeOrientationRestart(): void {
     if (this.coordinator.isClosing) {
@@ -621,6 +776,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /**
    * 转屏重启的重新提交进行中时，用户新条件经 change_condition 并入该任务并跟随其完成：
    * 条件允许更新，尺寸已由重启保证为最新方向，无需打断重启。不在重启提交窗口时返回空值。
+   *
+   * @param input 本地媒体流或生成上下文。
+   * @param context 生成提示词、参考图和人脸检测配置。
+   * @param faceRestoration 是否启用人脸修复。
+   * @returns 可合并时返回正在执行的重建 Promise，否则返回 null；携带本地流的调用完成后返回远端媒体流。
    */
   private tryJoinOrientationRestart(input: RealtimeContext | RealtimeMediaStream | undefined,
     context: RealtimeContext | undefined, faceRestoration: boolean): Promise<void | RealtimeMediaStream> | null {
@@ -654,6 +814,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /**
    * 已提交生成任务的方向与当前采集方向不一致时为漂移，需要终止并重建任务。
    * 帧格式回调先于轨道格式更新触发，事件入口需显式传入新格式。
+   *
+   * @param format 需要使用的视频格式。
+   * @returns 当前采集格式与已提交生成格式的横竖方向不一致时返回 true。
    */
   private hasOrientationDrift(format?: RealtimeVideoFormat): boolean {
     if (this.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
@@ -667,6 +830,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return (submitted.width > submitted.height) !== (current.width > current.height);
   }
 
+  /**
+   * 将摄像头格式变化同步到连接与生成配置。
+   *
+   * @param format 需要使用的视频格式。
+   * @returns 无返回值。
+   */
   private handleCameraVideoFormatChange(format: RealtimeVideoFormat): void {
     const current: RealtimeConnectionState = this.currentState.connectionState;
     if (current === RealtimeConnectionState.DISCONNECTING) {
@@ -704,7 +873,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     this.connectionManager.updateVideoFormat(format);
   }
 
-  /** 取消连接/生成，等待回滚和清理完成，保留本地媒体与预览。 */
+  /**
+   * 取消连接/生成，等待回滚和清理完成，保留本地媒体与预览。
+   *
+   * @param reason 本次断开的原因；省略时为 RealtimeReason.NORMAL。
+   * @returns 操作完成时兑现的 Promise。
+   */
   disconnect(reason: RealtimeReason = RealtimeReason.NORMAL): Promise<void> {
     const current: RealtimeState = this.currentState;
     if ((current.connectionState === RealtimeConnectionState.IDLE ||
@@ -719,7 +893,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return this.coordinator.terminate(RealtimeTerminationScope.CONNECTION, reason);
   }
 
-  /** 立即静默媒体，等待进行中的操作结束后释放所有实时资源。 */
+  /**
+   * 立即静默媒体，等待进行中的操作结束后释放所有实时资源。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   close(): Promise<void> {
     this.renderController.stopRemoteVideoFrameDelivery();
     const wasClosing: boolean = this.coordinator.isClosing;
@@ -737,10 +915,34 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return closing;
   }
 
-  /** 开始生成；生成中再次调用则更新条件。传入本地流时按需建立连接。 */
+  /**
+   * 开始生成；生成中再次调用则更新条件。传入本地流时按需建立连接。
+   *
+   * @param context 生成条件；首次开始生成时必须传入。
+   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
+   * @returns 生成启动或更新完成的 Promise；传入本地媒体流时返回远端媒体流，否则不返回值。
+   */
   startGeneration(context?: RealtimeContext, faceRestoration?: boolean): Promise<void>;
+
+  /**
+   * 使用当前本地流按需连接并开始生成；已经连接时复用连接，生成中更新条件。
+   *
+   * @param localStream 当前 Manager 创建并持有的本地媒体流。
+   * @param context 首次生成必须提供；同一连接内可省略以复用缓存条件。
+   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
+   * @returns 生成启动或更新完成的 Promise；传入本地媒体流时返回远端媒体流，否则不返回值。
+   */
   startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext,
     faceRestoration?: boolean): Promise<RealtimeMediaStream>;
+
+  /**
+   * 启动或更新实时生成；传入本地媒体流时先建立连接。
+   *
+   * @param input 本地媒体流或生成上下文。
+   * @param contextOrFaceRestoration 生成上下文，或仅指定人脸修复开关的布尔值。
+   * @param faceRestoration 是否启用人脸修复。
+   * @returns 生成启动或更新完成的 Promise；传入本地媒体流时返回远端媒体流，否则不返回值。
+   */
   startGeneration(input?: RealtimeContext | RealtimeMediaStream,
     contextOrFaceRestoration?: RealtimeContext | boolean, faceRestoration: boolean = false): Promise<void | RealtimeMediaStream> {
     const context: RealtimeContext | undefined =
@@ -779,6 +981,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     });
   }
 
+  /**
+   * 连接指定本地媒体流后启动生成，并等待远端画面可用。
+   *
+   * @param localStream 已创建的本地媒体流。
+   * @param context 生成提示词、参考图和人脸检测配置。
+   * @param token 用于校验操作所有权和处理取消的令牌。
+   * @param faceRestoration 是否启用人脸修复。
+   * @returns 可供 SDK 视频视图展示的生成结果媒体流。
+   */
   private async startGenerationWithStream(localStream: RealtimeMediaStream, context: RealtimeContext | undefined,
     token: RealtimeOperationToken, faceRestoration: boolean): Promise<RealtimeMediaStream> {
     if (!this.mediaController.owns(localStream)) {
@@ -806,6 +1017,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return remoteStream;
   }
 
+  /**
+   * 提交生成条件并等待结果流确认和首帧就绪。
+   *
+   * @param context 生成提示词、参考图和人脸检测配置。
+   * @param token 用于校验操作所有权和处理取消的令牌。
+   * @param faceRestoration 是否启用人脸修复。
+   * @returns 操作完成时兑现的 Promise。
+   */
   private async performStartGeneration(context: RealtimeContext | undefined,
     token: RealtimeOperationToken, faceRestoration?: boolean): Promise<void> {
     token.ensureCurrent();
@@ -867,13 +1086,26 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
-  /** 下行按处理后的媒体比例与档位上限计算，鸿蒙不启用 iOS 插帧。 */
+  /**
+   * 按已处理的媒体比例和下行档位上限计算结果流目标尺寸。
+   *
+   * @param configuration 当前上下行档位与固定媒体基准。
+   * @returns 计算得到的媒体宽高。
+   */
   private resolveQualityTarget(configuration: QualityConfiguration): ImageSize {
     const baseline: RealtimeVideoFormat = configuration.baseline;
     return new MediaService(this.options.model).resolveTargetSize(new ImageSize(baseline.width, baseline.height),
       QualityVideoFormat.resolveDownlinkMaximumSize(baseline, configuration.downlinkLevel));
   }
 
+  /**
+   * 在生成任务仍有效且无用户操作占用时安排自动调档。
+   *
+   * @param sample 上下行网络质量采样。
+   * @param sampledAt 网络采样的单调时间，单位秒。
+   * @param taskId 当前生成任务标识。
+   * @returns 无返回值。
+   */
   private scheduleAdaptiveQuality(sample: RealtimeNetworkQuality, sampledAt: number, taskId: string): void {
     if (this.qualityPending) { return; }
     this.qualityPending = true;
@@ -896,6 +1128,15 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }).finally((): void => { this.qualityPending = false; });
   }
 
+  /**
+   * 向指定方向提交档位配置，并记录配置提交是否成功。
+   *
+   * @param level 传输档位，范围 1～5，数值越小质量越高。
+   * @param downlink 是否为下行方向；false 表示上行。
+   * @param taskId 当前生成任务标识。
+   * @param token 用于校验操作所有权和处理取消的令牌。
+   * @returns 无返回值。
+   */
   private applyQualityLevel(level: number, downlink: boolean, taskId: string, token: RealtimeOperationToken): void {
     const configuration: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
     if (configuration === undefined) { return; }
@@ -924,6 +1165,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
+  /**
+   * 验证是否允许替换本地媒体；业务忙碌或已连接时抛出配置错误。
+   *
+   * @returns 无返回值。
+   */
   private ensureLocalMediaCanChange(): void {
     const current: RealtimeState = this.currentState;
     if (this.connectionManager.currentSessionId.length > 0 ||
@@ -934,6 +1180,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
+  /**
+   * 验证当前是否允许暂停或恢复本地视频；不可用时抛出配置错误。
+   *
+   * @returns 无返回值。
+   */
   private ensureLocalVideoPlaybackCanChange(): void {
     const current: RealtimeConnectionState = this.currentState.connectionState;
     if (this.localVideoPlaybackState === LocalVideoPlaybackState.ENDED) {
@@ -951,6 +1202,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
+  /**
+   * 通知本地视频播放状态，并隔离业务监听器异常。
+   *
+   * @param state 需要通知的业务状态。
+   * @returns 无返回值。
+   */
   private notifyLocalVideoPlaybackState(state: LocalVideoPlaybackState): void {
     try {
       this.localVideoPlaybackStateListener?.(state);
@@ -962,7 +1219,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
-  /** 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。 */
+  /**
+   * 清理失败只记录日志，继续释放后续资源，保留触发终止的原始错误。
+   *
+   * @param scope 需要释放资源的清理范围。
+   * @param taskId 当前生成任务标识。
+   * @returns 资源清理完成的 Promise，携带已关闭会话标识；无会话时为 undefined。
+   */
   private async cleanup(scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> {
     this.renderController.stopRemoteVideoFrameDelivery();
     try {
@@ -998,12 +1261,24 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return sessionId;
   }
 
+  /**
+   * 按本地视频播放状态恢复本地音频预览。
+   *
+   * @returns 无返回值。
+   */
   private restoreLocalAudioPreview(): void {
     if (!this.coordinator.isClosing) {
       this.mediaController.setLocalAudioPreviewEnabled(true);
     }
   }
 
+  /**
+   * 仅处理当前会话的心跳故障，终止连接并保留本地预览。
+   *
+   * @param sessionId 服务端实时会话标识。
+   * @param error 当前操作失败或终止的原因。
+   * @returns 操作完成时兑现的 Promise。
+   */
   private handleHeartbeatFailure(sessionId: string, error: XmaxError): Promise<void> {
     if (this.connectionManager.currentSessionId !== sessionId) {
       return Promise.resolve();
@@ -1012,10 +1287,24 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     return this.coordinator.terminateWithError(error, RealtimeTerminationScope.CONNECTION);
   }
 
+  /**
+   * 记录资源清理失败的操作名称和原因。
+   *
+   * @param title 日志所描述的阶段或操作名称。
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private logCleanupFailure(title: string, error: Object): void {
     XmaxLogger.error(`${title}${XmaxLogger.localized("\n└─ 原因：", "\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Realtime');
   }
 
+  /**
+   * 在指定范围终止故障资源，并由统一错误流程通知接入方。
+   *
+   * @param error 当前操作失败或终止的原因。
+   * @param scope 需要释放资源的清理范围。
+   * @returns 无返回值。
+   */
   private handleRuntimeError(error: XmaxError, scope: RealtimeTerminationScope): void {
     this.renderController.stopRemoteVideoFrameDelivery();
     this.renderController.failRemoteFrameWait(error);
@@ -1023,6 +1312,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       .catch((failure: Object): void => this.logCleanupFailure("实时错误清理失败 (Realtime Error Cleanup Failed)", failure));
   }
 
+  /**
+   * 将任意异常转为 SDK 错误并交给统一错误管理器。
+   *
+   * @param error 当前操作失败或终止的原因。
+   * @returns 完成转换和通知去重后的 SDK 错误。
+   */
   private reportError(error: Object): XmaxError {
     return this.errorManager.handle(XmaxError.from(error));
   }

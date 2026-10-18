@@ -1,3 +1,14 @@
+//
+//  ImageSourceController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { RealtimeMediaSource } from '../../service/realtime/RealtimeMediaSource';
 import { image } from '@kit.ImageKit';
 import {
@@ -23,22 +34,22 @@ import {
 /** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
 export class ImageSourceController implements ImageSourceControlling {
 
-  // 基础层组件
+  /** 图片解码与尺寸计算依赖 */
   private readonly imageManager: ImageManaging;
 
-  // 服务层组件
+  /** 服务层组件 */
   private readonly mediaService: MediaServicing;
 
-  // 图片帧监听器
+  /** 帧与错误通知 */
   private readonly frameListener: ImageSourceFrameListener;
   private readonly errorListener: ImageSourceErrorListener;
 
-  // 图片帧资源
+  /** 缓存像素与目标输出格式 */
   private frameFormat: VideoFormat | null = null;
   private framePlane: VideoFramePlane | null = null;
   private videoFormat: RealtimeVideoFormat | null = null;
 
-  // 运行状态
+  /** 静态图片帧调度 */
   private frameTimer: number = -1;
 
   /**
@@ -48,6 +59,7 @@ export class ImageSourceController implements ImageSourceControlling {
    * @param mediaService 提供图片尺寸处理能力的媒体 Service。
    * @param frameListener 视频帧输出监听器。
    * @param errorListener 图片源错误监听器。
+   * @returns 新建的 ImageSourceController 实例。
    */
   constructor(
     imageManager: ImageManaging,

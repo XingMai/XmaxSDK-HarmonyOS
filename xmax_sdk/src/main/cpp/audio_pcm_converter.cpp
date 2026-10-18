@@ -1,3 +1,14 @@
+//
+//  audio_pcm_converter.cpp
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 #include "audio_pcm_converter.h"
 
 #include <algorithm>
@@ -11,9 +22,18 @@ constexpr int32_t kTargetSampleRate = 48000;
 constexpr int32_t kSamplesPerPacket = 480;
 constexpr int32_t kBytesPerSample = 2;
 constexpr int64_t kPacketDurationUs = 10000;
-}  // namespace
+}  /** namespace */
 
 namespace xmax {
+/**
+ * 创建 PCM 转换器。
+ *
+ * @param sourceSampleRate 源 PCM 采样率，单位 Hz。
+ * @param sourceChannelCount 源 PCM 声道数。
+ * @param mediaStartUs 源媒体时间轴起点，单位微秒。
+ * @param cycleDurationUs 一轮媒体播放时长，单位微秒。
+ * @returns 无返回值；完成实例初始化。
+ */
 AudioPcmConverter::AudioPcmConverter(
     int32_t sourceSampleRate,
     int32_t sourceChannelCount,
@@ -30,6 +50,15 @@ AudioPcmConverter::AudioPcmConverter(
   packetSamples_.reserve(kSamplesPerPacket);
 }
 
+/**
+ * 追加源 PCM 数据，通过回调输出完整音频包；不完整的源采样帧视为无效输入。
+ *
+ * @param data 只读源 PCM 数据，缓冲区应在调用期间有效。
+ * @param length 输入 PCM 数据的字节数，必须包含完整源采样帧。
+ * @param timestampUs 媒体输出时间戳，单位微秒。
+ * @param handler 接收完整 PCM 包及其微秒时间戳的回调。
+ * @returns 数据格式有效且已接收时返回 true，输入长度或声道布局无效时返回 false。
+ */
 bool AudioPcmConverter::Append(
     const uint8_t* data,
     size_t length,
@@ -98,6 +127,12 @@ bool AudioPcmConverter::Append(
   return true;
 }
 
+/**
+ * 在文件结束时补齐当前音频包，并输出剩余 PCM 数据。
+ *
+ * @param handler 接收完整 PCM 包及其微秒时间戳的回调。
+ * @returns 无返回值。
+ */
 void AudioPcmConverter::Finish(
     const PacketHandler& handler) {
   if (packetSamples_.empty()) {
@@ -108,6 +143,13 @@ void AudioPcmConverter::Finish(
       handler);
 }
 
+/**
+ * 按输出采样率追加指定数量的静音样本，补偿音轨起点或尾部。
+ *
+ * @param sampleCount 需要追加的输出样本数。
+ * @param handler 接收完整 PCM 包及其微秒时间戳的回调。
+ * @returns 无返回值。
+ */
 void AudioPcmConverter::AppendSilence(
     int64_t sampleCount,
     const PacketHandler& handler) {
@@ -116,6 +158,13 @@ void AudioPcmConverter::AppendSilence(
   }
 }
 
+/**
+ * 追加单个输出样本，达到一包长度后交付 PCM 数据和时间戳。
+ *
+ * @param sample 待追加的单声道 16 位 PCM 样本。
+ * @param handler 接收完整 PCM 包及其微秒时间戳的回调。
+ * @returns 无返回值。
+ */
 void AudioPcmConverter::AppendSample(
     int16_t sample,
     const PacketHandler& handler) {
@@ -144,6 +193,12 @@ void AudioPcmConverter::AppendSample(
   handler(std::move(packet), timestampUs);
 }
 
+/**
+ * 将一个源采样帧的各声道混合为单声道有符号 16 位样本。
+ *
+ * @param frame 包含所有源声道的单个 PCM 采样帧。
+ * @returns 声道平均后的单声道样本。
+ */
 int16_t AudioPcmConverter::ReadMonoSample(
     const uint8_t* frame) const {
   int64_t sampleSum = 0;
@@ -161,4 +216,4 @@ int16_t AudioPcmConverter::ReadMonoSample(
   return static_cast<int16_t>(
       sampleSum / sourceChannelCount_);
 }
-}  // namespace xmax
+}  /** namespace xmax */

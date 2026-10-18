@@ -1,9 +1,33 @@
+//
+//  ImageSourceControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { image } from '@kit.ImageKit';
 import { XmaxError } from '../../foundation/errors/XmaxError';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
+/**
+ * 接收图片源按目标帧率重复输出的视频帧。
+ *
+ * @param frame 需要处理或交付的媒体帧。
+ * @returns 无返回值。
+ */
 export type ImageSourceFrameListener = (frame: VideoFrame) => void;
+
+/**
+ * 接收图片源准备或帧输出失败的错误。
+ *
+ * @param error 当前操作失败或终止的原因。
+ * @returns 无返回值。
+ */
 export type ImageSourceErrorListener = (error: XmaxError) => void;
 
 /** 定义本地图片持续输出视频帧的能力。 */

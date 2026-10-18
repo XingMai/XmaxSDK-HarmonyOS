@@ -1,3 +1,14 @@
+//
+//  InteractionController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { ImageSize } from '../../service/media/ImageSize';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
@@ -7,6 +18,13 @@ import { InteractionCoordinateMapper } from './InteractionCoordinateMapper';
 import { InteractionFrame } from './InteractionFrame';
 import { InteractionPoint } from './InteractionPoint';
 
+/**
+ * 向当前生成任务发送归一化交互点的回调。
+ *
+ * @param taskId 当前生成任务标识。
+ * @param points 本次提交或绘制的触点集合。
+ * @returns 无返回值。
+ */
 type InteractionSender = (
   taskId: string,
   points: RealtimePoint[]
@@ -15,6 +33,7 @@ type InteractionSender = (
 /** 保存当前生成任务的交互坐标映射上下文。 */
 class ActiveInteraction {
 
+  /** 当前任务与固定媒体坐标基准 */
   readonly taskId: string;
   readonly resolvedMediaSize: ImageSize;
 
@@ -23,6 +42,7 @@ class ActiveInteraction {
    *
    * @param taskId 生成任务标识。
    * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
+   * @returns 新建的 ActiveInteraction 实例。
    */
   constructor(
     taskId: string,
@@ -36,16 +56,17 @@ class ActiveInteraction {
 /** 将渲染容器中的交互行为转换为处理后媒体的 [0, 1] 坐标并发送。 */
 export class InteractionController implements InteractionControlling {
 
-  // 交互发送器
+  /** 交互信令发送依赖 */
   private readonly sender: InteractionSender;
 
-  // 交互资源
+  /** 活动交互任务 */
   private activeInteraction: ActiveInteraction | null = null;
 
   /**
    * 创建交互采集 Controller。
    *
    * @param sender 交互轨迹发送方法。
+   * @returns 新建的 InteractionController 实例。
    */
   constructor(sender: InteractionSender) {
     // 交互发送器

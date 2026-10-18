@@ -1,8 +1,20 @@
+//
+//  ImageVideoFrameData.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { VideoPixelFormat } from '../video/VideoPixelFormat';
 
 /** 描述已转换为视频帧布局的图片像素数据。 */
 export class ImageVideoFrameData {
 
+  /** 图像帧数据与内存布局 */
   /** 视频帧像素数据。 */
   readonly data: ArrayBuffer;
 
@@ -26,6 +38,7 @@ export class ImageVideoFrameData {
    * @param height 视频帧高度。
    * @param bytesPerRow 每行像素占用的字节数。
    * @param pixelFormat 视频帧像素格式。
+   * @returns 新建的 ImageVideoFrameData 实例。
    */
   constructor(
     data: ArrayBuffer,

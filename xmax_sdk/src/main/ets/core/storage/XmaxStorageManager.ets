@@ -1,3 +1,14 @@
+//
+//  XmaxStorageManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { common } from '@kit.AbilityKit';
 import { DownloadedFile } from '../../foundation/storage/DownloadedFile';
 import { StorageManager } from '../../foundation/storage/StorageManager';
@@ -17,7 +28,7 @@ import {
 /** 文件存储公共入口，负责将服务层模型转换为对外公开模型。 */
 export class XmaxStorageManager implements XmaxStorageManaging {
 
-  // 服务层组件
+  /** 文件存储业务依赖 */
   private readonly storageService: StorageServicing;
 
   /**
@@ -25,6 +36,7 @@ export class XmaxStorageManager implements XmaxStorageManaging {
    *
    * @param context 访问本地文件和存储平台能力所需的应用上下文。
    * @param apiService 获取上传配置等服务端数据的网络服务。
+   * @returns 新建的 XmaxStorageManager 实例。
    */
   constructor(
     context: common.Context,

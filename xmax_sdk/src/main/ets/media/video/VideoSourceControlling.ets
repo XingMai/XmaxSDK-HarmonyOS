@@ -1,8 +1,32 @@
+//
+//  VideoSourceControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { MediaTimeline } from '../MediaTimeline';
 
+/**
+ * 接收本地视频源按播放时间轴输出的视频帧。
+ *
+ * @param frame 需要处理或交付的媒体帧。
+ * @returns 无返回值。
+ */
 export type VideoSourceFrameListener = (frame: VideoFrame) => void;
+
+/**
+ * 接收本地视频源配置或解码失败的错误。
+ *
+ * @param message 日志内容、错误说明或收到的信令文本。
+ * @returns 无返回值。
+ */
 export type VideoSourceErrorListener = (message: string) => void;
 
 /** 定义本地文件视频轨输出能力。 */
@@ -16,6 +40,7 @@ export interface VideoSourceControlling {
    * @param outputWidth 目标视频宽度。
    * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 旧视频源释放完成后的 Promise。
    */
   configure(
@@ -35,10 +60,19 @@ export interface VideoSourceControlling {
    */
   start(timeline: MediaTimeline): Promise<void>;
 
-  /** 暂停当前解码器，保留媒体位置与资源。 */
+  /**
+   * 暂停当前解码器，保留媒体位置与资源。
+   *
+   * @returns 无返回值。
+   */
   pause(): void;
 
-  /** 使用统一的暂停时长恢复当前解码器。 */
+  /**
+   * 使用统一的暂停时长恢复当前解码器。
+   *
+   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
+   * @returns 无返回值。
+   */
   resume(pausedDurationUs: number): void;
 
   /**

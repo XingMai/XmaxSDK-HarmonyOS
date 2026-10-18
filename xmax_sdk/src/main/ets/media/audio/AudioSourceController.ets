@@ -1,3 +1,14 @@
+//
+//  AudioSourceController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   AudioFileFrameDecoder,
   AudioFileFrameDecoderListener
@@ -8,28 +19,50 @@ import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { MediaTimeline } from '../MediaTimeline';
 import { AudioSourceControlling } from './AudioSourceControlling';
 
+/**
+ * 接收本地音频源解码后的 PCM 音频帧。
+ *
+ * @param frame 需要处理或交付的媒体帧。
+ * @returns 无返回值。
+ */
 export type AudioSourceFrameListener = (frame: AudioFrame) => void;
+
+/**
+ * 接收本地音频源配置或解码失败的错误。
+ *
+ * @param message 日志内容、错误说明或收到的信令文本。
+ * @returns 无返回值。
+ */
 export type AudioSourceErrorListener = (message: string) => void;
 
 /** 解码本地媒体文件中的音频轨，并按共享时间轴循环输出音频帧。 */
 export class AudioSourceController implements AudioSourceControlling {
 
-  // 音频帧监听器
+  /** 帧与错误通知 */
   private readonly frameListener: AudioSourceFrameListener;
   private readonly errorListener: AudioSourceErrorListener;
 
-  // 音频文件资源
+  /** 文件解码与循环时间轴 */
   private decoder: AudioFileFrameDecoder | null = null;
   private filePath: string = '';
 
-  // 播放进度
+  /** 播放进度 */
   private timeline: MediaTimeline | null = null;
   private loopIndex: number = 0;
+
+  /** 暂停、循环与文件结束状态 */
   private isPaused: boolean = false;
   private pendingEndOfStream: boolean = false;
   private loop: boolean = true;
   private hasEnded: boolean = false;
+
+  /** 音频源版本与播放结束通知 */
   private sourceVersion: number = 0;
+  /**
+   * 通知本地媒体已完成当前播放。
+   *
+   * @returns 无返回值。
+   */
   private readonly endedListener: () => void;
 
   /**
@@ -37,6 +70,8 @@ export class AudioSourceController implements AudioSourceControlling {
    *
    * @param frameListener 音频帧输出监听器。
    * @param errorListener 音频源错误监听器。
+   * @param endedListener 当前媒体播放结束时执行的回调。
+   * @returns 新建的 AudioSourceController 实例。
    */
   constructor(
     frameListener: AudioSourceFrameListener,
@@ -52,6 +87,7 @@ export class AudioSourceController implements AudioSourceControlling {
    * 配置待解码的本地媒体文件。
    *
    * @param filePath 本地媒体文件路径。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 无返回值。
    */
   configure(filePath: string, loop: boolean = true): void {
@@ -95,7 +131,11 @@ export class AudioSourceController implements AudioSourceControlling {
     this.decoder = this.createDecoder();
   }
 
-  /** @inheritdoc */
+  /**
+   * 暂停当前解码器，保留媒体位置与资源。
+   *
+   * @returns 无返回值。
+   */
   pause(): void {
     if (this.hasEnded) {
       return;
@@ -114,7 +154,12 @@ export class AudioSourceController implements AudioSourceControlling {
     decoder.pause();
   }
 
-  /** @inheritdoc */
+  /**
+   * 使用统一的暂停时长恢复当前解码器。
+   *
+   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
+   * @returns 无返回值。
+   */
   resume(pausedDurationUs: number): void {
     if (this.hasEnded) {
       return;
@@ -273,8 +318,26 @@ export class AudioSourceController implements AudioSourceControlling {
 /** 将音频解码器事件转发给音频源 Controller。 */
 class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
 
+  /** 解码帧、结束与错误处理 */
+  /**
+   * 交付当前源的解码帧。
+   *
+   * @param frame 当前解码的 PCM 音频帧。
+   * @returns 无返回值。
+   */
   private readonly frameHandler: (frame: AudioFrame) => void;
+  /**
+   * 通知当前源已输出到文件结尾。
+   *
+   * @returns 无返回值。
+   */
   private readonly endHandler: () => void;
+  /**
+   * 交付当前源的解码或输出错误。
+   *
+   * @param message 日志内容、错误说明或收到的信令文本。
+   * @returns 无返回值。
+   */
   private readonly errorHandler: (message: string) => void;
 
   /**
@@ -283,6 +346,7 @@ class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
    * @param frameHandler 音频帧处理方法。
    * @param endHandler 音频流结束处理方法。
    * @param errorHandler 音频解码错误处理方法。
+   * @returns 新建的 AudioSourceDecoderListener 实例。
    */
   constructor(
     frameHandler: (frame: AudioFrame) => void,

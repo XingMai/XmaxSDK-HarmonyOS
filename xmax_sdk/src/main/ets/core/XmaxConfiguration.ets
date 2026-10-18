@@ -1,3 +1,14 @@
+//
+//  XmaxConfiguration.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { XmaxLoggerOption } from '../foundation/logging/XmaxLoggerOption';
 import {
   XmaxError,
@@ -8,12 +19,14 @@ import { XmaxEnvironment } from './XmaxEnvironment';
 /** SDK 全局配置。 */
 export class XmaxConfiguration {
 
+  /** 访问凭证与服务环境 */
   /** 调用 Xmax 服务使用的 API Key。 */
   readonly apiKey: string;
 
   /** SDK 连接的服务环境；同时决定日志细项语言，国内为中文，海外为英文。日志配置全局生效。 */
   readonly environment: XmaxEnvironment;
 
+  /** 日志配置 */
   /** SDK 全局日志选项；默认为关闭。 */
   readonly loggerOptions: XmaxLoggerOption;
 
@@ -23,6 +36,7 @@ export class XmaxConfiguration {
    * @param apiKey 调用 Xmax 服务使用的 API Key。
    * @param environmentOrLoggerOptions SDK 连接的服务环境；也兼容旧版第二参数日志选项。
    * @param loggerOptions SDK 输出的日志类型，可按位或组合。
+   * @returns 新建的 XmaxConfiguration 实例。
    */
   constructor(
     apiKey: string,

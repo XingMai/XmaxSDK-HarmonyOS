@@ -1,3 +1,14 @@
+//
+//  XmaxRealtimeManaging.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
@@ -20,12 +31,15 @@ import { RealtimeConfiguration } from './RealtimeConfiguration';
 
 /** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
 export interface XmaxRealtimeManaging {
+
+  /** 实时业务配置与状态 */
   /** 实时能力配置。 */
   readonly options: RealtimeConfiguration;
 
   /** 当前实时连接状态。 */
   readonly currentState: RealtimeState;
 
+  /** 音频播放控制状态 */
   /** 当前配置的本地视频预览音量（0～1），默认 0.45；不受生成期间自动静音影响。 */
   readonly localAudioVolume: number;
 
@@ -43,7 +57,12 @@ export interface XmaxRealtimeManaging {
    */
   setStateListener(listener: RealtimeStateListener | null): void;
 
-  /** 设置本地视频文件播放状态监听器；设置后立即回调当前有效状态。 */
+  /**
+   * 设置本地视频文件播放状态监听器；设置后立即回调当前有效状态。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setLocalVideoPlaybackStateListener(listener: LocalVideoPlaybackStateListener | null): void;
 
   /**
@@ -51,6 +70,9 @@ export interface XmaxRealtimeManaging {
    * 缓冲区可在回调后持有；按接收顺序逐帧交付，不合并待交付帧。
    * 回调运行在 ArkTS 事件循环中，耗时处理应移交 Worker。
    * 断开后停止交付，监听器配置保留以供后续生成使用。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
    */
   setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
 
@@ -64,16 +86,18 @@ export interface XmaxRealtimeManaging {
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void;
 
   /**
-   * 设置实际视频上行统计监听器；null 移除，不回放历史样本。
-   * ArkTS 事件循环异步回调；发布状态变化或断开时收到 undefined。
-   * 断开后保留监听器配置，不依赖 RTC 日志开关。
+   * 设置上行视频统计监听器；传入 null 清除，停止发布或断开时以 undefined 清空统计。
+   *
+   * @param listener 异步接收上行统计或 undefined 清空通知的监听器；null 表示移除。
+   * @returns 无返回值。
    */
   setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void;
 
   /**
-   * 设置实际视频下行统计监听器；null 移除，不回放历史样本。
-   * 仅异步交付当前任务 SEI 匹配的生成流，流清理时收到 undefined。
-   * 断开后保留监听器配置，不依赖 RTC 日志开关。
+   * 设置当前生成流的下行视频统计监听器；传入 null 清除，流清理时以 undefined 清空统计。
+   *
+   * @param listener 异步接收当前生成流下行统计或 undefined 清空通知的监听器；null 表示移除。
+   * @returns 无返回值。
    */
   setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void;
 
@@ -89,6 +113,7 @@ export interface XmaxRealtimeManaging {
   /**
    * 设置本地视频文件的预览音量，不影响上传的音频和生成期间的自动静音。
    * 可在创建本地流前设置，停止或替换视频后保留。
+   *
    * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
    * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
    */
@@ -97,6 +122,7 @@ export interface XmaxRealtimeManaging {
   /**
    * 设置远端生成结果的播放音量，后续订阅和重连沿用该值。
    * 新建相机/图片流成功后重置为 0，新建视频流成功后重置为 1；自定义音量请在创建流后设置。
+   *
    * @param volume 0～1 的有限数值；0 为静音，1 为原始音量；尚未创建本地流时为 1。
    * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
    */
@@ -156,13 +182,25 @@ export interface XmaxRealtimeManaging {
    */
   stopLocalVideoStream(): Promise<void>;
 
-  /** 暂停本地视频文件，保持 RTC 发送冻结帧和静音音频。 */
+  /**
+   * 暂停本地视频文件，保持 RTC 发送冻结帧和静音音频。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   pauseLocalVideoStream(): Promise<void>;
 
-  /** 从暂停位置恢复本地视频文件。 */
+  /**
+   * 从暂停位置恢复本地视频文件。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   resumeLocalVideoStream(): Promise<void>;
 
-  /** 在播放和暂停之间切换。 */
+  /**
+   * 在播放和暂停之间切换。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   toggleLocalVideoStreamPlayback(): Promise<void>;
 
   /**

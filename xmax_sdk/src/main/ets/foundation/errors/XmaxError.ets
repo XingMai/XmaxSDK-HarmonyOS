@@ -1,3 +1,14 @@
+//
+//  XmaxError.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 /** SDK 向接入方暴露的统一错误码。 */
 export enum XmaxErrorCode {
 
@@ -47,12 +58,18 @@ export enum XmaxErrorCode {
   TIMEOUT = 'TIMEOUT'
 }
 
-/** SDK 内部组件使用的错误监听器。 */
+/**
+ * SDK 内部组件使用的错误监听器。
+ *
+ * @param error 当前操作失败或终止的原因。
+ * @returns 无返回值。
+ */
 export type XmaxErrorListener = (error: XmaxError) => void;
 
 /** 表示 SDK 统一抛出或回调给接入方的错误。 */
 export class XmaxError extends Error {
 
+  /** SDK 与服务端错误信息 */
   /** SDK 统一错误码。 */
   readonly code: XmaxErrorCode;
 
@@ -69,6 +86,7 @@ export class XmaxError extends Error {
    * @param message 面向接入方的错误原因。
    * @param apiCode Xmax API 返回的可选业务错误码。
    * @param httpStatus 可选的 HTTP 响应状态码。
+   * @returns 新建的 XmaxError 实例。
    */
   constructor(
     code: XmaxErrorCode,

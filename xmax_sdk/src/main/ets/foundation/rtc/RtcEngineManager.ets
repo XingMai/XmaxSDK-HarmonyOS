@@ -1,3 +1,14 @@
+//
+//  RtcEngineManager.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { common } from '@kit.AbilityKit';
 import {
   EngineConfig,
@@ -13,12 +24,14 @@ const RTC_APP_ID: string = '69a177e226e9b90176a86b96';
 /** 表示对全局 RTC Engine 的独占使用权。 */
 export class RtcEngineLease {
 
+  /** 独占使用的 RTC 引擎 */
   readonly engine: RTCEngine;
 
   /**
    * 创建 RTC Engine 租约。
    *
    * @param engine 当前租约持有的 RTC Engine。
+   * @returns 新建的 RtcEngineLease 实例。
    */
   constructor(engine: RTCEngine) {
     this.engine = engine;
@@ -28,12 +41,19 @@ export class RtcEngineLease {
 /** 保存等待 RTC Engine 可用的请求。 */
 class RtcEngineRequest {
 
+  /** 引擎租约等待回调 */
+  /**
+   * 完成当前资源或媒体结果的异步等待。
+   *
+   * @returns 无返回值。
+   */
   readonly resolve: () => void;
 
   /**
    * 创建 RTC Engine 等待请求。
    *
    * @param resolve Engine 可用时调用的完成方法。
+   * @returns 新建的 RtcEngineRequest 实例。
    */
   constructor(resolve: () => void) {
     this.resolve = resolve;
@@ -43,9 +63,13 @@ class RtcEngineRequest {
 /** 管理全局 RTC Engine 的独占创建、租用和销毁。 */
 export class RtcEngineManager {
 
-  // RTC 资源
+  /** 当前引擎所有权 */
   private static activeLease: RtcEngineLease | null = null;
+
+  /** 排队等待的引擎请求 */
   private static readonly requests: RtcEngineRequest[] = [];
+
+  /** 引擎创建与销毁等待 */
   private static initializationPromise: Promise<RTCEngine> | null = null;
   private static destructionPromise: Promise<void> | null = null;
 

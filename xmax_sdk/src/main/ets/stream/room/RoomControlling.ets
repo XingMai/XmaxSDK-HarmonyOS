@@ -1,3 +1,14 @@
+//
+//  RoomControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
 import { RealtimePoint } from '../../service/realtime/RealtimePoint';
@@ -6,7 +17,13 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 
 /** 定义 RTC 房间生命周期和房间信令发送能力。 */
 export interface RoomControlling {
-  /** 只更新回传规格和码率，不改变生成画布。 */
+  /**
+   * 只更新回传规格和码率，不改变生成画布。
+   *
+   * @param taskId 当前生成任务标识。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @returns 无返回值。
+   */
   changeTargetSize(taskId: string, targetSize: ImageSize): void;
 
 
@@ -35,6 +52,9 @@ export interface RoomControlling {
    * @param taskId 生成任务标识。
    * @param videoFormat 生成视频格式。
    * @param context 生成上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
    * @returns 无返回值。
    */
   startGeneration(
@@ -52,6 +72,9 @@ export interface RoomControlling {
    * @param taskId 生成任务标识。
    * @param videoFormat 生成视频格式。
    * @param context 新的生成上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
    * @returns 无返回值。
    */
   changeGenerationCondition(

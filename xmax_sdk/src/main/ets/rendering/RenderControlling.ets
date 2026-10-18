@@ -1,3 +1,14 @@
+//
+//  RenderControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { ImageSize } from '../service/media/ImageSize';
 import { RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
@@ -7,16 +18,33 @@ import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 
 /** 定义渲染层向 Core 暴露的统一能力。 */
 export interface RenderControlling {
-  /** 设置公开远端帧监听器；null 取消监听并清除待交付帧。 */
+  /**
+   * 设置公开远端帧监听器；null 取消监听并清除待交付帧。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
 
-  /** 停止当前流的公开帧交付，直至设置新的远端流。 */
+  /**
+   * 停止当前流的公开帧交付，直至设置新的远端流。
+   *
+   * @returns 无返回值。
+   */
   stopRemoteVideoFrameDelivery(): void;
 
-  /** 捕获下一张远端帧并以静态覆盖层冻结当前生成画面。 */
+  /**
+   * 捕获下一张远端帧并以静态覆盖层冻结当前生成画面。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   freezeRemoteVideo(): Promise<void>;
 
-  /** 收到下一张远端帧后移除静态覆盖层。 */
+  /**
+   * 收到下一张远端帧后移除静态覆盖层。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   resumeRemoteVideo(): Promise<void>;
 
 
@@ -28,10 +56,19 @@ export interface RenderControlling {
    */
   setRemoteStream(stream: RemoteStream | null): void;
 
-  /** 等待本次 SEI 匹配后出现的首个可用远端帧，超时或流被清除时拒绝。 */
+  /**
+   * 等待本次 SEI 匹配后出现的首个可用远端帧，超时或流被清除时拒绝。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   waitUntilRemoteFrameReady(): Promise<void>;
 
-  /** 使启动期间的异步致命错误立即结束首帧等待。 */
+  /**
+   * 使启动期间的异步致命错误立即结束首帧等待。
+   *
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   failRemoteFrameWait(error: XmaxError): void;
 
   /**

@@ -1,9 +1,21 @@
+//
+//  MediaSourceControlling.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { MediaSourceConfiguration } from './MediaSourceConfiguration';
 
 /** 定义本地媒体文件的音视频输入能力。 */
 export interface MediaSourceControlling {
 
+  /** 音频播放与文件状态 */
   /** 当前本地视频预览音量（0～1），默认 0.45。 */
   readonly localAudioVolume: number;
 
@@ -18,6 +30,7 @@ export interface MediaSourceControlling {
    *
    * @param filePath 本地媒体文件路径。
    * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 文件实际使用的媒体源配置。
    */
   prepare(
@@ -33,10 +46,18 @@ export interface MediaSourceControlling {
    */
   start(): Promise<void>;
 
-  /** 暂停文件音视频时间轴并清空本地音频余量。 */
+  /**
+   * 暂停文件音视频时间轴并清空本地音频余量。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   pause(): Promise<void>;
 
-  /** 从原媒体位置恢复文件音视频时间轴。 */
+  /**
+   * 从原媒体位置恢复文件音视频时间轴。
+   *
+   * @returns 无返回值。
+   */
   resume(): void;
 
   /**
@@ -47,7 +68,12 @@ export interface MediaSourceControlling {
    */
   setLocalAudioPreviewEnabled(enabled: boolean): void;
 
-  /** 设置本地预览音量，不改变输出给其他消费者的音频帧。 */
+  /**
+   * 设置本地预览音量，不改变输出给其他消费者的音频帧。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   setLocalAudioVolume(volume: number): Promise<void>;
 
   /**

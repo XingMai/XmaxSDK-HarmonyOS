@@ -1,8 +1,20 @@
+//
+//  AudioManaging.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { AudioFrame } from './AudioFrame';
 
 /** 定义本地 PCM 音频播放能力。 */
 export interface AudioManaging {
 
+  /** 本地播放音量 */
   /** 当前配置的本地播放音量（0～1），默认 0.45。 */
   readonly volume: number;
 
@@ -29,7 +41,12 @@ export interface AudioManaging {
    */
   setPlaybackEnabled(enabled: boolean): void;
 
-  /** 设置播放器音量（0～1），播放器停止后保留设置。 */
+  /**
+   * 设置播放器音量（0～1），播放器停止后保留设置。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   setVolume(volume: number): Promise<void>;
 
   /**
@@ -39,7 +56,11 @@ export interface AudioManaging {
    */
   flush(): Promise<void>;
 
-  /** 等待已提交的本地音频播放完，不清空尾部音频。 */
+  /**
+   * 等待已提交的本地音频播放完，不清空尾部音频。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   drain(): Promise<void>;
 
   /**

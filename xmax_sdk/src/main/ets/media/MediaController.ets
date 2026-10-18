@@ -1,3 +1,14 @@
+//
+//  MediaController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { MediaService } from '../service/media/MediaService';
 import { MediaServicing } from '../service/media/MediaServicing';
 import { common } from '@kit.AbilityKit';
@@ -24,15 +35,25 @@ import { InteractionFrame } from './interaction/InteractionFrame';
 import { MediaControlling } from './MediaControlling';
 import { VideoController } from './video/VideoController';
 
+/** 可作为本地输入源的摄像头、图片或视频控制器。 */
 type LocalMediaController = CameraController |
   VideoController |
   ImageController;
+
+/**
+ * 异步创建并返回本地媒体流的操作。
+ *
+ * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+ */
 type LocalMediaCreation = () => Promise<RealtimeMediaStream>;
 
 /** 记录当前本地媒体来源及其进行中的创建、相机更新和停止任务。 */
 class ActiveLocalMediaSource {
 
+  /** 当前媒体控制器 */
   readonly controller: LocalMediaController;
+
+  /** 媒体操作与停止等待 */
   closing: boolean = false;
   operationPromise: Promise<RealtimeMediaStream> | null = null;
   stopPromise: Promise<void> | null = null;
@@ -41,6 +62,7 @@ class ActiveLocalMediaSource {
    * 创建活动媒体来源记录。
    *
    * @param controller 实际管理当前媒体来源的子 Controller。
+   * @returns 新建的 ActiveLocalMediaSource 实例。
    */
   constructor(controller: LocalMediaController) {
     this.controller = controller;
@@ -50,16 +72,16 @@ class ActiveLocalMediaSource {
 /** 统一协调相机、视频和图片三类本地媒体来源的所有权与生命周期。 */
 export class MediaController implements MediaControlling {
 
-  // 基础层组件
+  /** 媒体平台与业务组件 */
   private readonly rtcManager: RtcManaging;
 
-  // 本地媒体组件
+  /** 本地媒体组件 */
   private readonly cameraController: CameraController;
   private readonly imageController: ImageController;
   private readonly interactionController: InteractionControlling;
   private readonly videoController: VideoController;
 
-  // 本地媒体资源
+  /** 当前本地输入与生命周期 */
   private activeSource: ActiveLocalMediaSource | null = null;
 
   /**
@@ -70,6 +92,9 @@ export class MediaController implements MediaControlling {
    * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
    * @param errorListener 持续媒体输出错误监听器。
    * @param mediaService 相机、图片和视频共享的模型输入规则。
+   * @param cameraFormatListener 接收摄像头输出格式变化的监听器。
+   * @param videoEndedListener 本地视频播放结束时执行的回调。
+   * @returns 新建的 MediaController 实例。
    */
   constructor(
     context: common.UIAbilityContext,
@@ -114,22 +139,39 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /** @returns 当前活动的本地视频轨道；没有媒体来源时返回空值。 */
+  /**
+   * 读取当前本地输入提供的视频轨道。
+   *
+   * @returns 当前轨道；尚无本地媒体时返回 null。
+   */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeSource?.controller.currentTrack ?? null;
   }
 
-  /** @returns 当前本地视频格式；没有活动轨道时返回空值。 */
+  /**
+   * 读取已配置的摄像头输出格式。
+   *
+   * @returns 当前输出格式；尚未配置时返回 null。
+   */
   get currentVideoFormat(): RealtimeVideoFormat | undefined {
     return this.currentTrack?.videoFormat;
   }
 
+  /**
+   * 判断当前图片或视频输入是否需要按原比例补边。
+   *
+   * @returns 图片和视频输入返回 true，摄像头输入返回 false。
+   */
   get usesContainPadding(): boolean {
     const controller = this.activeSource?.controller;
     return controller === this.imageController || controller === this.videoController;
   }
 
-  /** @returns 当前来源是否使用相机麦克风或包含文件音轨。 */
+  /**
+   * 获取当前媒体文件是否包含可用音轨。
+   *
+   * @returns 当前来源是否使用相机麦克风或包含文件音轨。
+   */
   get hasAudio(): boolean {
     if (this.activeSource?.controller === this.cameraController) {
       return this.cameraController.useMicrophone;
@@ -138,13 +180,23 @@ export class MediaController implements MediaControlling {
       this.videoController.hasAudio;
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取当前本地视频的播放状态。
+   *
+   * @returns 本地视频播放状态；当前输入不是视频时返回 undefined。
+   */
   get localVideoPlaybackState(): LocalVideoPlaybackState | undefined {
     return this.activeSource?.controller === this.videoController ?
       this.videoController.playbackState : undefined;
   }
 
-  /** @inheritdoc */
+  /**
+   * 立即阻断当前本地媒体输出并解除预览绑定。
+   *
+   * 该方法只执行可同步完成的静默操作，完整资源释放由 `stopLocalStream` 完成。
+   *
+   * @returns 无返回值。
+   */
   prepareForClose(): void {
     const source: ActiveLocalMediaSource | null = this.activeSource;
     if (source === null) {
@@ -163,7 +215,11 @@ export class MediaController implements MediaControlling {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止当前本地输入，等待采集、解码和发布资源释放完成。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   stopLocalStream(): Promise<void> {
     const source: ActiveLocalMediaSource | null = this.activeSource;
     if (source === null) {
@@ -185,17 +241,32 @@ export class MediaController implements MediaControlling {
     this.cameraController.setPreviewReadyListener(listener);
   }
 
-  /** @inheritdoc */
+  /**
+   * 开始处理指定生成任务的交互输入。
+   *
+   * @param taskId 生成任务标识。
+   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
+   * @returns 无返回值。
+   */
   start(taskId: string, videoFormat: RealtimeVideoFormat): void {
     this.interactionController.start(taskId, videoFormat);
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止音视频输出并清理媒体文件状态。
+   *
+   * @returns 无返回值。
+   */
   stop(): void {
     this.interactionController.stop();
   }
 
-  /** @inheritdoc */
+  /**
+   * 将视口触点转换为有效媒体区域的归一化交互点并发送。
+   *
+   * @param frame 当前容器中的交互点和显示信息。
+   * @returns 无返回值。
+   */
   submit(frame: InteractionFrame): void {
     this.interactionController.submit(frame);
   }
@@ -222,33 +293,53 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /** @inheritdoc */
+  /**
+   * 按当前显示方向同步相机采集及轨道规格；其他来源不操作。
+   *
+   * @returns 无返回值。
+   */
   updateCameraOrientation(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.updateOrientation();
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。
+   *
+   * @returns 无返回值。
+   */
   startMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.startMicrophoneCapture();
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止相机麦克风采集，保留重连所需的配置。
+   *
+   * @returns 无返回值。
+   */
   stopMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.stopMicrophoneCapture();
     }
   }
 
-  /** @returns 当前相机来源停止完成后的 Promise。 */
+  /**
+   * 停止本地相机流并释放预览资源。
+   *
+   * @returns 当前相机来源停止完成后的 Promise。
+   */
   stopLocalCameraStream(): Promise<void> {
     return this.stopSource(this.cameraController);
   }
 
-  /** @returns 摄像头切换后的本地媒体流。 */
+  /**
+   * 切换摄像头，生成中切换时保留连接并恢复当前生成条件。
+   *
+   * @returns 摄像头切换后的本地媒体流。
+   */
   switchCamera(): Promise<RealtimeMediaStream> {
     return this.updateCameraSource(
       (): Promise<RealtimeMediaStream> => this.cameraController.switchCamera()
@@ -260,6 +351,7 @@ export class MediaController implements MediaControlling {
    *
    * @param filePath 本地视频文件路径。
    * @param videoFormat 可选的视频输出格式。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 创建完成后的本地视频媒体流。
    */
   createLocalVideoStream(
@@ -274,12 +366,20 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /** @returns 当前视频文件来源停止完成后的 Promise。 */
+  /**
+   * 停止本地视频流并释放预览资源。
+   *
+   * @returns 当前视频文件来源停止完成后的 Promise。
+   */
   stopLocalVideoStream(): Promise<void> {
     return this.stopSource(this.videoController);
   }
 
-  /** @inheritdoc */
+  /**
+   * 暂停当前视频文件流并开始冻结帧发布。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   pauseLocalVideoStream(): Promise<void> {
     if (this.activeSource?.controller !== this.videoController) {
       return Promise.reject(new XmaxError(
@@ -290,7 +390,11 @@ export class MediaController implements MediaControlling {
     return this.videoController.pauseLocalVideoStream();
   }
 
-  /** @inheritdoc */
+  /**
+   * 从原媒体位置恢复当前视频文件流。
+   *
+   * @returns 无返回值。
+   */
   resumeLocalVideoStream(): void {
     if (this.activeSource?.controller !== this.videoController) {
       throw new XmaxError(
@@ -319,7 +423,11 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /** @returns 当前图片来源停止完成后的 Promise。 */
+  /**
+   * 停止本地图片流并释放预览资源。
+   *
+   * @returns 当前图片来源停止完成后的 Promise。
+   */
   stopLocalImageStream(): Promise<void> {
     return this.stopSource(this.imageController);
   }
@@ -335,19 +443,33 @@ export class MediaController implements MediaControlling {
     return track !== undefined && this.currentTrack === RealtimeVideoTrack.resolve(track);
   }
 
-  /** @inheritdoc */
+  /**
+   * 启用或暂停文件视频的本地音频预览，不影响 RTC 音频帧输出。
+   *
+   * @param enabled 是否播放本地预览音频。
+   * @returns 无返回值。
+   */
   setLocalAudioPreviewEnabled(enabled: boolean): void {
     if (this.activeSource?.controller === this.videoController) {
       this.videoController.setLocalAudioPreviewEnabled(enabled);
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 当前配置的本地视频预览音量。
+   *
+   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
+   */
   get localAudioVolume(): number {
     return this.videoController.localAudioVolume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置并保留本地视频预览音量，范围为 0～1。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async setLocalAudioVolume(volume: number): Promise<void> {
     await this.videoController.setLocalAudioVolume(volume);
   }

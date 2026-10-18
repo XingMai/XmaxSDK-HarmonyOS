@@ -1,3 +1,14 @@
+//
+//  Index.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 export { XmaxLoggerOption } from './src/main/ets/foundation/logging/XmaxLoggerOption';
 export { XmaxConfiguration } from './src/main/ets/core/XmaxConfiguration';
 export { XmaxEnvironment } from './src/main/ets/core/XmaxEnvironment';

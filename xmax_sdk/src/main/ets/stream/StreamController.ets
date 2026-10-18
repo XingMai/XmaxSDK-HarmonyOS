@@ -1,3 +1,14 @@
+//
+//  StreamController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../foundation/rtc/VideoStatistics';
 import { QualityConfiguration, QualityChange, AdaptiveQualityListener } from './quality/QualityConfiguration';
 import { QualityHistoryStore, MemoryQualityHistoryStore } from './quality/QualityHistory';
@@ -32,24 +43,39 @@ import { StreamControlling } from './StreamControlling';
 
 const GENERATION_START_TIMEOUT_MS: number = 30000;
 const DEFAULT_REMOTE_AUDIO_VOLUME: number = 100;
+
+/**
+ * 接收生成结果流的建立或清除通知。
+ *
+ * @param stream 需要绑定或处理的媒体流。
+ * @returns 无返回值。
+ */
 type RemoteStreamListener = (stream: RemoteStream | null) => void;
 
 /** 保存当前实时生成任务标识，并为外部视频帧生成连续的 SEI 帧序号。 */
 class GenerationTask {
 
+  /** 生成任务身份 */
   readonly id: string;
+
+  /** 视频帧 SEI 序号 */
   private frameIndex: number = 0;
 
   /**
    * 创建生成任务上下文。
    *
    * @param id 生成任务标识。
+   * @returns 新建的 GenerationTask 实例。
    */
   constructor(id: string) {
     this.id = id;
   }
 
-  /** @returns 当前帧的任务标识和帧序号，并将序号推进到下一帧。 */
+  /**
+   * 为当前生成任务创建下一帧 SEI，并递增帧序号。
+   *
+   * @returns 包含任务标识和帧序号的 UTF-8 数据。
+   */
   nextSeiData(): Uint8Array {
     const message: string = `${this.id}&index=${this.frameIndex}`;
     this.frameIndex += 1;
@@ -60,35 +86,51 @@ class GenerationTask {
 /** 统一协调 RTC 房间、媒体流、编码和质量事件。 */
 export class StreamController implements StreamControlling, RtcEventListener {
 
-  // 基础层组件
+  /** RTC 与传输业务组件 */
   private readonly rtcManager: RtcManaging;
 
-  // 流层组件
+  /** 流层组件 */
   private readonly roomController: RoomControlling;
   private readonly encodingController: EncodingControlling;
   private readonly qualityController: QualityControlling;
 
-  // 事件监听
+  /** 远端流与错误通知 */
   private readonly remoteStreamListener: RemoteStreamListener;
   private readonly errorListener: XmaxErrorListener;
 
-  // 房间资源
+  /** 房间及生成服务用户身份 */
   private roomId: string = '';
   private botName: string = '';
 
+  /** 连接与生成耗时记录 */
   private readonly timing: RealtimeTiming;
 
-  // 本地流状态
+  /** 本地音频发布状态 */
   private localAudioPublished: boolean = false;
 
-  // 生成状态
+  /** 当前生成任务与结果流 */
   private currentTask: GenerationTask | null = null;
   private activeRemoteStream: RemoteStream | null = null;
+
+  /** 远端音频播放及订阅状态 */
   private remoteAudioActive: boolean = false;
   private remoteAudioVolumePercentage: number = DEFAULT_REMOTE_AUDIO_VOLUME;
   private readonly subscribedRemoteAudioUsers: Set<string> = new Set();
+
+  /** 结果流确认超时与完成通知 */
   private generationStartTimer: number = -1;
+  /**
+   * 完成当前生成任务的结果流确认等待。
+   *
+   * @returns 无返回值。
+   */
   private generationStartResolve: (() => void) | null = null;
+  /**
+   * 拒绝当前生成任务的结果流确认等待。
+   *
+   * @param reason 操作结束原因或平台告警原因。
+   * @returns 无返回值。
+   */
   private generationStartReject: ((reason: XmaxError) => void) | null = null;
 
   /**
@@ -98,6 +140,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
    * @param remoteStreamListener 接收远端视频流变化的监听器。
    * @param errorListener 接收没有对应等待 Promise 的 RTC 异步错误。
    * @param timing 与实时 Manager 共享的启动耗时记录。
+   * @param historyStore 保存自动调档历史的数值存储；默认使用内存。
+   * @returns 新建的 StreamController 实例。
    */
   constructor(
     rtcManager: RtcManaging,
@@ -116,23 +160,81 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.rtcManager.setEventListener(this);
   }
 
+  /**
+   * 读取当前上下行传输基准与档位。
+   *
+   * @returns 调档配置；尚未准备时返回 undefined。
+   */
   get qualityConfiguration(): QualityConfiguration | undefined { return this.qualityController.qualityConfiguration; }
+
+  /**
+   * 根据媒体基准和有效历史档位初始化上下行自动调档。
+   *
+   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
+   * @param model 生成模型名称，用于隔离各模型的历史档位。
+   * @returns 初始化后的上下行档位配置。
+   */
   prepareQuality(baseline: RealtimeVideoFormat, model: string): QualityConfiguration {
     return this.qualityController.prepareQuality(baseline, model);
   }
+
+  /**
+   * 保留上下行档位并替换媒体基准，重置各方向的采样窗口。
+   *
+   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
+   * @returns 更新后的配置；尚未准备时返回 undefined。
+   */
   rebaseQuality(baseline: RealtimeVideoFormat): QualityConfiguration | undefined {
     return this.qualityController.rebaseQuality(baseline);
   }
+
+  /**
+   * 设置自动调档事件监听器；传入 null 清除监听器。
+   *
+   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
+   * @returns 无返回值。
+   */
   setAdaptiveQualityListener(listener: AdaptiveQualityListener | null): void {
     this.qualityController.setAdaptiveQualityListener(listener);
   }
+
+  /**
+   * 根据连续网络采样计算上下行建议档位，不直接修改当前档位。
+   *
+   * @param quality 当前方向或上下行的网络质量采样。
+   * @param sampledAt 网络采样的单调时间，单位秒。
+   * @returns 各方向的候选档位；无调整建议的方向为 undefined。
+   */
   proposeQuality(quality: RealtimeNetworkQuality, sampledAt: number): QualityChange {
     return this.qualityController.proposeQuality(quality, sampledAt);
   }
+
+  /**
+   * 记录一次调档提交的结果，仅成功时更新档位和历史。
+   *
+   * @param downlink 是否为下行方向；false 表示上行。
+   * @param level 传输档位，范围 1～5，数值越小质量越高。
+   * @param success 此次配置是否已成功提交。
+   * @returns 无返回值。
+   */
   completeQuality(downlink: boolean, level: number, success: boolean): void {
     this.qualityController.completeQuality(downlink, level, success);
   }
+
+  /**
+   * 清空上下行连续采样计数，保留当前档位。
+   *
+   * @returns 无返回值。
+   */
   resetQualitySamples(): void { this.qualityController.resetQualitySamples(); }
+
+  /**
+   * 为当前任务提交结果流目标尺寸与码率预算，不等待服务端生效确认。
+   *
+   * @param taskId 当前生成任务标识。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @returns 无返回值。
+   */
   changeTargetSize(taskId: string, targetSize: ImageSize): void {
     if (taskId.length === 0 || this.currentTask?.id !== taskId) {
       throw new XmaxError(XmaxErrorCode.CANCELLED, 'Generation task is no longer active');
@@ -140,17 +242,30 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.roomController.changeTargetSize(taskId, targetSize);
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取当前活动生成任务的标识。
+   *
+   * @returns 任务标识；尚未生成时返回空字符串。
+   */
   get currentGenerationTaskId(): string {
     return this.currentTask?.id ?? '';
   }
 
-  /** @inheritdoc */
+  /**
+   * 读取生成结果音频的播放音量。
+   *
+   * @returns 0～1 的音量比例，0 为静音，1 为原始音量。
+   */
   get remoteAudioVolume(): number {
     return this.remoteAudioVolumePercentage / 100;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置远端播放音量（0～1），未订阅时缓存到后续订阅。
+   *
+   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
+   * @returns 无返回值。
+   */
   setRemoteAudioVolume(volume: number): void {
     const rtcVolume: number = Math.round(volume * 100);
     this.subscribedRemoteAudioUsers.forEach((userId: string): void => {
@@ -159,29 +274,64 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.remoteAudioVolumePercentage = rtcVolume;
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置实时视频编码器配置。
+   *
+   * @param videoFormat RTC 视频编码使用的宽度、高度和帧率。
+   * @returns 无返回值。
+   */
   setVideoEncoderConfig(videoFormat: RealtimeVideoFormat): void {
     this.encodingController.configure(videoFormat);
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置上行视频统计监听器；传入 null 清除，停止发布或断开时以 undefined 清空统计。
+   *
+   * @param listener 异步接收上行统计或 undefined 清空通知的监听器；null 表示移除。
+   * @returns 无返回值。
+   */
   setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
     this.qualityController.setUplinkVideoStatisticsListener(listener);
   }
+
+  /**
+   * 设置当前生成流的下行视频统计监听器；传入 null 清除，流清理时以 undefined 清空统计。
+   *
+   * @param listener 异步接收当前生成流下行统计或 undefined 清空通知的监听器；null 表示移除。
+   * @returns 无返回值。
+   */
   setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
     this.qualityController.setDownlinkVideoStatisticsListener(listener);
   }
 
+  /**
+   * 设置网络质量监听器。
+   *
+   * @param listener 接收网络质量事件的监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
     this.qualityController.setNetworkQualityListener(listener);
   }
 
-  /** @inheritdoc */
+  /**
+   * 设置设备性能告警监听器。
+   *
+   * @param listener 接收设备性能事件的监听器；传入空值时清除监听器。
+   * @returns 无返回值。
+   */
   setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void {
     this.qualityController.setPerformanceAlarmListener(listener);
   }
 
-  /** @inheritdoc */
+  /**
+   * 加入 RTC 房间并发布本地媒体流。
+   *
+   * @param connection RTC 房间、用户、令牌和目标机器人信息。
+   * @param includeLocalAudio 是否随本地视频一起发布本地音频。
+   * @param ensureActive 在异步边界确认当前连接操作仍然有效的回调。
+   * @returns 操作完成时兑现的 Promise。
+   */
   async connect(
     connection: RealtimeSessionConnection,
     includeLocalAudio: boolean,
@@ -193,7 +343,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.publishLocalStream(includeLocalAudio);
   }
 
-  /** @inheritdoc */
+  /**
+   * 清理媒体流状态并离开当前 RTC 房间；没有活动房间时安全返回。
+   *
+   * @returns 操作完成时兑现的 Promise。
+   */
   async disconnect(): Promise<void> {
     try {
       this.resetStream();
@@ -202,7 +356,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 更新本地音频发布状态。
+   *
+   * @param enabled 是否发布本地音频。
+   * @returns 无返回值。
+   */
   setLocalAudioEnabled(enabled: boolean): void {
     if (enabled === this.localAudioPublished) {
       return;
@@ -217,7 +376,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.localAudioPublished = enabled;
   }
 
-  /** @inheritdoc */
+  /**
+   * 推送本地外部视频帧。
+   *
+   * @param frame 已准备好交给 RTC 的本地视频帧。
+   * @returns 无返回值。
+   */
   pushLocalVideoFrame(frame: VideoFrame): void {
     const task: GenerationTask | null = this.currentTask;
     this.rtcManager.pushExternalVideoFrame(
@@ -226,7 +390,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     );
   }
 
-  /** @inheritdoc */
+  /**
+   * 推送本地外部音频帧。
+   *
+   * @param frame 已准备好交给 RTC 的 PCM 音频帧。
+   * @returns 无返回值。
+   */
   pushLocalAudioFrame(frame: AudioFrame): void {
     if (!this.localAudioPublished) {
       return;
@@ -235,7 +404,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.rtcManager.pushExternalAudioFrame(frame);
   }
 
-  /** @inheritdoc */
+  /**
+   * 建立生成任务、发送开始信令并等待匹配的远端结果流。
+   *
+   * @param taskId 当前生成任务的唯一标识。
+   * @param videoFormat 当前本地媒体使用的视频格式。
+   * @param context 当前生成任务使用的条件上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @returns 操作完成时兑现的 Promise。
+   */
   beginGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
@@ -257,7 +436,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
   }
 
-  /** @inheritdoc */
+  /**
+   * 首帧可用后激活已匹配生成流的远端音频。
+   *
+   * @returns 无返回值。
+   */
   activateRemoteAudio(): void {
     const stream: RemoteStream | null = this.activeRemoteStream;
     if (this.currentTask === null || stream === null) {
@@ -267,7 +450,17 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.remoteAudioActive = true;
   }
 
-  /** @inheritdoc */
+  /**
+   * 发送生成条件变更信令。
+   *
+   * @param taskId 当前生成任务的唯一标识。
+   * @param videoFormat 当前本地媒体使用的视频格式。
+   * @param context 更新后的生成条件上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @returns 无返回值。
+   */
   updateGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
@@ -286,13 +479,24 @@ export class StreamController implements StreamControlling, RtcEventListener {
     );
   }
 
-  /** @inheritdoc */
+  /**
+   * 停止生成任务并清理远端结果流。
+   *
+   * @param taskId 需要停止的生成任务标识；传入空字符串时停止当前任务。
+   * @returns 无返回值。
+   */
   stopGeneration(taskId: string): void {
     const stoppedTaskId: string = this.stopStreamGeneration(taskId);
     this.roomController.stopGeneration(stoppedTaskId);
   }
 
-  /** @inheritdoc */
+  /**
+   * 发送生成任务的交互轨迹。
+   *
+   * @param taskId 接收交互轨迹的生成任务标识。
+   * @param points 需要发送的模型输入坐标轨迹点。
+   * @returns 无返回值。
+   */
   sendTracks(taskId: string, points: RealtimePoint[]): void {
     this.roomController.sendTracks(taskId, points);
   }
@@ -399,14 +603,25 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.resolveGenerationStart(taskId);
   }
 
-  /** 仅用查询参数前的任务标识匹配；os、index 等附加信息不参与任务身份判断。 */
+  /**
+   * 仅用查询参数前的任务标识匹配；os、index 等附加信息不参与任务身份判断。
+   *
+   * @param message 日志内容、错误说明或收到的信令文本。
+   * @param taskId 当前生成任务标识。
+   * @returns SEI 中的任务标识与指定任务匹配时返回 true。
+   */
   private matchesTaskSei(message: string, taskId: string): boolean {
     const receivedId: string = message.trim().split('?')[0];
     const currentId: string = taskId.split('?')[0];
     return receivedId.length > 0 && receivedId === currentId;
   }
 
-  /** 启动中的订阅错误交给原 Promise 上报，其余异步错误走监听器。 */
+  /**
+   * 启动中的订阅错误交给原 Promise 上报，其余异步错误走监听器。
+   *
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private handleRtcEventError(error: XmaxError): void {
     const taskId: string = this.currentTask?.id ?? '';
     if (taskId.length > 0 &&
@@ -417,6 +632,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.errorListener(error);
   }
 
+  /**
+   * 订阅指定远端用户的音频，并记录订阅状态。
+   *
+   * @param userId RTC 用户标识。
+   * @returns 无返回值。
+   */
   private subscribeRemoteAudio(userId: string): void {
     if (this.subscribedRemoteAudioUsers.has(userId)) {
       return;
@@ -426,6 +647,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.subscribedRemoteAudioUsers.add(userId);
   }
 
+  /**
+   * 取消指定远端用户的音频订阅并清除订阅记录。
+   *
+   * @param userId RTC 用户标识。
+   * @returns 无返回值。
+   */
   private unsubscribeRemoteAudio(userId: string): void {
     if (!this.subscribedRemoteAudioUsers.delete(userId)) {
       return;
@@ -437,7 +664,13 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
   }
 
-  /** 配置当前房间及目标远端用户。 */
+  /**
+   * 配置当前房间及目标远端用户。
+   *
+   * @param roomId RTC 房间标识。
+   * @param botName 服务端生成用户的识别名称。
+   * @returns 无返回值。
+   */
   private configureRoom(
     roomId: string,
     botName?: string
@@ -446,7 +679,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.botName = botName ?? '';
   }
 
-  /** 发布本地视频，并按需发布本地音频。 */
+  /**
+   * 发布本地视频，并按需发布本地音频。
+   *
+   * @param includeAudio 是否同时发布本地音频。
+   * @returns 无返回值。
+   */
   private publishLocalStream(includeAudio: boolean): void {
     this.rtcManager.publishLocalVideo();
     this.qualityController.setUplinkVideoStatisticsEnabled(true);
@@ -456,7 +694,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
   }
 
-  /** 建立当前生成任务并等待匹配的远端生成流。 */
+  /**
+   * 建立当前生成任务并等待匹配的远端生成流。
+   *
+   * @param taskId 当前生成任务标识。
+   * @returns 操作完成时兑现的 Promise。
+   */
   private beginGenerationConfirmation(taskId: string): Promise<void> {
     if (this.currentTask !== null) {
       throw new XmaxError(
@@ -469,7 +712,13 @@ export class StreamController implements StreamControlling, RtcEventListener {
     return this.waitForGenerationStart(taskId);
   }
 
-  /** 停止当前生成任务并取消远端生成流等待。 */
+  /**
+   * 停止当前生成任务并取消远端生成流等待。
+   *
+   * @param taskId 当前生成任务标识。
+   * @param reason 操作结束原因或平台告警原因。
+   * @returns 实际停止的任务标识；指定任务不匹配或无活动任务时返回空字符串。
+   */
   private stopStreamGeneration(
     taskId: string = '',
     reason: string = 'Realtime generation start cancelled'
@@ -495,7 +744,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     return currentTaskId;
   }
 
-  /** 清理当前房间内的本地发布和生成流状态。 */
+  /**
+   * 清理当前房间内的本地发布和生成流状态。
+   *
+   * @returns 无返回值。
+   */
   private resetStream(): void {
     this.qualityController.setUplinkVideoStatisticsEnabled(false);
     this.stopStreamGeneration();
@@ -507,13 +760,22 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.botName = '';
   }
 
-  /** 通知监听器清除当前远端生成流。 */
+  /**
+   * 通知监听器清除当前远端生成流。
+   *
+   * @returns 无返回值。
+   */
   private clearRemoteStream(): void {
     this.qualityController.setDownlinkVideoStatisticsUser(undefined);
     this.remoteStreamListener(null);
   }
 
-  /** 创建远端生成流的限时等待。 */
+  /**
+   * 创建远端生成流的限时等待。
+   *
+   * @param taskId 当前生成任务标识。
+   * @returns 操作完成时兑现的 Promise。
+   */
   private waitForGenerationStart(taskId: string): Promise<void> {
     this.clearGenerationStartWaiter();
     return new Promise((resolve: () => void, reject: (reason: XmaxError) => void) => {
@@ -528,7 +790,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
     });
   }
 
-  /** SEI 匹配后立即完成流确认，Core 随后等待真正可用的远端首帧。 */
+  /**
+   * SEI 匹配后立即完成流确认，Core 随后等待真正可用的远端首帧。
+   *
+   * @param taskId 当前生成任务标识。
+   * @returns 无返回值。
+   */
   private resolveGenerationStart(taskId: string): void {
     if (this.currentTask?.id !== taskId ||
       this.generationStartResolve === null) {
@@ -540,7 +807,13 @@ export class StreamController implements StreamControlling, RtcEventListener {
     resolve();
   }
 
-  /** 拒绝指定生成任务的远端流等待。 */
+  /**
+   * 拒绝指定生成任务的远端流等待。
+   *
+   * @param taskId 当前生成任务标识。
+   * @param error 当前操作失败或终止的原因。
+   * @returns 无返回值。
+   */
   private rejectGenerationStart(
     taskId: string,
     error: XmaxError
@@ -554,7 +827,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     reject(error);
   }
 
-  /** 清理远端生成流等待器和超时计时器。 */
+  /**
+   * 清理远端生成流等待器和超时计时器。
+   *
+   * @returns 无返回值。
+   */
   private clearGenerationStartWaiter(): void {
     if (this.generationStartTimer >= 0) {
       clearTimeout(this.generationStartTimer);

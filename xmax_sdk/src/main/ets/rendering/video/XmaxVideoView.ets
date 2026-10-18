@@ -1,3 +1,14 @@
+//
+//  XmaxVideoView.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { image } from '@kit.ImageKit';
 import { VideoOrientationObserver } from './VideoOrientationObserver';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
@@ -16,12 +27,16 @@ const PREVIEW_TRANSITION_DURATION: number = 300;
 /** 显示本地或远端实时视频轨道。 */
 @Component
 export struct XmaxVideoView {
+
+  /** 待展示的视频轨道 */
   @Prop @Watch('onTrackChanged')
   track?: RealtimeVideoTrack = undefined;
 
+  /** 画面可见状态通知 */
   /** @internal 远端画面显示状态，供组合视频组件使用。 */
   onVideoReadyChanged?: VideoReadyListener;
 
+  /** 显示与交互配置 */
   /** 视频内容显示模式。 */
   @Prop @Watch('onContentModeChanged')
   contentMode: VideoContentMode = VideoContentMode.FILL;
@@ -34,24 +49,30 @@ export struct XmaxVideoView {
   trajectoryRenderer: TrajectoryEffectRendering =
     new DefaultTrajectoryEffectRenderer();
 
+  /** 视图可见性与方向监听 */
   private readonly orientationObserver: VideoOrientationObserver = new VideoOrientationObserver();
   private isVisible: boolean = false;
 
-  // 渲染资源
+  /** 原生视图与轨道绑定 */
   @State private viewId: string = `xmax_video_view_${nextVideoViewId++}`;
   private currentTrack?: RealtimeVideoTrack;
   private attachedTrack?: RealtimeVideoTrack;
   private attachedViewId: string = '';
 
-  // 容器尺寸
+  /** 容器布局尺寸 */
   @State private containerWidth: number = 0;
   @State private containerHeight: number = 0;
 
-  // 预览配置
+  /** 预览比例、图片与视频格式 */
   @State private cameraPreviewRatio: CameraPreviewRatio = CameraPreviewRatio.FILL;
   @State private previewFrame: image.PixelMap | undefined = undefined;
   @State private videoFormat: RealtimeVideoFormat | undefined = undefined;
 
+  /**
+   * 建立当前轨道句柄并同步预览比例与方向监听。
+   *
+   * @returns 无返回值。
+   */
   aboutToAppear(): void {
     this.isVisible = true;
     this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
@@ -59,12 +80,22 @@ export struct XmaxVideoView {
     this.observeOrientation();
   }
 
+  /**
+   * 停止方向监听并解除原生视频视图绑定。
+   *
+   * @returns 无返回值。
+   */
   aboutToDisappear(): void {
     this.isVisible = false;
     this.orientationObserver.stop();
     this.detachVideo();
   }
 
+  /**
+   * 实际轨道变化时解绑旧视图，并为新轨道创建独立渲染标识。
+   *
+   * @returns 无返回值。
+   */
   private onTrackChanged(): void {
     const track: RealtimeVideoTrack | undefined = this.track === undefined ?
       undefined : RealtimeVideoTrack.resolve(this.track);
@@ -80,6 +111,11 @@ export struct XmaxVideoView {
     this.viewId = `xmax_video_view_${nextVideoViewId++}`;
   }
 
+  /**
+   * 为可见视频轨道订阅布局方向变化。
+   *
+   * @returns 无返回值。
+   */
   private observeOrientation(): void {
     this.orientationObserver.stop();
     if (this.isVisible && this.currentTrack !== undefined) {
@@ -88,12 +124,23 @@ export struct XmaxVideoView {
     }
   }
 
+  /**
+   * 从当前视频轨道刷新格式与摄像头预览比例。
+   *
+   * @returns 无返回值。
+   */
   private updatePreviewRatio(): void {
     this.videoFormat = this.track?.videoFormat;
     this.cameraPreviewRatio = this.track === undefined ? CameraPreviewRatio.FILL :
       VideoRenderRegistry.cameraPreviewRatio(this.track) ?? CameraPreviewRatio.FILL;
   }
 
+  /**
+   * 将当前视频轨道绑定到匹配的原生 Surface。
+   *
+   * @param viewId 用于原生视频显示的视图标识。
+   * @returns 无返回值。
+   */
   private attachVideo(viewId: string): void {
     if (viewId !== this.viewId || this.track === undefined) {
       return;
@@ -125,6 +172,11 @@ export struct XmaxVideoView {
       });
   }
 
+  /**
+   * 解除当前原生 Surface 绑定并通知画面不可见。
+   *
+   * @returns 无返回值。
+   */
   private detachVideo(): void {
     const track: RealtimeVideoTrack | undefined = this.attachedTrack;
     const viewId: string = this.attachedViewId;
@@ -136,6 +188,11 @@ export struct XmaxVideoView {
     this.onVideoReadyChanged?.(false);
   }
 
+  /**
+   * 构建视频或交互视图的 ArkUI 组件树。
+   *
+   * @returns 由 ArkUI 管理的视图声明，无直接返回值。
+   */
   build() {
     Stack({ alignContent: Alignment.Center }) {
       ForEach(this.track === undefined ? [] : [this.viewId], (viewId: string) => {
@@ -187,16 +244,31 @@ export struct XmaxVideoView {
     })
   }
 
+  /**
+   * 选择当前视频轨道所需的原生渲染库。
+   *
+   * @returns 原生库名称；没有轨道时返回空字符串。
+   */
   private renderLibraryName(): string {
     const track: RealtimeVideoTrack | undefined = this.track;
     return track === undefined ? '' : VideoRenderRegistry.libraryName(track);
   }
 
+  /**
+   * 判断当前轨道是否已绑定交互能力。
+   *
+   * @returns 轨道具有交互绑定时返回 true。
+   */
   private supportsInteraction(): boolean {
     const track: RealtimeVideoTrack | undefined = this.track;
     return track !== undefined && TrajectoryRegistry.binding(track) !== null;
   }
 
+  /**
+   * 按当前显示模式计算有效交互画面的布局宽度。
+   *
+   * @returns 交互覆盖层的宽度。
+   */
   private trajectoryOverlayWidth(): Length {
     const aspectRatio: number | undefined = this.trackAspectRatio();
     if (this.contentMode !== VideoContentMode.FIT || aspectRatio === undefined ||
@@ -209,6 +281,11 @@ export struct XmaxVideoView {
       this.containerHeight * aspectRatio : this.containerWidth;
   }
 
+  /**
+   * 按当前显示模式计算有效交互画面的布局高度。
+   *
+   * @returns 交互覆盖层的高度。
+   */
   private trajectoryOverlayHeight(): Length {
     const aspectRatio: number | undefined = this.trackAspectRatio();
     if (this.contentMode !== VideoContentMode.FIT || aspectRatio === undefined ||
@@ -221,6 +298,11 @@ export struct XmaxVideoView {
       this.containerHeight : this.containerWidth / aspectRatio;
   }
 
+  /**
+   * 计算当前视频轨道的画面宽高比。
+   *
+   * @returns 有效宽高比；轨道尺寸不可用时返回 undefined。
+   */
   private trackAspectRatio(): number | undefined {
     const videoFormat: RealtimeVideoFormat | undefined = this.videoFormat;
     if (videoFormat === undefined || videoFormat.width <= 0 || videoFormat.height <= 0) {
@@ -230,6 +312,11 @@ export struct XmaxVideoView {
     return videoFormat.width / videoFormat.height;
   }
 
+  /**
+   * 将新的填充模式同步到当前轨道的渲染绑定。
+   *
+   * @returns 无返回值。
+   */
   private onContentModeChanged(): void {
     const track: RealtimeVideoTrack | undefined = this.track;
     if (track !== undefined) {
@@ -237,6 +324,11 @@ export struct XmaxVideoView {
     }
   }
 
+  /**
+   * 根据容器尺寸和预览比例计算视频显示宽度。
+   *
+   * @returns 预览宽度；不限制比例时返回 100%。
+   */
   private previewWidth(): Length {
     const targetAspectRatio: number | undefined = this.previewAspectRatio();
     if (targetAspectRatio === undefined ||
@@ -249,6 +341,11 @@ export struct XmaxVideoView {
       this.containerHeight * targetAspectRatio : this.containerWidth;
   }
 
+  /**
+   * 根据容器尺寸和预览比例计算视频显示高度。
+   *
+   * @returns 预览高度；不限制比例时返回 100%。
+   */
   private previewHeight(): Length {
     const targetAspectRatio: number | undefined = this.previewAspectRatio();
     if (targetAspectRatio === undefined ||
@@ -261,6 +358,11 @@ export struct XmaxVideoView {
       this.containerHeight : this.containerWidth / targetAspectRatio;
   }
 
+  /**
+   * 将摄像头预览比例配置转换为数值宽高比。
+   *
+   * @returns 目标宽高比；铺满容器时返回 undefined。
+   */
   private previewAspectRatio(): number | undefined {
     switch (this.cameraPreviewRatio) {
       case CameraPreviewRatio.RATIO_1_1:
@@ -280,11 +382,22 @@ export struct XmaxVideoView {
     }
   }
 
+  /**
+   * 将视频填充模式映射为预览图片的缩放方式。
+   *
+   * @returns FIT 使用等比完整显示，其他模式使用等比裁剪。
+   */
   private previewImageFit(): ImageFit {
     return this.contentMode === VideoContentMode.FIT ?
       ImageFit.Contain : ImageFit.Cover;
   }
 
+  /**
+   * 将 ArkUI 布局长度转换为可计算的数值。
+   *
+   * @param length 需要处理的布局长度或数据长度。
+   * @returns 数值长度；不支持的类型返回 0。
+   */
   private layoutLength(length: Length | undefined): number {
     if (typeof length === 'number') {
       return length;

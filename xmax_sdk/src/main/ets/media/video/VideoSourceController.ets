@@ -1,3 +1,14 @@
+//
+//  VideoSourceController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   XmaxError,
   XmaxErrorCode
@@ -20,36 +31,51 @@ import {
 } from './VideoSourceControlling';
 
 const FRAME_INTERVAL_TOLERANCE: number = 0.75;
-// 帧率采样间隔不是处理延迟预算：Surface、取帧和线程调度可能超过一帧。
-// 允许最多三个帧周期（至少 100 ms），仍丢弃明显积压的历史帧。
+/** 帧率采样间隔不是处理延迟预算：Surface、取帧和线程调度可能超过一帧。 */
+/** 允许最多三个帧周期（至少 100 ms），仍丢弃明显积压的历史帧。 */
 const MIN_FRAME_LATENESS_US: number = 100000;
 const FRAME_LATENESS_INTERVALS: number = 3;
 
 /** 解码本地媒体文件中的视频轨，并按共享时间轴循环输出采样后的视频帧。 */
 export class VideoSourceController implements VideoSourceControlling {
 
-  // 视频帧监听器
+  /** 帧与错误通知 */
   private readonly frameListener: VideoSourceFrameListener;
   private readonly errorListener: VideoSourceErrorListener;
 
-  // 视频文件资源
+  /** 解码资源与释放等待 */
   private decoder: VideoFileFrameDecoder | null = null;
   private decoderReleasePromise: Promise<void> | null = null;
+
+  /** 文件与原始方向配置 */
   private filePath: string = '';
   private sourceRotation: VideoRotation = VideoRotation.ROTATION_0;
 
-  // 播放进度
+  /** 循环播放时间轴 */
   private timeline: MediaTimeline | null = null;
   private loopIndex: number = 0;
+
+  /** 解码输出规格 */
   private frameIntervalUs: number = 0;
   private outputWidth: number = 0;
   private outputHeight: number = 0;
+
+  /** 源时间戳去重 */
   private lastSourceTimestampUs: number = -1;
+
+  /** 暂停、循环与文件结束状态 */
   private isPaused: boolean = false;
   private pendingEndOfStream: boolean = false;
   private loop: boolean = true;
   private hasEnded: boolean = false;
+
+  /** 视频源版本与播放结束通知 */
   private sourceVersion: number = 0;
+  /**
+   * 通知本地媒体已完成当前播放。
+   *
+   * @returns 无返回值。
+   */
   private readonly endedListener: () => void;
 
   /**
@@ -57,6 +83,8 @@ export class VideoSourceController implements VideoSourceControlling {
    *
    * @param frameListener 视频帧输出监听器。
    * @param errorListener 视频源错误监听器。
+   * @param endedListener 当前媒体播放结束时执行的回调。
+   * @returns 新建的 VideoSourceController 实例。
    */
   constructor(
     frameListener: VideoSourceFrameListener,
@@ -76,6 +104,7 @@ export class VideoSourceController implements VideoSourceControlling {
    * @param outputWidth 目标视频宽度。
    * @param outputHeight 目标视频高度。
    * @param frameRate 目标视频帧率。
+   * @param loop 是否在文件结束后循环播放。
    * @returns 旧解码器释放完成后的 Promise。
    */
   configure(
@@ -134,7 +163,11 @@ export class VideoSourceController implements VideoSourceControlling {
     await this.createDecoder(true);
   }
 
-  /** @inheritdoc */
+  /**
+   * 暂停当前解码器，保留媒体位置与资源。
+   *
+   * @returns 无返回值。
+   */
   pause(): void {
     if (this.hasEnded) {
       return;
@@ -153,7 +186,12 @@ export class VideoSourceController implements VideoSourceControlling {
     decoder.pause();
   }
 
-  /** @inheritdoc */
+  /**
+   * 使用统一的暂停时长恢复当前解码器。
+   *
+   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
+   * @returns 无返回值。
+   */
   resume(pausedDurationUs: number): void {
     if (this.hasEnded) {
       return;
@@ -453,8 +491,26 @@ export class VideoSourceController implements VideoSourceControlling {
 /** 将视频解码器事件转发给视频源 Controller。 */
 class VideoSourceDecoderListener implements VideoFileFrameDecoderListener {
 
+  /** 解码帧、结束与错误处理 */
+  /**
+   * 交付当前源的解码帧。
+   *
+   * @param frame 当前解码的视频帧。
+   * @returns 无返回值。
+   */
   private readonly frameHandler: (frame: VideoFileDecodedFrame) => void;
+  /**
+   * 通知当前源已输出到文件结尾。
+   *
+   * @returns 无返回值。
+   */
   private readonly endHandler: () => void;
+  /**
+   * 交付当前源的解码或输出错误。
+   *
+   * @param message 日志内容、错误说明或收到的信令文本。
+   * @returns 无返回值。
+   */
   private readonly errorHandler: (message: string) => void;
 
   /**
@@ -463,6 +519,7 @@ class VideoSourceDecoderListener implements VideoFileFrameDecoderListener {
    * @param frameHandler 视频帧处理方法。
    * @param endHandler 视频流结束处理方法。
    * @param errorHandler 视频解码错误处理方法。
+   * @returns 新建的 VideoSourceDecoderListener 实例。
    */
   constructor(
     frameHandler: (frame: VideoFileDecodedFrame) => void,

@@ -1,3 +1,14 @@
+//
+//  native_video_file_decoder.cpp
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 #include "native_video_file_decoder.h"
 
 #include <algorithm>
@@ -31,27 +42,60 @@
 #include "native_window/external_window.h"
 
 namespace {
+/**
+ * 携带 NV12 视频帧、图像布局、时间戳和结束或错误通知。
+ */
 struct DecodedFramePacket {
+
+  /** NV12 像素数据与布局 */
   std::vector<uint8_t> data;
   int32_t width = 0;
   int32_t height = 0;
   int32_t stride = 0;
+
+  /** 播放时间与结束、错误通知 */
   int64_t timestampUs = 0;
   bool endOfStream = false;
   std::string error;
 };
 
+/**
+ * 记录待消费的解码 Surface 缓冲区、同步栅栏和时间戳。
+ */
 struct SurfaceBufferPacket {
+
+  /** Surface 缓冲区所有权 */
   OHNativeWindowBuffer* windowBuffer = nullptr;
+
+  /** 读写同步与播放时间 */
   int fenceFd = -1;
   int64_t timestampUs = 0;
 };
 
+/**
+ * 检查旋转角度是否为受支持的四分之一周整数倍。
+ *
+ * @param rotation 旋转角度，支持 0、90、180 或 270。
+ * @returns 角度为 0、90、180 或 270 时返回 true。
+ */
 bool IsSupportedRotation(int32_t rotation) {
   return rotation == 0 || rotation == 90 ||
       rotation == 180 || rotation == 270;
 }
 
+/**
+ * 按指定旋转方向复制 NV12 平面，并输出紧凑排列的像素数据。
+ *
+ * @param sourceLuma 源图像 Y 亮度平面首地址。
+ * @param sourceLumaStride 源亮度平面每行的字节跨度。
+ * @param sourceChroma 源图像交错色度平面首地址。
+ * @param sourceChromaStride 源色度平面每行的字节跨度。
+ * @param width 画面宽度，单位像素。
+ * @param height 画面高度，单位像素。
+ * @param rotation 旋转角度，支持 0、90、180 或 270。
+ * @param output 写入转换结果或提取值的目标地址。
+ * @returns 无返回值。
+ */
 void CopyOrRotateNv12(
     const uint8_t* sourceLuma,
     int32_t sourceLumaStride,
@@ -167,6 +211,14 @@ void CopyOrRotateNv12(
   }
 }
 
+/**
+ * 将目标平面坐标映射到源平面坐标，确保不越过源边界。
+ *
+ * @param targetIndex 目标平面中的采样索引。
+ * @param sourceSize 源平面对应维度的采样数。
+ * @param targetSize 目标平面对应维度的采样数。
+ * @returns 对应的源平面采样索引。
+ */
 int32_t ScaledIndex(
     int32_t targetIndex,
     int32_t sourceSize,
@@ -178,6 +230,20 @@ int32_t ScaledIndex(
       sourceSize - 1);
 }
 
+/**
+ * 按目标平面尺寸缩放源像素平面，支持单字节和双字节采样。
+ *
+ * @param source 源平面首地址。
+ * @param sourceStride 源平面每行的字节跨度。
+ * @param sourceWidth 源图像宽度，单位像素。
+ * @param sourceHeight 源图像高度，单位像素。
+ * @param target 目标平面首地址。
+ * @param targetStride 目标平面每行的字节跨度。
+ * @param targetWidth 目标图像或平面宽度。
+ * @param targetHeight 目标图像或平面高度。
+ * @param bytesPerSample 单个采样占用的字节数，支持 1 或 2。
+ * @returns 无返回值。
+ */
 void ScalePlane(
     const uint8_t* source,
     int32_t sourceStride,
@@ -212,6 +278,20 @@ void ScalePlane(
   }
 }
 
+/**
+ * 将源 NV12 图像缩放为指定目标尺寸，保持紧凑平面布局。
+ *
+ * @param sourceLuma 源图像 Y 亮度平面首地址。
+ * @param sourceLumaStride 源亮度平面每行的字节跨度。
+ * @param sourceChroma 源图像交错色度平面首地址。
+ * @param sourceChromaStride 源色度平面每行的字节跨度。
+ * @param sourceWidth 源图像宽度，单位像素。
+ * @param sourceHeight 源图像高度，单位像素。
+ * @param targetWidth 目标图像或平面宽度。
+ * @param targetHeight 目标图像或平面高度。
+ * @param output 写入转换结果或提取值的目标地址。
+ * @returns 无返回值。
+ */
 void ScaleNv12(
     const uint8_t* sourceLuma,
     int32_t sourceLumaStride,
@@ -260,6 +340,21 @@ void ScaleNv12(
       2);
 }
 
+/**
+ * 将 NV12 图像缩放并旋转为指定输出尺寸。
+ *
+ * @param sourceLuma 源图像 Y 亮度平面首地址。
+ * @param sourceLumaStride 源亮度平面每行的字节跨度。
+ * @param sourceChroma 源图像交错色度平面首地址。
+ * @param sourceChromaStride 源色度平面每行的字节跨度。
+ * @param sourceWidth 源图像宽度，单位像素。
+ * @param sourceHeight 源图像高度，单位像素。
+ * @param rotation 旋转角度，支持 0、90、180 或 270。
+ * @param targetWidth 目标图像或平面宽度。
+ * @param targetHeight 目标图像或平面高度。
+ * @param output 写入转换结果或提取值的目标地址。
+ * @returns 无返回值。
+ */
 void ScaleAndRotateNv12(
     const uint8_t* sourceLuma,
     int32_t sourceLumaStride,
@@ -304,15 +399,37 @@ void ScaleAndRotateNv12(
       output);
 }
 
+/**
+ * 连续解码本地视频，处理 Surface 或字节缓冲输出并按媒体时间轴交付 NV12 帧。
+ */
 class NativeVideoFileDecoder {
  public:
+  /**
+   * 创建视频文件解码器。
+   *
+   * @returns 无返回值；完成实例初始化。
+   */
   NativeVideoFileDecoder() = default;
 
+  /**
+   * 停止媒体输出并释放实例持有的原生资源与缓存。
+   *
+   * @returns 无返回值。
+   */
   ~NativeVideoFileDecoder() {
     Stop();
   }
 
-  // Only JS binding and fd ownership are established on the calling thread.
+  /** Only JS binding and fd ownership are established on the calling thread. */
+  /**
+   * 复制文件描述符并绑定 ArkTS 监听器，供后台解码初始化使用。
+   *
+   * @param env 当前 ArkTS N-API 执行环境。
+   * @param listener 用于交付媒体帧、结束或错误通知的 ArkTS 函数。
+   * @param sourceFd 由调用方打开的文件描述符；解码器会复制描述符以独立管理生命周期。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 文件与监听器绑定成功时返回 true，否则返回 false 并写入错误。
+   */
   bool Bind(napi_env env, napi_value listener, int32_t sourceFd, std::string* error) {
     fd_ = dup(sourceFd);
     if (fd_ < 0) {
@@ -330,7 +447,21 @@ class NativeVideoFileDecoder {
     return true;
   }
 
-  // Codec, demuxer and Surface setup run in a native async worker, without JS APIs.
+  /** Codec, demuxer and Surface setup run in a native async worker, without JS APIs. */
+  /**
+   * 创建并配置原生媒体资源，准备按目标规格输出媒体数据。
+   *
+   * @param sourceSize 源文件的字节长度。
+   * @param playbackAnchorUs 媒体起点对应的单调播放锚点，单位微秒。
+   * @param mediaStartUs 源媒体时间轴起点，单位微秒。
+   * @param rotation 旋转角度，支持 0、90、180 或 270。
+   * @param targetWidth 目标图像或平面宽度。
+   * @param targetHeight 目标图像或平面高度。
+   * @param frameIntervalUs 目标视频帧输出间隔，单位微秒。
+   * @param cycleDurationUs 一轮媒体播放时长，单位微秒。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 初始化成功时返回 true；失败返回 false 并写入错误说明。
+   */
   bool Initialize(
       int64_t sourceSize,
       int64_t playbackAnchorUs,
@@ -464,6 +595,11 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 暂停连续媒体输出并唤醒节奏等待，使工作线程响应暂停状态。
+   *
+   * @returns 无返回值。
+   */
   void Pause() {
     if (!running_.load()) {
       return;
@@ -472,6 +608,12 @@ class NativeVideoFileDecoder {
     pacingCondition_.notify_all();
   }
 
+  /**
+   * 按暂停时长平移播放锚点，恢复连续媒体输出。
+   *
+   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
+   * @returns 无返回值。
+   */
   void Resume(int64_t pausedDurationUs) {
     if (!running_.load()) {
       return;
@@ -483,6 +625,11 @@ class NativeVideoFileDecoder {
     pacingCondition_.notify_all();
   }
 
+  /**
+   * 停止媒体输出与相关线程，并释放文件、系统媒体资源和回调引用。
+   *
+   * @returns 无返回值。
+   */
   void Stop() {
     const bool wasRunning = running_.exchange(false);
     paused_.store(false);
@@ -527,6 +674,13 @@ class NativeVideoFileDecoder {
   }
 
  private:
+  /**
+   * 根据解码格式选择字节缓冲或 Surface 输出，并准备视频解码器。
+   *
+   * @param mime 源轨道的媒体编码 MIME 类型。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 输出链路准备成功时返回 true，否则返回 false 并写入错误。
+   */
   bool PrepareOutput(const char* mime, std::string* error) {
     // HDR requires Surface output for tone mapping. SDR only needs the extra
     // processing stage when both axes can be downscaled before CPU readback.
@@ -561,6 +715,11 @@ class NativeVideoFileDecoder {
     return PrepareDecoder(mime, error);
   }
 
+  /**
+   * 判断当前视频格式是否需要使用 Surface 解码输出。
+   *
+   * @returns 应使用 Surface 输出时返回 true。
+   */
   bool ShouldUseSurfaceOutput() const {
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
     const int32_t outputWidth = swapsDimensions ? targetHeight_ : targetWidth_;
@@ -570,6 +729,13 @@ class NativeVideoFileDecoder {
          (width_ > outputWidth || height_ > outputHeight));
   }
 
+  /**
+   * 按源编码类型创建并配置系统视频解码器。
+   *
+   * @param mime 源轨道的媒体编码 MIME 类型。
+   * @param error 写入失败原因的字符串指针。
+   * @returns 系统解码器准备成功时返回 true，否则返回 false 并写入错误。
+   */
   bool PrepareDecoder(const char* mime, std::string* error) {
     decoder_ = OH_VideoDecoder_CreateByMime(mime);
     if (decoder_ == nullptr) {
@@ -596,6 +762,11 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 停止 Surface 消费线程并唤醒等待中的工作循环。
+   *
+   * @returns 无返回值。
+   */
   void StopSurfaceWorker() {
     {
       // Use the wait predicate's mutex so stop cannot notify between the
@@ -609,6 +780,12 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 创建视频处理与 Surface 输出资源，供解码器交付原生帧。
+   *
+   * @param error 写入失败原因的字符串指针。
+   * @returns 输出 Surface 初始化成功时返回 true，否则返回 false 并写入错误。
+   */
   bool InitializeOutputSurface(std::string* error) {
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
     const int32_t surfaceWidth = swapsDimensions ? targetHeight_ : targetWidth_;
@@ -712,6 +889,11 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 停止视频处理器并等待其停止状态通知。
+   *
+   * @returns 无返回值。
+   */
   void StopVideoProcessor() {
     if (!videoProcessorStarted_ || videoProcessor_ == nullptr) {
       return;
@@ -726,6 +908,11 @@ class NativeVideoFileDecoder {
     videoProcessorStarted_ = false;
   }
 
+  /**
+   * 归还待消费 Surface 缓冲区并释放视频处理器、窗口及图像资源。
+   *
+   * @returns 无返回值。
+   */
   void ReleaseOutputSurface() {
     StopVideoProcessor();
     std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
@@ -751,6 +938,13 @@ class NativeVideoFileDecoder {
     surfaceEndOfStreamPending_ = false;
   }
 
+  /**
+   * 接收视频处理器的输出索引，并登记可消费的 Surface 帧。
+   *
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param context 注册视频处理回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnSurfaceProcessingOutputBuffer(
       OH_VideoProcessing*, uint32_t index, void* context) {
     auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
@@ -759,6 +953,13 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 将视频处理器错误转为解码失败通知。
+   *
+   * @param error 原生视频处理器错误码。
+   * @param context 注册视频处理回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnSurfaceProcessingError(
       OH_VideoProcessing*,
       VideoProcessing_ErrorCode error,
@@ -770,6 +971,13 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 保存视频处理器运行状态并唤醒等待停止的线程。
+   *
+   * @param state 系统视频处理器的运行状态。
+   * @param context 注册视频处理回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnSurfaceProcessingState(
       OH_VideoProcessing*,
       VideoProcessing_State state,
@@ -787,6 +995,12 @@ class NativeVideoFileDecoder {
     decoder->surfaceProcessingStateCondition_.notify_all();
   }
 
+  /**
+   * 将视频处理器输出索引交回 Surface，并唤醒帧消费线程。
+   *
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @returns 无返回值。
+   */
   void EnqueueSurfaceFrame(uint32_t index) {
     // Explicit output callbacks disable VPE's automatic rendering. The worker
     // must serialize rendering and NativeImage buffer release: doing them on
@@ -801,6 +1015,12 @@ class NativeVideoFileDecoder {
     surfaceCondition_.notify_one();
   }
 
+  /**
+   * 取得待消费的 Surface 缓冲区并关联媒体时间戳。
+   *
+   * @param packet 需要消费、交付或释放的媒体数据包。
+   * @returns 取得可处理缓冲区时返回 true；无帧或已停止时返回 false。
+   */
   bool AcquireSurfaceFrame(SurfaceBufferPacket& packet) {
     std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
     if (surfaceOutputSurface_ == nullptr) {
@@ -845,6 +1065,12 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 在持有 Surface 访问锁时归还缓冲区及其同步栅栏。
+   *
+   * @param packet 需要消费、交付或释放的媒体数据包。
+   * @returns 无返回值。
+   */
   void ReleaseSurfaceBufferLocked(
       const SurfaceBufferPacket& packet) {
     if (packet.windowBuffer == nullptr) {
@@ -862,6 +1088,11 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 在已结束输入且所有 Surface 帧处理完毕时消费结束标记。
+   *
+   * @returns 可以发送本轮结束通知时返回 true。
+   */
   bool ConsumeSurfaceEndOfStreamIfReadyLocked() {
     if (!running_.load() || !surfaceEndOfStreamPending_ ||
         !pendingSurfaceTimestamps_.empty() ||
@@ -872,6 +1103,11 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 减少正在处理的 Surface 帧计数，并在全部完成后交付结束通知。
+   *
+   * @returns 无返回值。
+   */
   void CompleteSurfaceFrame() {
     bool dispatchEndOfStream = false;
     {
@@ -886,12 +1122,22 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 向 ArkTS 交付文件解码输出结束通知。
+   *
+   * @returns 无返回值。
+   */
   void DispatchEndOfStream() {
     auto* packet = new DecodedFramePacket();
     packet->endOfStream = true;
     Dispatch(packet);
   }
 
+  /**
+   * 在独立线程等待并消费 Surface 帧，将图像转换后按播放节奏交付。
+   *
+   * @returns 无返回值。
+   */
   void SurfaceWorkerLoop() {
     while (true) {
       SurfaceBufferPacket packet;
@@ -930,6 +1176,12 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 等待同步栅栏并映射 Surface 缓冲，转换目标 NV12 帧后归还原生资源。
+   *
+   * @param packet 需要消费、交付或释放的媒体数据包。
+   * @returns 无返回值。
+   */
   void HandleSurfaceFrame(const SurfaceBufferPacket& packet) {
     OHNativeWindowBuffer* windowBuffer = packet.windowBuffer;
     int fenceFd = packet.fenceFd;
@@ -1061,6 +1313,13 @@ class NativeVideoFileDecoder {
     Dispatch(outputPacket);
   }
 
+  /**
+   * 接收系统解码错误，将错误码转换为媒体失败通知。
+   *
+   * @param errorCode 系统解码器返回的错误码。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnError(
       OH_AVCodec*,
       int32_t errorCode,
@@ -1072,6 +1331,13 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 同步系统解码器报告的输出格式，供后续帧读取和转换使用。
+   *
+   * @param format 系统解码器报告的媒体格式。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnStreamChanged(
       OH_AVCodec*,
       OH_AVFormat* format,
@@ -1106,6 +1372,15 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 从选中媒体轨道读取压缩数据，填入解码器请求的输入缓冲区。
+   *
+   * @param codec 请求或交付缓冲区的系统解码器。
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnNeedInputBuffer(
       OH_AVCodec* codec,
       uint32_t index,
@@ -1184,6 +1459,15 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 处理系统解码器输出的媒体缓冲区，并在完成后归还缓冲区索引。
+   *
+   * @param codec 请求或交付缓冲区的系统解码器。
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @param userData 注册系统回调时绑定的原生解码器实例。
+   * @returns 无返回值。
+   */
   static void OnNewOutputBuffer(
       OH_AVCodec* codec,
       uint32_t index,
@@ -1208,6 +1492,14 @@ class NativeVideoFileDecoder {
     OH_VideoDecoder_FreeOutputBuffer(codec, index);
   }
 
+  /**
+   * 将解码器输出交给 Surface 处理链路，并关联帧时间与文件结束标记。
+   *
+   * @param codec 请求或交付缓冲区的系统解码器。
+   * @param index 需要提交或归还的系统缓冲区索引。
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @returns 无返回值。
+   */
   void HandleSurfaceOutputBuffer(
       OH_AVCodec* codec,
       uint32_t index,
@@ -1264,6 +1556,12 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 读取解码缓冲数据及时间戳，转换并按播放时间轴交付媒体帧。
+   *
+   * @param buffer 系统解码器提供的媒体缓冲区。
+   * @returns 无返回值。
+   */
   void HandleOutputBuffer(OH_AVBuffer* buffer) {
     if (!running_.load()) {
       return;
@@ -1354,6 +1652,12 @@ class NativeVideoFileDecoder {
     Dispatch(packet);
   }
 
+  /**
+   * 按目标播放时间等待，同时响应暂停和停止请求，避免解码输出快于播放进度。
+   *
+   * @param timestampUs 媒体输出时间戳，单位微秒。
+   * @returns 无返回值。
+   */
   void Pace(int64_t timestampUs) {
     std::unique_lock<std::mutex> lock(pacingMutex_);
     while (running_.load()) {
@@ -1373,6 +1677,11 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 等待媒体恢复播放或停止，供解码回调遵守暂停状态。
+   *
+   * @returns 仍在运行且允许播放时返回 true，已经停止时返回 false。
+   */
   bool WaitUntilPlaying() {
     std::unique_lock<std::mutex> lock(pacingMutex_);
     pacingCondition_.wait(lock, [this] {
@@ -1381,6 +1690,12 @@ class NativeVideoFileDecoder {
     return running_.load();
   }
 
+  /**
+   * 按目标帧间隔过滤视频帧，避免重复或过密的媒体时间戳。
+   *
+   * @param mediaTimestampUs 源媒体时间戳，单位微秒。
+   * @returns 当前媒体时间戳应输出时返回 true。
+   */
   bool ShouldOutputFrame(int64_t mediaTimestampUs) {
     if (lastOutputMediaTimestampUs_ >= 0 &&
         mediaTimestampUs - lastOutputMediaTimestampUs_ <
@@ -1391,12 +1706,24 @@ class NativeVideoFileDecoder {
     return true;
   }
 
+  /**
+   * 将媒体时间戳映射为包含暂停补偿的单调播放时间。
+   *
+   * @param mediaTimestampUs 源媒体时间戳，单位微秒。
+   * @returns 以微秒为单位的播放时间戳。
+   */
   int64_t PlaybackTimestampUs(int64_t mediaTimestampUs) const {
     return playbackAnchorUs_.load() + std::max<int64_t>(
         mediaTimestampUs - mediaStartUs_,
         0);
   }
 
+  /**
+   * 仅通知一次媒体处理错误，避免重复错误回调。
+   *
+   * @param message 需要交付或记录的错误原因。
+   * @returns 无返回值。
+   */
   void ReportError(const std::string& message) {
     if (reportedError_.exchange(true)) {
       return;
@@ -1406,6 +1733,12 @@ class NativeVideoFileDecoder {
     Dispatch(packet);
   }
 
+  /**
+   * 将媒体数据包提交到 ArkTS 线程安全回调队列；提交失败时释放数据包。
+   *
+   * @param packet 需要消费、交付或释放的媒体数据包。
+   * @returns 无返回值。
+   */
   void Dispatch(DecodedFramePacket* packet) {
     if (listener_ == nullptr ||
         napi_call_threadsafe_function(
@@ -1414,6 +1747,12 @@ class NativeVideoFileDecoder {
     }
   }
 
+  /**
+   * 在 ArkTS 外部帧缓冲区被回收时释放对应原生视频数据包。
+   *
+   * @param hint 关联到外部帧缓冲区、需要在回收时释放的数据包。
+   * @returns 无返回值。
+   */
   static void FinalizeFrameData(
       napi_env,
       void*,
@@ -1421,6 +1760,14 @@ class NativeVideoFileDecoder {
     delete static_cast<std::vector<uint8_t>*>(hint);
   }
 
+  /**
+   * 在 ArkTS 线程交付媒体数据或状态通知，并按交付结果转移或释放数据包。
+   *
+   * @param env 当前 ArkTS N-API 执行环境。
+   * @param callback 需要在 ArkTS 线程调用的函数。
+   * @param data 关联的原生数据包或异步任务上下文。
+   * @returns 无返回值。
+   */
   static void CallListener(
       napi_env env,
       napi_value callback,
@@ -1488,51 +1835,80 @@ class NativeVideoFileDecoder {
     delete packet;
   }
 
+  /** 文件、解封装与视频解码资源 */
   int32_t fd_ = -1;
   OH_AVSource* source_ = nullptr;
   OH_AVDemuxer* demuxer_ = nullptr;
   OH_AVCodec* decoder_ = nullptr;
   OH_AVFormat* trackFormat_ = nullptr;
   uint32_t trackIndex_ = 0;
+
+  /** ArkTS 帧与状态通知 */
   napi_threadsafe_function listener_ = nullptr;
 
+  /** 运行、暂停与错误去重状态 */
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> reportedError_{false};
+
+  /** 输入读取与解封装同步 */
   std::mutex demuxerMutex_;
   bool inputEnded_ = false;
+
+  /** 解码格式与像素布局同步 */
   std::mutex formatMutex_;
   int32_t width_ = 0;
   int32_t height_ = 0;
   int32_t stride_ = 0;
   int32_t sliceHeight_ = 0;
   int32_t pixelFormat_ = 0;
+
+  /** Surface 输出选择 */
   bool isHdrVivid_ = false;
   bool useSurfaceOutput_ = false;
+
+  /** 视频处理器与输入窗口 */
   OH_VideoProcessing* videoProcessor_ = nullptr;
   VideoProcessing_Callback* surfaceProcessingCallback_ = nullptr;
   OHNativeWindow* surfaceProcessorInputWindow_ = nullptr;
   bool videoProcessorStarted_ = false;
   bool videoProcessorStopped_ = true;
+
+  /** 视频处理器停止状态同步 */
   std::mutex surfaceProcessingStateMutex_;
   std::condition_variable surfaceProcessingStateCondition_;
+
+  /** 输出 Surface 与原生窗口 */
   OH_NativeImage* surfaceOutputSurface_ = nullptr;
   OHNativeWindow* surfaceOutputWindow_ = nullptr;
+
+  /** Surface 资源与帧队列同步 */
   std::mutex surfaceMutex_;
   std::mutex surfaceQueueMutex_;
   std::condition_variable surfaceCondition_;
+
+  /** 待消费输出缓冲区 */
   std::deque<uint32_t> surfacePendingOutputBuffers_;
+
+  /** Surface 消费线程 */
   std::atomic<bool> surfaceWorkerRunning_{false};
   std::thread surfaceWorker_;
+
+  /** 帧时间戳与结束通知同步 */
   std::mutex surfaceTimestampMutex_;
   std::deque<int64_t> pendingSurfaceTimestamps_;
   size_t surfaceFramesInFlight_ = 0;
   bool surfaceEndOfStreamPending_ = false;
+
+  /** Surface 像素转换缓存 */
   std::vector<uint8_t> surfaceSourceData_;
   std::vector<uint8_t> surfaceScaledData_;
 
+  /** 暂停与播放节奏同步 */
   std::mutex pacingMutex_;
   std::condition_variable pacingCondition_;
+
+  /** 媒体时间轴与输出采样规格 */
   std::atomic<int64_t> playbackAnchorUs_{0};
   int64_t mediaStartUs_ = 0;
   int32_t rotation_ = 0;
@@ -1540,10 +1916,20 @@ class NativeVideoFileDecoder {
   int32_t targetHeight_ = 0;
   int64_t frameIntervalUs_ = 0;
   int64_t cycleDurationUs_ = 0;
+
+  /** 文件循环轮次与输出帧去重 */
   int64_t inputLoopIndex_ = 0;
   int64_t lastOutputMediaTimestampUs_ = -1;
 };
 
+/**
+ * 从 ArkTS 对象中读取其绑定的原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @param receiver 写回 ArkTS 方法接收对象的可选指针。
+ * @returns 有效解码器指针；调用无效时返回空指针并抛出异常。
+ */
 NativeVideoFileDecoder* UnwrapDecoder(
     napi_env env,
     napi_callback_info info,
@@ -1572,6 +1958,13 @@ NativeVideoFileDecoder* UnwrapDecoder(
   return decoder;
 }
 
+/**
+ * 将 ArkTS 暂停请求转交给原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns ArkTS undefined。
+ */
 napi_value PauseDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -1586,6 +1979,13 @@ napi_value PauseDecoder(
   return result;
 }
 
+/**
+ * 读取暂停时长并恢复原生文件解码输出。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns ArkTS undefined；参数无效时抛出异常。
+ */
 napi_value ResumeDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -1614,13 +2014,28 @@ napi_value ResumeDecoder(
   return result;
 }
 
+/**
+ * 保存原生视频解码器异步释放任务及其 Promise 和实例引用。
+ */
 struct ReleaseDecoderContext {
+
+  /** 异步任务与释放结果通知 */
   napi_async_work work = nullptr;
   napi_deferred deferred = nullptr;
+
+  /** ArkTS 对象与原生实例所有权 */
   napi_ref decoderReference = nullptr;
   NativeVideoFileDecoder* decoder = nullptr;
 };
 
+/**
+ * 将原生解码失败原因转换为 ArkTS 错误并拒绝待完成的 Promise。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param deferred 需要完成或拒绝的 ArkTS Promise。
+ * @param reason 用于拒绝 Promise 的可读失败原因。
+ * @returns 无返回值。
+ */
 void RejectDecoderPromise(
     napi_env env,
     napi_deferred deferred,
@@ -1633,6 +2048,12 @@ void RejectDecoderPromise(
   napi_reject_deferred(env, deferred, error);
 }
 
+/**
+ * 在后台线程停止视频解码，避免阻塞 ArkTS 事件循环。
+ *
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void ExecuteReleaseDecoder(napi_env, void* data) {
   auto* context = static_cast<ReleaseDecoderContext*>(data);
   if (context != nullptr && context->decoder != nullptr) {
@@ -1640,6 +2061,14 @@ void ExecuteReleaseDecoder(napi_env, void* data) {
   }
 }
 
+/**
+ * 在 ArkTS 线程完成释放 Promise，并清理异步任务和实例引用。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param status N-API 异步任务的完成状态。
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void CompleteReleaseDecoder(
     napi_env env,
     napi_status status,
@@ -1667,10 +2096,23 @@ void CompleteReleaseDecoder(
   delete context;
 }
 
+/**
+ * 在 ArkTS 解码器对象回收时删除原生实例并释放媒体资源。
+ *
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void FinalizeDecoder(napi_env, void* data, void*) {
   delete static_cast<NativeVideoFileDecoder*>(data);
 }
 
+/**
+ * 释放 ArkTS 对象绑定的原生文件解码器。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns 资源释放后兑现的 ArkTS Promise。
+ */
 napi_value ReleaseDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -1726,22 +2168,41 @@ napi_value ReleaseDecoder(
   return promise;
 }
 
+/**
+ * 保存视频解码器异步初始化参数、结果和 ArkTS 通知资源。
+ */
 struct CreateDecoderContext {
+
+  /** 异步任务与创建结果通知 */
   napi_async_work work = nullptr;
   napi_deferred deferred = nullptr;
+
+  /** ArkTS 对象与原生实例所有权 */
   napi_ref reference = nullptr;
   NativeVideoFileDecoder* decoder = nullptr;
+
+  /** 源文件与播放时间配置 */
   int64_t size = 0;
   int64_t anchorUs = 0;
   int64_t mediaStartUs = 0;
+
+  /** 目标视频格式与帧间隔 */
   int32_t rotation = 0;
   int32_t width = 0;
   int32_t height = 0;
   int64_t frameIntervalUs = 0;
   int64_t cycleDurationUs = 0;
+
+  /** 后台初始化错误 */
   std::string error;
 };
 
+/**
+ * 在后台线程初始化系统视频解码器，保存初始化结果与错误说明。
+ *
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void ExecuteCreateDecoder(napi_env, void* data) {
   auto* context = static_cast<CreateDecoderContext*>(data);
   if (!context->decoder->Initialize(context->size, context->anchorUs,
@@ -1753,6 +2214,14 @@ void ExecuteCreateDecoder(napi_env, void* data) {
   }
 }
 
+/**
+ * 在 ArkTS 线程兑现或拒绝解码器创建 Promise，并清理异步任务上下文。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param status N-API 异步任务的完成状态。
+ * @param data 关联的原生数据包或异步任务上下文。
+ * @returns 无返回值。
+ */
 void CompleteCreateDecoder(napi_env env, napi_status status, void* data) {
   auto* context = static_cast<CreateDecoderContext*>(data);
   if (status != napi_ok || !context->error.empty()) {
@@ -1768,6 +2237,13 @@ void CompleteCreateDecoder(napi_env env, napi_status status, void* data) {
   delete context;
 }
 
+/**
+ * 校验文件与播放参数，异步初始化视频解码器并返回创建结果 Promise。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param info 当前 ArkTS 方法调用的参数与接收对象。
+ * @returns 兑现为暂停状态视频解码器的 ArkTS Promise；初始化失败时拒绝。
+ */
 napi_value CreateVideoFileDecoder(
     napi_env env,
     napi_callback_info info) {
@@ -1911,9 +2387,16 @@ napi_value CreateVideoFileDecoder(
   }
   return promise;
 }
-}  // namespace
+}  /** namespace */
 
 namespace xmax {
+/**
+ * 向原生模块导出视频文件解码器的异步创建入口。
+ *
+ * @param env 当前 ArkTS N-API 执行环境。
+ * @param exports 需要挂载 SDK 原生入口的模块导出对象。
+ * @returns 无返回值。
+ */
 void DefineNativeVideoFileDecoder(
     napi_env env,
     napi_value exports) {
@@ -1929,4 +2412,4 @@ void DefineNativeVideoFileDecoder(
   };
   napi_define_properties(env, exports, 1, &descriptor);
 }
-}  // namespace xmax
+}  /** namespace xmax */

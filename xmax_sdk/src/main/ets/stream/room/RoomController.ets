@@ -1,3 +1,14 @@
+//
+//  RoomController.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
 import {
@@ -18,21 +29,22 @@ import { RoomControlling } from './RoomControlling';
 /** 表示日志格式化所需的房间事件字段。 */
 interface LoggedRoomEvent {
 
+  /** 房间信令事件名称 */
   event?: string;
 }
 
 /** 管理 RTC 房间生命周期、心跳和实时生成信令。 */
 export class RoomController implements RoomControlling {
 
-  // 基础层组件
+  /** 房间传输、心跳与计时依赖 */
   private readonly rtcManager: RtcManaging;
 
-  // 流层组件
+  /** 流层组件 */
   private readonly heartbeat: RoomHeartbeat;
 
   private readonly timing: RealtimeTiming;
 
-  // 房间资源
+  /** 本地房间用户身份 */
   private localUserId: string = '';
 
   /**
@@ -40,6 +52,7 @@ export class RoomController implements RoomControlling {
    *
    * @param rtcManager 提供房间连接和消息发送能力的 RTC Manager。
    * @param timing 与实时 Manager 共享的启动耗时记录。
+   * @returns 新建的 RoomController 实例。
    */
   constructor(rtcManager: RtcManaging, timing: RealtimeTiming = new RealtimeTiming()) {
     this.timing = timing;
@@ -93,6 +106,9 @@ export class RoomController implements RoomControlling {
    * @param taskId 生成任务标识。
    * @param videoFormat 生成视频格式。
    * @param context 实时生成上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
    * @returns 无返回值。
    */
   startGeneration(
@@ -120,6 +136,9 @@ export class RoomController implements RoomControlling {
    * @param taskId 生成任务标识。
    * @param videoFormat 生成视频格式。
    * @param context 新的实时生成上下文。
+   * @param faceRestoration 是否启用人脸修复。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
    * @returns 无返回值。
    */
   changeGenerationCondition(
@@ -141,6 +160,13 @@ export class RoomController implements RoomControlling {
     ));
   }
 
+  /**
+   * 为当前任务提交结果流目标尺寸与码率预算，不等待服务端生效确认。
+   *
+   * @param taskId 当前生成任务标识。
+   * @param targetSize 可选的生成结果流目标尺寸。
+   * @returns 无返回值。
+   */
   changeTargetSize(taskId: string, targetSize: ImageSize): void {
     this.send(RoomEvent.changeTargetSize(this.requireUserId(), taskId, targetSize));
   }

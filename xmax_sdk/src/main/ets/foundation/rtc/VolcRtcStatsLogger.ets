@@ -1,3 +1,14 @@
+//
+//  VolcRtcStatsLogger.ets
+//  XmaxSDK
+//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/WengYuehTing
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import {
   NetworkQuality,
   NetworkQualityStats,
@@ -11,6 +22,13 @@ const VOLC_LOG_CATEGORY: string = 'RTC/VolcEngine';
 
 /** 火山 RTC 网络质量与性能告警日志；公共视频指标由 RtcStatsLogger 输出。 */
 export class VolcRtcStatsLogger {
+  /**
+   * 输出 RTC 原生网络质量诊断，包括带宽、丢包和往返时延。
+   *
+   * @param localQuality 本地 RTC 网络质量统计。
+   * @param remoteQualities RTC 返回的各远端用户网络质量统计。
+   * @returns 无返回值。
+   */
   static logNetworkQuality(
     localQuality: NetworkQualityStats,
     remoteQualities: NetworkQualityStats[]
@@ -50,6 +68,13 @@ export class VolcRtcStatsLogger {
     XmaxLogger.debug(lines.join('\n'), VOLC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
+  /**
+   * 输出 RTC 原生设备性能告警和建议视频格式。
+   *
+   * @param reason 操作结束原因或平台告警原因。
+   * @param data 当前帧的有效媒体数据。
+   * @returns 无返回值。
+   */
   static logPerformanceAlarm(
     reason: PerformanceAlarmReason,
     data: SourceWantedData
@@ -71,6 +96,13 @@ export class VolcRtcStatsLogger {
     XmaxLogger.debug(lines.join('\n'), VOLC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
   }
 
+  /**
+   * 组合网络质量等级与可用的原生网络指标。
+   *
+   * @param quality 当前方向或上下行的网络质量采样。
+   * @param includesRtt 是否在日志中包含往返时延。
+   * @returns 包含带宽、丢包及可选 RTT 的文本。
+   */
   private static formatNetworkMetrics(
     quality: NetworkQualityStats,
     includesRtt: boolean
@@ -92,6 +124,12 @@ export class VolcRtcStatsLogger {
     return `${XmaxLogger.localized("指标：", "Metrics: ")}${metrics.join(XmaxLogger.localized('，', ', '))}`;
   }
 
+  /**
+   * 为原生网络质量等级生成可读名称。
+   *
+   * @param quality 当前方向或上下行的网络质量采样。
+   * @returns 用于日志显示的网络质量名称。
+   */
   private static networkQualityName(quality: NetworkQuality): string {
     switch (quality) {
       case NetworkQuality.kNetworkQualityExcellent:
@@ -111,6 +149,12 @@ export class VolcRtcStatsLogger {
     }
   }
 
+  /**
+   * 为设备性能告警原因生成可读名称。
+   *
+   * @param reason 操作结束原因或平台告警原因。
+   * @returns 用于日志显示的告警名称。
+   */
   private static performanceAlarmName(reason: PerformanceAlarmReason): string {
     switch (reason) {
       case PerformanceAlarmReason.kPerformanceAlarmReasonBandwidthFallbacked:
@@ -126,6 +170,12 @@ export class VolcRtcStatsLogger {
     }
   }
 
+  /**
+   * 格式化设备性能告警附带的建议视频规格。
+   *
+   * @param data 当前帧的有效媒体数据。
+   * @returns 建议宽高与帧率的文本。
+   */
   private static formatSuggestedVideoFormat(data: SourceWantedData): string {
     if (!VolcRtcStatsLogger.isPositiveNumber(data.width) ||
       !VolcRtcStatsLogger.isPositiveNumber(data.heigth) ||
@@ -136,10 +186,22 @@ export class VolcRtcStatsLogger {
     return `${data.width} × ${data.heigth}，${data.frame_rate} fps`;
   }
 
+  /**
+   * 将带宽值转换为可读日志文本。
+   *
+   * @param bitsPerSecond 每秒比特数表示的原始带宽。
+   * @returns 以 kbps 表示的带宽文本。
+   */
   private static formatBandwidth(bitsPerSecond: number): string {
     return `${(bitsPerSecond / 1000).toFixed(0)} kbps`;
   }
 
+  /**
+   * 将丢包率转换为百分比日志文本。
+   *
+   * @param value 待校验、转换或保存的数值。
+   * @returns 丢包百分比文本；无效值使用缺失标记。
+   */
   private static formatPacketLoss(value: number): string {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return '';
@@ -148,10 +210,22 @@ export class VolcRtcStatsLogger {
     return `${XmaxLogger.localized("丢包 ", "Packet Loss ")}${(value * 100).toFixed(2)}%`;
   }
 
+  /**
+   * 判断输入是否为有限数值。
+   *
+   * @param value 待校验、转换或保存的数值。
+   * @returns 数值有限时返回 true。
+   */
   private static isFiniteNumber(value: number): boolean {
     return typeof value === 'number' && Number.isFinite(value);
   }
 
+  /**
+   * 判断输入是否为有限正数。
+   *
+   * @param value 待检查数值。
+   * @returns 数值有限且大于 0 时返回 true。
+   */
   private static isPositiveNumber(value: number): boolean {
     return VolcRtcStatsLogger.isFiniteNumber(value) && value > 0;
   }
