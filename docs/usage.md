@@ -139,6 +139,10 @@ const configuration = new XmaxConfiguration(
 Use `XmaxEnvironment.CHINA` to select the China service explicitly. RTC room
 credentials and storage configuration are returned by the selected service.
 
+`XmaxConfiguration(apiKey, environment, loggerOptions)` uses the second argument
+for the service environment and the third for logging options. Omitting them
+selects `CHINA` and `XmaxLoggerOption.NONE` respectively.
+
 SDK log details use Chinese for `CHINA` and English for `GLOBAL`; bilingual log
 headings are retained. Logging options and language are global: the most recently
 created client's configuration takes effect. Original server/platform error

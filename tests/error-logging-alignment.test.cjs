@@ -161,12 +161,14 @@ test('client applies environment and global loggerOptions; defaults remain China
   assert.equal(f.Logger.isEnabled(f.Option.BUSINESS), true);
   const defaultConfiguration = new XmaxConfiguration('test-key');
   assert.equal(defaultConfiguration.environment, XmaxEnvironment.CHINA);
+  assert.equal(defaultConfiguration.loggerOptions, f.Option.NONE);
   new XmaxClient(defaultConfiguration);
   assert.equal(f.Logger.isEnabled(f.Option.BUSINESS), false);
-  const legacyConfiguration = new XmaxConfiguration('legacy-key', f.Option.ALL);
-  assert.equal(legacyConfiguration.environment, XmaxEnvironment.CHINA);
-  assert.equal(legacyConfiguration.loggerOptions, f.Option.ALL);
+  const loggingConfiguration = new XmaxConfiguration('logging-key', XmaxEnvironment.CHINA, f.Option.ALL);
+  assert.equal(loggingConfiguration.environment, XmaxEnvironment.CHINA);
+  assert.equal(loggingConfiguration.loggerOptions, f.Option.ALL);
   const globalConfiguration = new XmaxConfiguration('global-key', XmaxEnvironment.GLOBAL);
+  assert.equal(globalConfiguration.loggerOptions, f.Option.NONE);
   new XmaxClient(globalConfiguration);
   assert.equal(f.Logger.localized('中文', 'English'), 'English');
   assert.deepEqual(services[2], {
