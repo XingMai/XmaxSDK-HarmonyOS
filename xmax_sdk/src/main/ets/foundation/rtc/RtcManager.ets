@@ -52,6 +52,8 @@ import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
 import { RtcQualityListener } from './RtcQualityListener';
 import { RtcStatsLogger } from './RtcStatsLogger';
+import { VolcRtcStatsLogger } from './VolcRtcStatsLogger';
+import { UplinkVideoStatistics, DownlinkVideoStatistics } from './VideoStatistics';
 import { RtcVideoConverter } from './RtcVideoConverter';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
@@ -199,7 +201,7 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
-        RtcStatsLogger.logPerformanceAlarm(reason, data);
+        VolcRtcStatsLogger.logPerformanceAlarm(reason, data);
         this.emitPerformanceAlarm(reason, data);
       }
     );
@@ -873,9 +875,10 @@ export class RtcManager implements RtcManaging {
         return;
       }
 
-      RtcStatsLogger.logLocalStreamStats(stats);
       if (!stats.is_screen) {
-        this.qualityListener?.onUplinkVideoStatistics(RtcQualityConverter.uplinkVideoStatistics(stats.video_stats));
+        const statistics: UplinkVideoStatistics = RtcQualityConverter.uplinkVideoStatistics(stats.video_stats);
+        RtcStatsLogger.logUplinkVideoStatistics(statistics);
+        this.qualityListener?.onUplinkVideoStatistics(statistics);
       }
     });
 
@@ -884,9 +887,10 @@ export class RtcManager implements RtcManaging {
         return;
       }
 
-      RtcStatsLogger.logRemoteStreamStats(stats);
       if (!stats.is_screen) {
-        this.qualityListener?.onDownlinkVideoStatistics(RtcQualityConverter.downlinkVideoStatistics(stats.uid, stats.video_stats));
+        const statistics: DownlinkVideoStatistics = RtcQualityConverter.downlinkVideoStatistics(stats.uid, stats.video_stats);
+        RtcStatsLogger.logDownlinkVideoStatistics(statistics);
+        this.qualityListener?.onDownlinkVideoStatistics(statistics);
       }
     });
 
@@ -900,7 +904,7 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
-        RtcStatsLogger.logNetworkQuality(localQuality, remoteQualities);
+        VolcRtcStatsLogger.logNetworkQuality(localQuality, remoteQualities);
         this.emitNetworkQuality(localQuality, remoteQualities);
       }
     );

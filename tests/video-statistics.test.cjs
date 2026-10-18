@@ -95,7 +95,7 @@ test('native statistics callbacks work without RTC logging, exclude screen strea
     '@bytertc/volcenginertc': { MirrorType: { kMirrorTypeNone: 0 } },
     '@kit.ArkTS': {},
     XmaxLogger: { XmaxLogger: {} },
-    RtcEngineManager: {}, RtcStatsLogger: { RtcStatsLogger: { logLocalStreamStats() {}, logRemoteStreamStats() {} } }
+    RtcEngineManager: {}, RtcStatsLogger: { RtcStatsLogger: { logUplinkVideoStatistics() {}, logDownlinkVideoStatistics() {} } }
   });
   const { RtcManager } = load('foundation/rtc/RtcManager.ets');
   const rtc = new RtcManager({}), room = { on(name, callback) { handlers.set(name, callback); } };
@@ -111,4 +111,115 @@ test('native statistics callbacks work without RTC logging, exclude screen strea
   rtc.room = null;
   handlers.get('onLocalStreamStats')(up); handlers.get('onRemoteStreamStats')(down);
   assert.equal(received.length, 2);
+});
+
+function loggingFixture() {
+  const logs = [];
+  const load = loadEts({
+    '@kit.PerformanceAnalysisKit': { hilog: { debug: (_domain, _tag, _format, message) => logs.push(message) } },
+    '@kit.ArkTS': {},
+    '@bytertc/volcenginertc': { MirrorType: { kMirrorTypeNone: 0 }, NetworkQuality: {}, PerformanceAlarmReason: {} },
+    RtcEngineManager: {}, RtcVideoConverter: {}
+  });
+  const { XmaxLogger: Logger } = load('foundation/logging/XmaxLogger.ets');
+  const { XmaxLoggerOption: Option } = load('foundation/logging/XmaxLoggerOption.ets');
+  const { XmaxEnvironment: Environment } = load('core/XmaxEnvironment.ets');
+  const { RtcStatsLogger: Common } = load('foundation/rtc/RtcStatsLogger.ets');
+  const { RtcQualityConverter: Converter } = load('foundation/rtc/RtcQualityConverter.ets');
+  const { RtcManager } = load('foundation/rtc/RtcManager.ets');
+  const handlers = new Map(), rtc = new RtcManager({});
+  const room = { on(name, handler) { handlers.set(name, handler); } };
+  rtc.room = room; rtc.bindRoomEvents(room);
+  Logger.configure(Option.PERFORMANCE, Environment.GLOBAL);
+  return { load, logs, Logger, Option, Environment, Common, Converter, rtc, handlers };
+}
+
+function nativeVideoSamples() {
+  return {
+    up: { is_screen: false,
+      audio_stats: { send_kbitrate: 48, record_sample_rate: 48000, sent_sample_rate: 48000, num_channels: 2 },
+      video_stats: { encoded_frame_width: 0, encoded_frame_height: -1, input_frame_rate: 0,
+        encoder_output_frame_rate: -1, sent_frame_rate: 23.5, sent_kbitrate: 0, video_loss_rate: 0.0125,
+        rtt: 21, jitter: 3 } },
+    down: { uid: 'bot', is_screen: false,
+      video_stats: { width: 640, height: 360, decoder_output_frame_rate: 24, renderer_output_frame_rate: 23,
+        received_kbitrate: 600, video_loss_rate: 0, e2e_delay: 42, rtt: 20, jitter: 6, stall_count: 2, stall_duration: 50 } }
+  };
+}
+
+test('native events convert once and share the exact normalized object between video logs and callbacks', () => {
+  const f = loggingFixture(), samples = nativeVideoSamples(), logged = [], received = [], conversions = [0, 0];
+  const convertUp = f.Converter.uplinkVideoStatistics, convertDown = f.Converter.downlinkVideoStatistics;
+  const logUp = f.Common.logUplinkVideoStatistics, logDown = f.Common.logDownlinkVideoStatistics;
+  f.Converter.uplinkVideoStatistics = raw => { conversions[0]++; return convertUp(raw); };
+  f.Converter.downlinkVideoStatistics = (user, raw) => { conversions[1]++; return convertDown(user, raw); };
+  f.Common.logUplinkVideoStatistics = stats => { logged.push(stats); logUp(stats); };
+  f.Common.logDownlinkVideoStatistics = stats => { logged.push(stats); logDown(stats); };
+  f.rtc.setQualityListener({ onUplinkVideoStatistics: stats => received.push(stats), onDownlinkVideoStatistics: stats => received.push(stats) });
+  f.handlers.get('onLocalStreamStats')(samples.up);
+  f.handlers.get('onRemoteStreamStats')(samples.down);
+  assert.deepEqual(conversions, [1, 1]);
+  assert.equal(received.length, 2);
+  for (let i = 0; i < 2; i++) assert.equal(logged[i], received[i]);
+  assert.equal(received[0].width, undefined); assert.equal(received[0].height, undefined);
+  assert.equal(received[0].captureFrameRate, 0); assert.equal(received[0].encodeFrameRate, undefined);
+  assert.equal(received[0].sendFrameRate, 23.5); assert.equal(received[0].packetLossPercent, 1.25);
+  const common = f.logs.filter(log => log.startsWith('[Xmax][RTC]'));
+  assert.equal(common.length, 2);
+  assert.match(common[0], /Resolution: —/);
+  assert.match(common[0], /Capture Frame Rate: 0 fps/);
+  assert.match(common[0], /Encode Frame Rate: —/);
+  assert.match(common[0], /Send Frame Rate: 23.5 fps/);
+  assert.match(common[0], /Send Bitrate: 0 kbps/);
+  assert.match(common[0], /Video Packet Loss: 1.25 %/);
+  assert.match(common[1], /Resolution: 640 × 360/);
+  assert.match(common[1], /Receive Bitrate: 600 kbps/);
+  assert.match(common[1], /End-to-End Delay: 42 ms/);
+  assert.doesNotMatch(common.join('\n'), /NaN|undefined|RTT|Jitter|Audio|Stall/);
+  assert.equal(f.logs.length, 2); // Each event emits only its common video log.
+  assert.doesNotMatch(f.logs.join('\n'), /VolcEngine|Extras|RTT|Jitter|Audio|Stall/);
+});
+
+test('video statistics never read removed native diagnostic fields, regardless of the logging switch', () => {
+  for (const enabled of [false, true]) {
+    const f = loggingFixture(), samples = nativeVideoSamples(), received = [];
+    f.Logger.configure(enabled ? f.Option.PERFORMANCE : f.Option.BUSINESS);
+    for (const sample of [samples.up, samples.down]) {
+      Object.defineProperty(sample, 'audio_stats', { get() { throw new Error('audio diagnostics accessed'); } });
+      for (const field of ['rtt', 'jitter', 'stall_count', 'stall_duration']) {
+        Object.defineProperty(sample.video_stats, field, { get() { throw new Error('removed video diagnostic accessed'); } });
+      }
+    }
+    f.rtc.setQualityListener({ onUplinkVideoStatistics: stats => received.push(stats), onDownlinkVideoStatistics: stats => received.push(stats) });
+    f.handlers.get('onLocalStreamStats')(samples.up);
+    f.handlers.get('onRemoteStreamStats')(samples.down);
+    assert.equal(received.length, 2);
+    assert.equal(received[0].packetLossPercent, 1.25);
+    assert.equal(received[1].endToEndDelayMs, 42);
+    assert.equal(f.logs.length, enabled ? 2 : 0);
+  }
+});
+
+test('screen stream statistics emit neither main-stream video logs nor callbacks', () => {
+  const f = loggingFixture(), samples = nativeVideoSamples(), received = [];
+  f.rtc.setQualityListener({ onUplinkVideoStatistics: stats => received.push(stats), onDownlinkVideoStatistics: stats => received.push(stats) });
+  for (const sample of [samples.up, samples.down]) {
+    sample.is_screen = true;
+    Object.defineProperty(sample, 'video_stats', { get() { throw new Error('screen video stats accessed'); } });
+  }
+  f.handlers.get('onLocalStreamStats')(samples.up);
+  f.handlers.get('onRemoteStreamStats')(samples.down);
+  assert.deepEqual(f.logs, []); assert.deepEqual(received, []);
+});
+
+test('public video log fields follow localization while missing values remain placeholders', () => {
+  const f = loggingFixture();
+  const { UplinkVideoStatistics: Up, DownlinkVideoStatistics: Down } = f.load('foundation/rtc/VideoStatistics.ets');
+  f.Logger.configure(f.Option.PERFORMANCE, f.Environment.CHINA);
+  f.Common.logUplinkVideoStatistics(new Up());
+  f.Common.logDownlinkVideoStatistics(new Down('bot'));
+  assert.match(f.logs[0], /视频上行统计 \(Video Uplink Statistics\)/);
+  assert.match(f.logs[0], /采集帧率：—/);
+  assert.match(f.logs[1], /端到端时延：—/);
+  assert.doesNotMatch(f.logs.join('\n'), /undefined|NaN|0 × 0/);
 });

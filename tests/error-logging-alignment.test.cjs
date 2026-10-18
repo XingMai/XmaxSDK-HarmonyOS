@@ -191,16 +191,17 @@ test('logs prefix each line, omit blank categories and retain credential redacti
 test('RTC statistics/alarm logging is performance-only and does no formatting when disabled', () => {
   const f = fixture({ '@bytertc/volcenginertc': { PerformanceAlarmReason: {}, NetworkQuality: {} } });
   const { RtcStatsLogger } = f.load('foundation/rtc/RtcStatsLogger.ets');
+  const { VolcRtcStatsLogger } = f.load('foundation/rtc/VolcRtcStatsLogger.ets');
   const inaccessible = new Proxy({}, { get() { throw new Error('formatting ran'); } });
   f.Logger.configure(f.Option.BUSINESS);
   assert.doesNotThrow(() => {
-    RtcStatsLogger.logLocalStreamStats(inaccessible);
-    RtcStatsLogger.logRemoteStreamStats(inaccessible);
-    RtcStatsLogger.logNetworkQuality(inaccessible, []);
-    RtcStatsLogger.logPerformanceAlarm(0, inaccessible);
+    RtcStatsLogger.logUplinkVideoStatistics(inaccessible);
+    RtcStatsLogger.logDownlinkVideoStatistics(inaccessible);
+    VolcRtcStatsLogger.logNetworkQuality(inaccessible, []);
+    VolcRtcStatsLogger.logPerformanceAlarm(0, inaccessible);
   });
   f.Logger.configure(f.Option.PERFORMANCE);
-  RtcStatsLogger.logPerformanceAlarm(0, { width: 1024, height: 1920, frame_rate: 30 });
+  VolcRtcStatsLogger.logPerformanceAlarm(0, { width: 1024, height: 1920, frame_rate: 30 });
   assert.equal(f.logs.length, 1);
   assert.match(f.logs[0].message, /RTC.*性能告警/);
 });
@@ -383,9 +384,9 @@ test('global log details are English while raw payloads, error codes and redacti
 test('RTC performance details follow the global log language and retain bilingual headings', () => {
   const f = fixture({ '@bytertc/volcenginertc': { PerformanceAlarmReason: {}, NetworkQuality: { kNetworkQualityGood: 1 } } });
   const { XmaxEnvironment: Environment } = f.load('core/XmaxEnvironment.ets');
-  const { RtcStatsLogger } = f.load('foundation/rtc/RtcStatsLogger.ets');
+  const { VolcRtcStatsLogger } = f.load('foundation/rtc/VolcRtcStatsLogger.ets');
   f.Logger.configure(f.Option.PERFORMANCE, Environment.GLOBAL);
-  RtcStatsLogger.logNetworkQuality({ tx_quality: 1, fraction_lost: 0, total_bandwidth: 1000, rtt: 20 }, []);
+  VolcRtcStatsLogger.logNetworkQuality({ tx_quality: 1, fraction_lost: 0, total_bandwidth: 1000, rtt: 20 }, []);
   const log = f.logs.at(-1).message;
   assert.match(log, /网络质量 \(Network Quality\)/);
   assert.match(log, /Quality: Good/);

@@ -468,6 +468,20 @@ is a percentage from 0 to 100 (VolcEngine's fractional precision is retained).
 `endToEndDelayMs` measures RTC media transport, not the full AI generation time.
 The Harmony `userId` field follows the platform's existing identifier naming.
 
+For each main-stream RTC statistics event, the adapter converts the native data
+once and passes the same `UplinkVideoStatistics` / `DownlinkVideoStatistics`
+instance to the public video logger and quality listener. Public video logs
+therefore share the callback values, units, and unavailable-value semantics;
+missing metrics display `—`, and valid zero values remain zero. The logger runs
+at the RTC layer, while business callbacks are additionally filtered by the
+publication/current-generation lifecycle described above.
+
+Native video RTT/jitter, stalls and audio extension statistics are not logged.
+VolcEngine network-quality details and performance alarms remain under
+`[RTC/VolcEngine]`. Both log categories use `XmaxLoggerOption.PERFORMANCE`;
+disabling logs does not disable statistics callbacks, and log bodies are not
+formatted when logging is off.
+
 XLab's Realtime camera, image and video pages have a **Stats** button. The panel
 is hidden by default and shows both video directions, network quality and RTC
 latency; missing values display `—`. Hiding it keeps the listeners installed so
