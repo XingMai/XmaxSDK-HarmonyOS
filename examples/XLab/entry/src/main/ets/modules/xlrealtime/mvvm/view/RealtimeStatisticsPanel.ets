@@ -6,6 +6,7 @@ import { RealtimeViewState } from '../model/RealtimeViewState';
 export struct RealtimeStatisticsButton {
   @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
   @Prop isActive: boolean = false;
+  @Prop buttonWidth: number = 58;
   onToggle: () => void = (): void => {};
 
   private text(key: string): string {
@@ -28,7 +29,7 @@ export struct RealtimeStatisticsButton {
       .height(36)
       .justifyContent(FlexAlign.Center)
     }
-    .width(58)
+    .width(this.buttonWidth)
     .height(58)
     .padding(0)
     .backgroundColor(Color.Transparent)

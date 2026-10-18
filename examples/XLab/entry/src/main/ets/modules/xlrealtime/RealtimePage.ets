@@ -492,50 +492,58 @@ export struct RealtimePage {
           })
             .position({ right: 8, top: 76 })
         } else {
-          if (!this.hasLocalImage()) {
-            RealtimeAudioControlsView({
-              state: this.state,
-              onOpenVolumeMenu: (): void => this.viewModel.refreshAudioVolumes(),
-              onLocalVolumeChanged: (volume: number): void => {
-                void this.viewModel.setLocalAudioVolume(volume);
-              },
-              onRemoteVolumeChanged: (volume: number): void => {
-                void this.viewModel.setRemoteAudioVolume(volume);
-              },
-              onMuteChanged: (muted: boolean): void => {
-                void this.viewModel.setAudioMuted(muted);
-              }
+          Row() {
+            RealtimeStatisticsButton({
+              isActive: this.isStatisticsVisible,
+              buttonWidth: 44,
+              onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
             })
-              .position({ right: 52, top: 18 })
-          }
-          Button({ type: ButtonType.Normal }) {
-            Column({ space: 4 }) {
-              SymbolGlyph($r('sys.symbol.picture'))
-                .fontSize(20)
-                .fontColor(['#FFFFFF'])
-
-              Text(this.text('album'))
-                .fontSize(10)
-                .lineHeight(12)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#FFFFFF')
-                .textShadow({ radius: 2, color: '#80000000', offsetX: 0, offsetY: 1 })
+            if (!this.hasLocalImage()) {
+              RealtimeAudioControlsView({
+                state: this.state,
+                onOpenVolumeMenu: (): void => this.viewModel.refreshAudioVolumes(),
+                onLocalVolumeChanged: (volume: number): void => {
+                  void this.viewModel.setLocalAudioVolume(volume);
+                },
+                onRemoteVolumeChanged: (volume: number): void => {
+                  void this.viewModel.setRemoteAudioVolume(volume);
+                },
+                onMuteChanged: (muted: boolean): void => {
+                  void this.viewModel.setAudioMuted(muted);
+                }
+              })
             }
-            .height(36)
-            .justifyContent(FlexAlign.Center)
+            Button({ type: ButtonType.Normal }) {
+              Column({ space: 4 }) {
+                SymbolGlyph($r('sys.symbol.picture'))
+                  .fontSize(20)
+                  .fontColor(['#FFFFFF'])
+
+                Text(this.text('album'))
+                  .fontSize(10)
+                  .lineHeight(12)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor('#FFFFFF')
+                  .textShadow({ radius: 2, color: '#80000000', offsetX: 0, offsetY: 1 })
+              }
+              .height(36)
+              .justifyContent(FlexAlign.Center)
+            }
+            .width(44)
+            .height(58)
+            .padding(0)
+            .fontColor('#FFFFFF')
+            .backgroundColor(Color.Transparent)
+            .enabled(!this.isPickingLocalMedia)
+            .opacity(this.isPickingLocalMedia ? 0.5 : 1)
+            .accessibilityText(this.text('replace_media'))
+            .onClick((): void => {
+              void this.presentLocalMediaPicker();
+            })
           }
-          .width(this.hasLocalImage() ? 58 : 44)
+          .width(this.hasLocalImage() ? 88 : 176)
           .height(58)
-          .padding(0)
           .position({ right: 8, top: 18 })
-          .fontColor('#FFFFFF')
-          .backgroundColor(Color.Transparent)
-          .enabled(!this.isPickingLocalMedia)
-          .opacity(this.isPickingLocalMedia ? 0.5 : 1)
-          .accessibilityText(this.text('replace_media'))
-          .onClick((): void => {
-            void this.presentLocalMediaPicker();
-          })
         }
         if (this.isStatisticsVisible) {
           RealtimeStatisticsPanel({
@@ -545,14 +553,13 @@ export struct RealtimePage {
             .width(this.isLandscape ? 216 : 228)
             .position({ left: 12, top: STATISTICS_PANEL_TOP_INSET })
         }
-        RealtimeStatisticsButton({
-          isActive: this.isStatisticsVisible,
-          onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
-        })
-          .position({
-            right: this.hasLocalFile() ? (this.hasLocalImage() ? 74 : 148) : 8,
-            top: this.hasLocalFile() ? 18 : 134
+        if (!this.hasLocalFile()) {
+          RealtimeStatisticsButton({
+            isActive: this.isStatisticsVisible,
+            onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
           })
+            .position({ right: 8, top: 134 })
+        }
       }
       .width('100%')
       .layoutWeight(1)

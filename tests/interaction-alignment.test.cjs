@@ -59,6 +59,7 @@ function overlayFixture(mode) {
     renderBegan: points => began.push(...points), renderMoved: points => moved.push(...points),
     renderEnded() {}, reset() {}, resize() {}, isAnimating: () => false
   };
+  overlay.aboutToAppear();
   overlay.updateArea({ width: 400, height: 400 });
   return { ...f, overlay, track, binding, sent, began, moved, close() {
     overlay.aboutToDisappear();
@@ -107,5 +108,38 @@ test('fill overlay includes the cropped media offset in both visual and signalin
     assert.equal(f.began[0].normalizedX, 0.25);
     assert.equal(f.began[0].normalizedY, 0.25);
     assert.deepEqual(f.sent[0].points.map(point => ({ ...point })), [{ x: 0.25, y: 0.25 }]);
+  } finally { f.close(); }
+});
+
+test('same-track ArkUI property copies cannot interrupt a held drag or its sampling timer', () => {
+  const f = overlayFixture();
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    const sampleTimer = f.overlay.sampleTimer;
+    const touch = f.overlay.activeTouches.get(1);
+    for (let i = 0; i < 5; i++) {
+      f.updateRealtimeVideoTrackFormat(f.track, new f.Format(640 + i * 4, 480, 24));
+      f.overlay.track = Object.assign(Object.create(Object.getPrototypeOf(f.track)), f.track);
+      f.overlay.onTrackChanged(); // Periodic statistics/layout updates can pass a fresh @Prop copy.
+      assert.equal(f.overlay.activeTouches.get(1), touch);
+      assert.equal(f.overlay.sampleTimer, sampleTimer);
+      f.overlay.moveTouch({ id: 1, x: 110 + i * 10, y: 150 });
+      f.overlay.submitInteraction();
+    }
+    assert.equal(f.began.length, 1);
+    assert.equal(f.moved.length, 5);
+    assert.equal(f.sent.length, 6);
+  } finally { f.close(); }
+});
+
+test('a different track with the same ID still cancels the previous drag', () => {
+  const f = overlayFixture();
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.overlay.track = new f.Track(f.track.id, f.track.videoFormat);
+    f.overlay.onTrackChanged();
+    assert.equal(f.overlay.activeTouches.size, 0);
+    assert.equal(f.overlay.sampleTimer, -1);
+    assert.equal(f.overlay.tickTimer, -1);
   } finally { f.close(); }
 });

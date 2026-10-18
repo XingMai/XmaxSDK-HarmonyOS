@@ -35,6 +35,7 @@ export struct TrajectoryOverlayView {
 
   // 交互资源
   private readonly activeTouches: Map<number, ActiveTouch> = new Map();
+  private currentTrack: RealtimeVideoTrack | undefined;
   private viewportWidth: number = 0;
   private viewportHeight: number = 0;
 
@@ -42,12 +43,23 @@ export struct TrajectoryOverlayView {
   private tickTimer: number = -1;
   private sampleTimer: number = -1;
 
+  aboutToAppear(): void {
+    this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
+  }
+
   aboutToDisappear(): void {
     this.stopTicking();
     this.cancelInteraction();
   }
 
   private onTrackChanged(): void {
+    const track: RealtimeVideoTrack | undefined = this.track === undefined ? undefined :
+      RealtimeVideoTrack.resolve(this.track);
+    // ArkUI @Prop 副本变化不代表换轨；刷新统计或远端格式时保留正在进行的触摸。
+    if (track === this.currentTrack) {
+      return;
+    }
+    this.currentTrack = track;
     this.cancelInteraction();
   }
 
