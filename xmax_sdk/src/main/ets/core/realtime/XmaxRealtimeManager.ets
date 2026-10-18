@@ -603,7 +603,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * 条件允许更新，尺寸已由重启保证为最新方向，无需打断重启。不在重启提交窗口时返回空值。
    */
   private tryJoinOrientationRestart(input: RealtimeContext | RealtimeMediaStream | undefined,
-    context: RealtimeContext | undefined): Promise<void | RealtimeMediaStream> | null {
+    context: RealtimeContext | undefined, faceRestoration: boolean): Promise<void | RealtimeMediaStream> | null {
     const completion: Promise<void> | null = this.orientationRestartCompletion;
     if (completion === null ||
       (input instanceof RealtimeMediaStream && !this.mediaController.owns(input))) {
@@ -618,7 +618,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
     const newContext: RealtimeContext | undefined =
       input instanceof RealtimeMediaStream ? context : input;
-    this.generationManager.update(taskId, videoFormat, newContext);
+    this.generationManager.update(taskId, videoFormat, newContext, faceRestoration);
     if (input instanceof RealtimeMediaStream) {
       return completion.then((): RealtimeMediaStream => {
         const remoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
@@ -701,12 +701,18 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   /** 开始生成；生成中再次调用则更新条件。传入本地流时按需建立连接。 */
-  startGeneration(context?: RealtimeContext): Promise<void>;
-  startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext): Promise<RealtimeMediaStream>;
+  startGeneration(context?: RealtimeContext, faceRestoration?: boolean): Promise<void>;
+  startGeneration(localStream: RealtimeMediaStream, context?: RealtimeContext,
+    faceRestoration?: boolean): Promise<RealtimeMediaStream>;
   startGeneration(input?: RealtimeContext | RealtimeMediaStream,
-    context?: RealtimeContext): Promise<void | RealtimeMediaStream> {
+    contextOrFaceRestoration?: RealtimeContext | boolean, faceRestoration: boolean = false): Promise<void | RealtimeMediaStream> {
+    const context: RealtimeContext | undefined =
+      typeof contextOrFaceRestoration === 'boolean' ? undefined : contextOrFaceRestoration;
+    const resolvedFaceRestoration: boolean = input instanceof RealtimeMediaStream ? faceRestoration :
+      (typeof contextOrFaceRestoration === 'boolean' ? contextOrFaceRestoration : false);
     // 转屏重启的重新提交进行中时，新条件直接并入该任务，不与内部重启竞争操作权。
-    const joined: Promise<void | RealtimeMediaStream> | null = this.tryJoinOrientationRestart(input, context);
+    const joined: Promise<void | RealtimeMediaStream> | null =
+      this.tryJoinOrientationRestart(input, context, resolvedFaceRestoration);
     if (joined !== null) {
       return joined;
     }
@@ -719,9 +725,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         try {
           if (input instanceof RealtimeMediaStream) {
-            return await this.startGenerationWithStream(input, context, token);
+            return await this.startGenerationWithStream(input, context, token, resolvedFaceRestoration);
           }
-          await this.performStartGeneration(input, token);
+          await this.performStartGeneration(input, token, resolvedFaceRestoration);
         } finally {
           this.timing.endOperation(measurement);
         }
@@ -737,7 +743,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   }
 
   private async startGenerationWithStream(localStream: RealtimeMediaStream, context: RealtimeContext | undefined,
-    token: RealtimeOperationToken): Promise<RealtimeMediaStream> {
+    token: RealtimeOperationToken, faceRestoration: boolean): Promise<RealtimeMediaStream> {
     if (!this.mediaController.owns(localStream)) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'The local stream must be created and started by this realtime manager');
@@ -759,12 +765,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.setFailureScope(null);
     }
     token.ensureCurrent();
-    await this.performStartGeneration(context, token);
+    await this.performStartGeneration(context, token, faceRestoration);
     return remoteStream;
   }
 
   private async performStartGeneration(context: RealtimeContext | undefined,
-    token: RealtimeOperationToken): Promise<void> {
+    token: RealtimeOperationToken, faceRestoration?: boolean): Promise<void> {
     token.ensureCurrent();
     const sessionId: string = this.connectionManager.currentSessionId;
     const videoFormat: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
@@ -776,7 +782,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         'Realtime connection is not open');
     }
     if (current.connectionState === RealtimeConnectionState.GENERATING && current.taskId !== undefined) {
-      this.generationManager.update(current.taskId, videoFormat, context);
+      this.generationManager.update(current.taskId, videoFormat, context, faceRestoration);
       token.ensureCurrent();
       return;
     }
@@ -788,7 +794,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     try {
       const taskId: string = await this.generationManager.start(videoFormat, context,
         (): void => token.ensureCurrent(),
-        (confirmation: Promise<void>): Promise<void> => token.wait(confirmation));
+        (confirmation: Promise<void>): Promise<void> => token.wait(confirmation), faceRestoration);
       token.ensureCurrent();
       await token.wait(this.renderController.waitUntilRemoteFrameReady());
       token.ensureCurrent();

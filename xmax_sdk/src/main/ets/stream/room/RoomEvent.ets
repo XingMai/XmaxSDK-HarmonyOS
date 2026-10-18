@@ -16,10 +16,12 @@ class GenerationParameters {
   prompt: string;
   ref_image_path?: string;
   detection: boolean;
+  face_replace: boolean;
 
   constructor(
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean
   ) {
     this.size = [videoFormat.width, videoFormat.height];
     this.prompt = context.prompt;
@@ -27,6 +29,7 @@ class GenerationParameters {
       this.ref_image_path = context.referencePath;
     }
     this.detection = context.faceDetection ?? false;
+    this.face_replace = faceRestoration;
   }
 }
 
@@ -40,10 +43,11 @@ class StartRoomEvent extends RuntimeRoomEvent {
     userId: string,
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -59,10 +63,11 @@ class ChangeConditionRoomEvent extends RuntimeRoomEvent {
     userId: string,
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -116,22 +121,25 @@ export class RoomEvent {
     userId: string,
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): string {
-    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context));
+    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration));
   }
 
   static changeCondition(
     userId: string,
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): string {
     return JSON.stringify(new ChangeConditionRoomEvent(
       userId,
       taskId,
       videoFormat,
-      context
+      context,
+      faceRestoration
     ));
   }
 

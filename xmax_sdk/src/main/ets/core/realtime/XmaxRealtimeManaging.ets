@@ -201,19 +201,22 @@ export interface XmaxRealtimeManaging {
    * 开始生成或更新当前生成条件。
    *
    * @param context 生成条件；首次开始生成时必须传入。
+   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
    * @returns 操作完成后的 Promise。
    */
-  startGeneration(context?: RealtimeContext): Promise<void>;
+  startGeneration(context?: RealtimeContext, faceRestoration?: boolean): Promise<void>;
 
   /**
    * 使用当前本地流按需连接并开始生成；已经连接时复用连接，生成中更新条件。
    *
    * @param localStream 当前 Manager 创建并持有的本地媒体流。
    * @param context 首次生成必须提供；同一连接内可省略以复用缓存条件。
+   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
    * @returns 生成开始后的远端媒体流，可交给组合视频组件显示。
    */
   startGeneration(
     localStream: RealtimeMediaStream,
-    context?: RealtimeContext
+    context?: RealtimeContext,
+    faceRestoration?: boolean
   ): Promise<RealtimeMediaStream>;
 }

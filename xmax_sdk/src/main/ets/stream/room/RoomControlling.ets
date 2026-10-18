@@ -36,7 +36,8 @@ export interface RoomControlling {
   startGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration?: boolean
   ): void;
 
   /**
@@ -50,7 +51,8 @@ export interface RoomControlling {
   changeGenerationCondition(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration?: boolean
   ): void;
 
   /**

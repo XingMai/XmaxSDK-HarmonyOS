@@ -202,12 +202,13 @@ export class StreamController implements StreamControlling, RtcEventListener {
   beginGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): Promise<void> {
     this.timing.beginSignal(taskId);
     const confirmation: Promise<void> = this.beginGenerationConfirmation(taskId);
     try {
-      this.roomController.startGeneration(taskId, videoFormat, context);
+      this.roomController.startGeneration(taskId, videoFormat, context, faceRestoration);
       this.timing.finishSignal(taskId);
       return confirmation;
     } catch (error) {
@@ -231,12 +232,14 @@ export class StreamController implements StreamControlling, RtcEventListener {
   updateGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): void {
     this.roomController.changeGenerationCondition(
       taskId,
       videoFormat,
-      context
+      context,
+      faceRestoration
     );
   }
 

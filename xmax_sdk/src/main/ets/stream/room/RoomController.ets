@@ -97,13 +97,15 @@ export class RoomController implements RoomControlling {
   startGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): void {
     this.send(RoomEvent.start(
       this.requireUserId(),
       taskId,
       videoFormat,
-      context
+      context,
+      faceRestoration
     ));
   }
 
@@ -118,13 +120,15 @@ export class RoomController implements RoomControlling {
   changeGenerationCondition(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration: boolean = false
   ): void {
     this.send(RoomEvent.changeCondition(
       this.requireUserId(),
       taskId,
       videoFormat,
-      context
+      context,
+      faceRestoration
     ));
   }
 

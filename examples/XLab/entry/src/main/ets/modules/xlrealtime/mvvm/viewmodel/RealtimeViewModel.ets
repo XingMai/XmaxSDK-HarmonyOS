@@ -698,8 +698,10 @@ export class RealtimeViewModel {
             // 摄像头输入开启人脸检测；图片和视频输入保持关闭。
             const isCameraInput: boolean =
               this.localImagePath.length === 0 && this.localVideoPath.length === 0;
+            const faceRestoration: boolean = this.generationInputMode === GenerationInputMode.REFERENCE &&
+              selectedReference?.categoryId === 'clothx';
             const remoteStream: RealtimeMediaStream = await manager.startGeneration(
-              localStream, new RealtimeContext(prompt, referencePath, isCameraInput)
+              localStream, new RealtimeContext(prompt, referencePath, isCameraInput), faceRestoration
             );
             if (this.realtimeManager === manager && revision === this.generationRevision) {
               this.remoteStream = remoteStream;

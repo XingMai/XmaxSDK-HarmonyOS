@@ -62,7 +62,11 @@ export class XmaxClient {
       );
     }
 
-    return new XmaxRealtimeManager(this.context, options, this.apiService);
+    const baseURL: string | undefined = options.model.baseURL;
+    const apiService: ApiServicing = baseURL === undefined
+      ? this.apiService
+      : new ApiService(this.configuration.apiKey, baseURL);
+    return new XmaxRealtimeManager(this.context, options, apiService);
   }
 
   /**

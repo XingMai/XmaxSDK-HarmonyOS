@@ -21,7 +21,6 @@ test('model defaults and resolution buckets match iOS without media-source restr
   const f = fixture();
   for (const [name, buckets, maximum, fps, width, height] of [
     [f.Model.X2_0, [], 1280000, 30, 832, 1472],
-    [f.Model.X2_0_PRO, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920],
     [f.Model.X2_0_SLA, [[1024, 1920], [1920, 1024]], 2100000, 30, 1024, 1920]
   ]) {
     const model = f.Models.realtime(name);
@@ -36,13 +35,56 @@ test('model defaults and resolution buckets match iOS without media-source restr
     assert.deepEqual(model.resolutionBuckets.map(size => [size.width, size.height]), buckets);
     assert.equal(model.supportedMediaSources, undefined);
   }
-  assert.equal(f.Model.X2_0_PRO, 'x2.0-pro');
-  for (const name of ['unknown-model']) {
+  assert.deepEqual(Object.values(f.Model), ['x2.0', 'x2.0-sla']);
+  for (const name of ['unknown-model', 'x2.0-pro']) {
     assert.throws(() => f.Models.realtime(name), { code: 'INVALID_CONFIGURATION' });
   }
 });
 
-test('Pro accepts only exact buckets in either orientation without rounding or resizing', () => {
+test('all models including SLA inherit the client production environment', () => {
+  const f = fixture();
+  assert.equal(f.Models.realtime(f.Model.X2_0_SLA).baseURL, undefined);
+  assert.equal(f.Models.realtime(f.Model.X2_0).baseURL, undefined);
+});
+
+test('realtime managers and storage use the configured production environment without early key validation', () => {
+  const services = [];
+  const f = fixture({
+    ApiService: { ApiService: class {
+      constructor(apiKey, baseURL) { this.apiKey = apiKey; this.baseURL = baseURL; services.push(this); }
+    } },
+    XmaxRealtimeManager: { XmaxRealtimeManager: class {
+      constructor(context, options, apiService) { this.options = options; this.apiService = apiService; }
+    } },
+    XmaxStorageManager: { XmaxStorageManager: class {
+      constructor(context, apiService) { this.apiService = apiService; }
+    } }
+  });
+  const { XmaxClient } = f.load('core/XmaxClient.ets');
+  const { XmaxConfiguration } = f.load('core/XmaxConfiguration.ets');
+  const { XmaxEnvironment, apiBaseURL } = f.load('core/XmaxEnvironment.ets');
+  const { RealtimeConfiguration } = f.load('core/realtime/RealtimeConfiguration.ets');
+  const context = { getApplicationContext() { return this; } };
+  for (const environment of Object.values(XmaxEnvironment)) {
+    const client = new XmaxClient(new XmaxConfiguration('test-only', environment), context);
+    const storage = client.createStorageManager();
+    const create = name => client.createRealtimeManager(new RealtimeConfiguration(f.Models.realtime(name)));
+    const normal = create(f.Model.X2_0);
+    const sla = create(f.Model.X2_0_SLA);
+    assert.equal(sla.apiService.baseURL, apiBaseURL(environment));
+    assert.equal(sla.apiService.apiKey, 'test-only');
+    assert.equal(sla.apiService, storage.apiService);
+    assert.equal(normal.apiService, storage.apiService);
+    assert.equal(storage.apiService.baseURL, apiBaseURL(environment));
+    assert.equal(client.createStorageManager().apiService, storage.apiService);
+  }
+  const emptyKeyClient = new XmaxClient(new XmaxConfiguration(''), context);
+  assert.doesNotThrow(() => emptyKeyClient.createRealtimeManager(
+    new RealtimeConfiguration(f.Models.realtime(f.Model.X2_0_SLA))));
+  assert.equal(services.at(-1).apiKey, '');
+});
+
+test('SLA accepts only exact buckets in either orientation without rounding or resizing', () => {
   const f = fixture(), service = new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA));
   for (const [width, height] of [[1024, 1920], [1920, 1024]]) {
     const size = new f.Size(width, height);
@@ -140,7 +182,7 @@ function mediaFixture() {
   } };
 }
 
-for (const name of ['x2.0', 'x2.0-pro', 'x2.0-sla']) {
+for (const name of ['x2.0', 'x2.0-sla']) {
   test(`shared ${name} rules reach camera capture, image frames and rotated video playback`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const model = f.Models.realtime(name), service = new f.MediaService(model);
@@ -170,7 +212,7 @@ for (const name of ['x2.0', 'x2.0-pro', 'x2.0-sla']) {
   });
 }
 
-test('Pro rejects unsupported camera input before permission or capture, and rejects image/video output sizes', async () => {
+test('SLA rejects unsupported camera input before permission or capture, and rejects image/video output sizes', async () => {
   const calls = [];
   const kit = createCameraKitFixture(calls);
   const f = fixture({
@@ -193,7 +235,7 @@ test('Pro rejects unsupported camera input before permission or capture, and rej
   }
 });
 
-test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () => {
+test('XLab lists supported models and migrates a persisted Pro selection to SLA', () => {
   const f = fixture();
   let selected;
   const load = loadEts({ '@xmax/sdk': { RealtimeModel: f.Model } }, {
@@ -204,7 +246,7 @@ test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () =
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/config/XLabModelSelection.ets'));
   assert.deepEqual(selection.OPTIONS.map(option => option.model), ['x2.0', 'x2.0-sla']);
   for (const [saved, expected] of [['x2.0', 'x2.0'], ['x2.0-sla', 'x2.0-sla'],
-    ['x2.0-sla', 'x2.0-sla'], ['unknown', 'x2.0'], [undefined, 'x2.0']]) {
+    ['x2.0-pro', 'x2.0-sla'], ['unknown', 'x2.0'], [undefined, 'x2.0']]) {
     selected = saved;
     assert.equal(selection.current(), expected);
   }
@@ -213,7 +255,7 @@ test('XLab lists iOS models and migrates a persisted SLA selection to Pro', () =
   assert.equal(selected, 'x2.0-sla');
 });
 
-for (const name of ['x2.0', 'x2.0-pro', 'x2.0-sla']) {
+for (const name of ['x2.0', 'x2.0-sla']) {
   test(`${name} camera/image/video resolved formats preserve upload encoding settings`, async () => {
     const f = mediaFixture(), media = f.createMedia(name);
     const expected = new f.MediaService(f.Models.realtime(name)).resolveModelInputSize(new f.Size(1024, 1920));

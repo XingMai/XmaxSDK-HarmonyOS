@@ -69,15 +69,17 @@ function managerFixture(modelName = 'x2.0-sla') {
     async connect(_connection, _audio, ensure) { ensure(); }
     async disconnect() { this.stopGeneration(''); }
     activateRemoteAudio() {}
-    beginGeneration(task, format, context) {
+    beginGeneration(task, format, context, faceRestoration) {
       this.currentGenerationTaskId = task;
       const gate = deferred();
       this.confirmation = gate;
-      calls.starts.push({ task, format, context, gate });
+      calls.starts.push({ task, format, context, faceRestoration, gate });
       if (autoConfirm) gate.resolve();
       return gate.promise;
     }
-    updateGeneration(task, format, context) { calls.updates.push({ task, format, context }); }
+    updateGeneration(task, format, context, faceRestoration) {
+      calls.updates.push({ task, format, context, faceRestoration });
+    }
     stopGeneration(task) {
       calls.stops.push(task);
       this.currentGenerationTaskId = '';
@@ -134,6 +136,69 @@ function managerFixture(modelName = 'x2.0-sla') {
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
+
+for (const withStream of [false, true]) {
+  test(`face restoration supports start, flag-only updates and default false (stream overload: ${withStream})`, async () => {
+    const f = managerFixture();
+    const local = await f.create();
+    if (!withStream) await f.manager.connect(local);
+    const start = (context, flag) => withStream ?
+      f.manager.startGeneration(local, context, flag) : f.manager.startGeneration(context, flag);
+    const context = new f.Context('original', 'reference.png', true);
+    await start(context, true);
+    const task = f.calls.starts[0].task;
+    assert.equal(f.calls.starts[0].faceRestoration, true);
+    await start(undefined, false);
+    assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+    assert.equal(f.calls.updates.at(-1).context, context);
+    const changed = new f.Context('changed');
+    await start(changed, true);
+    assert.equal(f.calls.updates.at(-1).faceRestoration, true);
+    await start(undefined);
+    assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+    assert.equal(f.calls.updates.at(-1).context, changed);
+    assert.ok(f.calls.updates.every(update => update.task === task));
+    assert.equal(f.calls.starts.length, 1);
+    await start(undefined, true);
+    await f.manager.disconnect();
+    if (!withStream) await f.manager.connect(local);
+    await start(changed);
+    assert.equal(f.calls.starts.at(-1).faceRestoration, false);
+    assert.equal(f.calls.starts.at(-1).context, changed);
+    await f.manager.close();
+  });
+}
+
+test('face restoration defaults to false on the first generation', async () => {
+  const f = managerFixture();
+  await f.manager.startGeneration(await f.create(), new f.Context('prompt'));
+  assert.equal(f.calls.starts[0].faceRestoration, false);
+  await f.manager.close();
+});
+
+test('orientation restarts preserve face restoration and commit updates made during confirmation', async () => {
+  const f = managerFixture();
+  await f.manager.startGeneration(await f.create(), new f.Context('prompt'), true);
+  f.rotateCamera();
+  await settle();
+  f.holdGeneration();
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.at(-1).faceRestoration, true);
+  const joined = f.manager.startGeneration(undefined, false);
+  assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+  assert.equal(f.calls.updates.at(-1).context.prompt, 'prompt');
+  f.stream.confirmation.resolve();
+  await joined;
+  f.rotateCamera();
+  await settle();
+  f.runSwitchDelay();
+  await settle();
+  assert.equal(f.calls.starts.at(-1).faceRestoration, false);
+  f.stream.confirmation.resolve();
+  await settle();
+  await f.manager.close();
+});
 
 for (const endDuringStart of [false, true]) {
   test(`video completion keeps generation active without freezing remote output (during start: ${endDuringStart})`, async () => {
@@ -466,7 +531,7 @@ test('stop-signal failure is logged without a failure callback and still disconn
 test('switchCamera preserves track/session/format and restores the last generation context', async () => {
   const f = managerFixture(), local = await f.create();
   await f.manager.startGeneration(local, new f.Context('first'));
-  await f.manager.startGeneration(new f.Context('latest'));
+  await f.manager.startGeneration(new f.Context('latest'), true);
   const oldTask = f.manager.currentState.taskId;
   const switching = f.manager.switchCamera();
   await settle();
@@ -477,6 +542,7 @@ test('switchCamera preserves track/session/format and restores the last generati
   assert.equal(switched.videoTrack, local.videoTrack);
   assert.equal(f.calls.sessions.length, 1);
   assert.equal(f.calls.starts.at(-1).context.prompt, 'latest');
+  assert.equal(f.calls.starts.at(-1).faceRestoration, true);
   assert.notEqual(f.manager.currentState.taskId, oldTask);
   assert.equal(f.calls.starts.at(-1).format, local.videoTrack.videoFormat);
 });
@@ -1201,6 +1267,36 @@ function referenceItem(id) {
     uploadState: 'ready', isAddAction: false
   } };
 }
+
+test('XLab enables face restoration only for clothing references and disables it for other generation modes', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  const clothing = referenceItem('clothing');
+  clothing.reference.categoryId = 'clothx';
+  vm.selectReference(clothing);
+  await settle();
+  assert.equal(f.calls.starts.at(-1).faceRestoration, true);
+  for (const category of ['charx', 'dimx', 'vibex']) {
+    const item = referenceItem(category);
+    item.reference.categoryId = category;
+    vm.selectReference(item);
+    await settle();
+    assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+  }
+  vm.selectReference(clothing);
+  await settle();
+  assert.equal(f.calls.updates.at(-1).faceRestoration, true);
+  vm.state.selectedCategoryId = 'free';
+  vm.submitPrompt('custom prompt');
+  await settle();
+  assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+  assert.equal(f.calls.updates.at(-1).context.prompt, 'custom prompt');
+  vm.state.selectedCategoryId = 'mox';
+  vm.startMoxGeneration();
+  await settle();
+  assert.equal(f.calls.updates.at(-1).faceRestoration, false);
+  await vm.disconnect();
+});
 
 for (const phase of ['connecting', 'waiting for generation']) {
   test(`XLab keeps loading continuously when replacing references while ${phase}`, async () => {

@@ -26,6 +26,8 @@ export class XmaxRealtimeGenerationManager {
   private currentContext: RealtimeContext | null = null;
   private startingContext: RealtimeContext | null = null;
   private startingVideoFormat: RealtimeVideoFormat | null = null;
+  private currentFaceRestoration: boolean = false;
+  private startingFaceRestoration: boolean | null = null;
 
   /**
    * 创建生成流程 Manager。
@@ -56,13 +58,15 @@ export class XmaxRealtimeGenerationManager {
    * @param videoFormat 当前本地输入的视频格式。
    * @param context 可选的生成条件；首次生成时必须提供。
    * @param ensureCurrent 确认当前生成操作仍然有效的回调。
+   * @param faceRestoration 原始人脸回贴；内部重启省略时保留当前设置，公开调用显式传入默认 false。
    * @returns 确认远端结果开始后的生成任务标识。
    */
   async start(
     videoFormat: RealtimeVideoFormat,
     context: RealtimeContext | undefined,
     ensureCurrent: GenerationValidity,
-    waitForConfirmation?: GenerationConfirmationWait
+    waitForConfirmation?: GenerationConfirmationWait,
+    faceRestoration?: boolean
   ): Promise<string> {
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
@@ -75,14 +79,17 @@ export class XmaxRealtimeGenerationManager {
     const taskId: string = XmaxRealtimeGenerationManager.createTaskId();
     this.startingContext = resolvedContext;
     this.startingVideoFormat = videoFormat;
+    this.startingFaceRestoration = faceRestoration ?? this.currentFaceRestoration;
     try {
-      const confirmation: Promise<void> = this.streamController.beginGeneration(taskId, videoFormat, resolvedContext);
+      const confirmation: Promise<void> = this.streamController.beginGeneration(
+        taskId, videoFormat, resolvedContext, this.startingFaceRestoration);
       await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
       this.mediaController.start(taskId, this.startingVideoFormat ?? videoFormat);
       // 确认等待期可能并入了新条件，与 startingVideoFormat 一样以等待期内的最新值为准。
       this.currentContext = this.startingContext ?? resolvedContext;
+      this.currentFaceRestoration = this.startingFaceRestoration ?? this.currentFaceRestoration;
       return taskId;
     } catch (error) {
       try {
@@ -94,6 +101,7 @@ export class XmaxRealtimeGenerationManager {
     } finally {
       this.startingContext = null;
       this.startingVideoFormat = null;
+      this.startingFaceRestoration = null;
     }
   }
 
@@ -104,7 +112,8 @@ export class XmaxRealtimeGenerationManager {
     if (taskId.length === 0 || context === null) {
       return;
     }
-    this.streamController.updateGeneration(taskId, format, context);
+    this.streamController.updateGeneration(taskId, format, context,
+      this.startingFaceRestoration ?? this.currentFaceRestoration);
     if (this.startingContext !== null) {
       this.startingVideoFormat = format;
     } else {
@@ -117,30 +126,42 @@ export class XmaxRealtimeGenerationManager {
    *
    * @param taskId 当前生成任务标识。
    * @param videoFormat 当前本地输入的视频格式。
-   * @param context 可选的新生成条件；未传入时仅恢复交互绑定。
+   * @param context 可选的新生成条件；未传入时复用缓存条件。
+   * @param faceRestoration 可选的人脸回贴设置；与 context 均省略时仅恢复交互绑定。
    * @returns 无返回值。
    */
   update(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context?: RealtimeContext
+    context?: RealtimeContext,
+    faceRestoration?: boolean
   ): void {
     this.mediaController.start(taskId, videoFormat);
 
-    if (context === undefined) {
+    if (context === undefined && faceRestoration === undefined) {
       return;
     }
+    const resolvedContext: RealtimeContext | null = context ?? this.startingContext ?? this.currentContext;
+    if (resolvedContext === null) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'A realtime context is required for the first generation');
+    }
+    const resolvedFaceRestoration: boolean =
+      faceRestoration ?? this.startingFaceRestoration ?? this.currentFaceRestoration;
 
     this.streamController.updateGeneration(
       taskId,
       videoFormat,
-      context
+      resolvedContext,
+      resolvedFaceRestoration
     );
     // 等待确认中的启动以 startingContext 为准，确认时统一落地，避免覆盖新条件。
     if (this.startingContext !== null) {
-      this.startingContext = context;
+      this.startingContext = resolvedContext;
+      this.startingFaceRestoration = resolvedFaceRestoration;
     } else {
-      this.currentContext = context;
+      this.currentContext = resolvedContext;
+      this.currentFaceRestoration = resolvedFaceRestoration;
     }
   }
 
@@ -167,6 +188,7 @@ export class XmaxRealtimeGenerationManager {
    */
   reset(taskId: string = ''): void {
     this.currentContext = null;
+    this.currentFaceRestoration = false;
     this.stop(taskId);
   }
 

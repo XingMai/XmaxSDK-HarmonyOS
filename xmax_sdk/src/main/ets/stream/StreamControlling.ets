@@ -99,7 +99,8 @@ export interface StreamControlling {
   beginGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration?: boolean
   ): Promise<void>;
 
   /** 首帧可用后激活已匹配生成流的远端音频。 */
@@ -116,7 +117,8 @@ export interface StreamControlling {
   updateGeneration(
     taskId: string,
     videoFormat: RealtimeVideoFormat,
-    context: RealtimeContext
+    context: RealtimeContext,
+    faceRestoration?: boolean
   ): void;
 
   /**

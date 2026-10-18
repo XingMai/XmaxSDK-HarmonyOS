@@ -79,7 +79,7 @@ test('all room events include the same top-level runtime and preserve SLA size a
   const f = fixture(), task = 'task-test?os=harmonyos', user = 'user';
   const context = new f.Context('prompt', 'reference.png');
   const params = { model: 'default', size: [1024, 1920], prompt: 'prompt', ref_image_path: 'reference.png',
-    detection: false };
+    detection: false, face_replace: false };
   const cases = [
     [f.RoomEvent.start(user, task, f.format, context), { event: 'start', params, user_id: user, uid: task }],
     [f.RoomEvent.changeCondition(user, task, f.format, context),
@@ -97,6 +97,21 @@ test('all room events include the same top-level runtime and preserve SLA size a
   assert.equal(noReference.params.detection, false);
   const withDetection = JSON.parse(f.RoomEvent.start(user, task, f.format, new f.Context('prompt', undefined, true)));
   assert.equal(withDetection.params.detection, true);
+});
+
+test('start and change_condition serialize face restoration independently of face detection', () => {
+  const f = fixture();
+  for (const method of ['start', 'changeCondition']) {
+    for (const flag of [undefined, false, true]) {
+      for (const detection of [false, true]) {
+        const payload = JSON.parse(f.RoomEvent[method]('user', 'task', f.format,
+          new f.Context('prompt', undefined, detection), flag));
+        assert.equal(payload.params.face_replace, flag ?? false);
+        assert.equal(payload.params.detection, detection);
+        assert.equal(Object.hasOwn(payload.params, 'faceRestoration'), false);
+      }
+    }
+  }
 });
 
 test('GET, POST, PUT and DELETE headers match room runtime without changing API bodies', async () => {
@@ -194,9 +209,10 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
   const frame = { id: 'frame' };
   stream.pushLocalVideoFrame(frame);
   assert.equal(frames.at(-1).sei, undefined);
-  const starting = manager.start(f.format, new f.Context('prompt'), () => {});
+  const starting = manager.start(f.format, new f.Context('prompt'), () => {}, undefined, true);
   try {
     const task = messages[0].uid;
+    assert.equal(messages[0].params.face_replace, true);
     assert.match(task, /^task-[A-Za-z0-9_-]{22}\?os=harmonyos$/);
     assert.deepEqual(messages[0].runtime, expectedRuntime);
     stream.pushLocalVideoFrame(frame);
@@ -215,6 +231,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     assert.deepEqual([...timers.values()].map(t => t.ms), [30000]);
     const landscape = { width: f.format.height, height: f.format.width, fps: f.format.fps };
     manager.updateVideoFormat(landscape);
+    assert.equal(messages.at(-1).params.face_replace, true);
     assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
     assert.equal(messages.at(-1).params.prompt, 'prompt');
     assert.deepEqual(mediaStarts, []);
@@ -224,8 +241,10 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     assert.equal(await starting, task);
     assert.deepEqual(mediaStarts, [task]);
     assert.deepEqual(mediaFormats.at(-1), landscape);
-    manager.update(task, f.format, new f.Context('changed'));
+    manager.update(task, f.format, new f.Context('changed'), false);
+    assert.equal(messages.at(-1).params.face_replace, false);
     manager.updateVideoFormat(landscape);
+    assert.equal(messages.at(-1).params.face_replace, false);
     assert.equal(messages.at(-1).params.prompt, 'changed');
     assert.deepEqual(messages.at(-1).params.size, [landscape.width, landscape.height]);
     stream.pushLocalVideoFrame(frame);
