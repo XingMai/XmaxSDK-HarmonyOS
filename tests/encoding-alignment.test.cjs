@@ -18,10 +18,10 @@ test('explicit and partial bitrate overrides and all preferences reach RTC', () 
   for (const [min, max, pref, expectedMin, expectedMax, expectedPref] of [
     [1500, 3000, f.Preference.AUTO, 1500, 3000, f.Internal.AUTO],
     [0, 500, f.Preference.MAINTAIN_QUALITY, 0, 500, f.Internal.MAINTAIN_QUALITY],
-    [undefined, 4000, f.Preference.MAINTAIN_FRAMERATE, 1805, 4000, f.Internal.MAINTAIN_FRAMERATE],
-    [1500, undefined, undefined, 1500, 3611, f.Internal.AUTO],
+    [undefined, 4000, f.Preference.MAINTAIN_FRAMERATE, 100, 4000, f.Internal.MAINTAIN_FRAMERATE],
+    [1500, undefined, undefined, 1500, 2166, f.Internal.AUTO],
     [2000, 2000, undefined, 2000, 2000, f.Internal.AUTO],
-    [undefined, undefined, undefined, 1805, 3611, f.Internal.AUTO]
+    [undefined, undefined, undefined, 100, 2166, f.Internal.AUTO]
   ]) {
     f.controller.configure(new f.Format(832, 1472, 24, min, max, pref));
     assert.deepEqual({ ...f.calls.at(-1) }, { width: 832, height: 1472, frameRate: 24,
@@ -32,7 +32,7 @@ test('explicit and partial bitrate overrides and all preferences reach RTC', () 
 test('invalid bitrate values and default-merged ranges fail before RTC', () => {
   const f = fixture();
   for (const [min, max] of [[-1, undefined], [undefined, 0], [3000, 1500],
-    [4000, undefined], [undefined, 1000], [NaN, 4000], [0, Infinity],
+    [4000, undefined], [undefined, 99], [NaN, 4000], [0, Infinity],
     [0.5, 4000], [0, 4000.5], [0, Number.MAX_SAFE_INTEGER + 1]]) {
     assert.throws(() => f.controller.configure(new f.Format(832, 1472, 24, min, max)),
       { code: 'INVALID_CONFIGURATION' });
@@ -49,11 +49,11 @@ test('invalid bitrate values and default-merged ranges fail before RTC', () => {
 test('default bitrates match iOS references, interpolation and extrapolation', () => {
   const f = fixture();
   for (const [w, h, fps, min, max] of [
-    [120,120,15,50,100], [640,480,10,400,800], [640,480,15,500,1000],
-    [640,480,30,750,1500], [1280,720,30,1710,3420], [1920,1080,30,3150,6300],
-    [1920,1080,60,4780,6500], [832,1472,24,1805,3611], [1472,832,24,1805,3611],
-    [1024,1920,30,3016,6031], [1024,768,24,1310,2620], [1920,1080,120,9560,13000],
-    [3840,2160,30,12600,25200], [120,120,30,77,154], [1920,1080,1,166,333], [2,2,1,1,2]
+    [120,120,15,100,100], [640,480,10,100,480], [640,480,15,100,600],
+    [640,480,30,100,900], [1280,720,30,100,2052], [1920,1080,30,100,3780],
+    [1920,1080,60,100,3900], [832,1472,24,100,2166], [1472,832,24,100,2166],
+    [1024,1920,30,100,3619], [1024,768,24,100,1572], [1920,1080,120,100,7800],
+    [3840,2160,30,100,15120], [120,120,30,100,100], [1920,1080,1,100,200], [2,2,1,100,100]
   ]) {
     f.controller.configure(new f.Format(w, h, fps));
     const actual = f.calls.at(-1);
@@ -68,7 +68,7 @@ test('default bitrate ranges remain ordered and monotonic at frame-rate boundari
     for (const fps of [1, 9, 10, 11, 14, 15, 16, 24, 29, 30, 31, 59, 60, 61, 120]) {
       f.controller.configure(new f.Format(w, h, fps));
       const { minimumBitrate: min, maximumBitrate: max } = f.calls.at(-1);
-      assert.ok(min > 0 && max > min && min >= previousMin && max >= previousMax);
+      assert.ok(min > 0 && max >= min && min >= previousMin && max >= previousMax);
       previousMin = min; previousMax = max;
     }
   }

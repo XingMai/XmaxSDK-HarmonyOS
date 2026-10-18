@@ -28,7 +28,7 @@ struct UIExtensionRealtimeContent {
       .width(58)
       .height(58)
       .padding(0)
-      .position({ left: 8, top: 18 })
+      .position({ left: 4, top: 18 })
       .backgroundColor(Color.Transparent)
       .accessibilityText(this.text('close_extension'))
       .onClick((): void => {

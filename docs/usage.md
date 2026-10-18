@@ -110,8 +110,8 @@ Condition updates preserve containment and the existing return size.
 `resolveTargetSize(size, maximumSize, frameInterpolationEnabled)` calculates a
 separate return size without upscaling. It combines the width/height bound and an
 optional 900,000-pixel interpolation bound before applying 4-pixel alignment.
-Harmony currently returns the bounded media size; it does not enable iOS frame
-interpolation or automatically change downlink size tiers. Interaction geometry and coordinates
+Harmony applies its current downlink tier to the bounded media size; it does not
+enable iOS frame interpolation. Interaction geometry and coordinates
 use the processed local media size, independently of the return frame dimensions.
 
 `createMediaService()` continues to default to `x2.0`. The legacy
@@ -432,6 +432,94 @@ const remoteVolume: number = realtime.remoteAudioVolume;
 
 Both methods accept finite values from `0` (mute) to `1` (original volume) and reject invalid values with `INVALID_CONFIGURATION`. Local volume persists across stream replacement and reconnection on the same manager. Remote volume starts at `1`; successfully creating a camera or image stream resets it to `0`, while creating a video stream resets it to `1`. Set custom remote volume after creating the local stream; it persists through camera switching and reconnection. The remote getter returns the applied RTC percentage normalized to `0`–`1` (for example, `0.356` becomes `0.36`). Local volume does not affect uploaded audio or override automatic preview muting during generation. XLab's video input page exposes both sliders and a shared mute switch in its top bar. Camera input exposes a remote-volume slider beneath the camera flip button, initialized from the SDK's current volume.
 
+## Video statistics
+
+Register independent listeners on `XmaxRealtimeManaging`, matching the iOS SDK:
+
+```ts
+import { UplinkVideoStatistics, DownlinkVideoStatistics } from '@xmax/sdk';
+
+realtime.setUplinkVideoStatisticsListener((stats: UplinkVideoStatistics | undefined): void => {
+  // Actual encoded width/height, capture/encode/send FPS, bitrateKbps, packetLossPercent.
+  this.uplinkStatistics = stats;
+});
+realtime.setDownlinkVideoStatisticsListener((stats: DownlinkVideoStatistics | undefined): void => {
+  // userId, received width/height, decode/render FPS, bitrate, loss and endToEndDelayMs.
+  this.downlinkStatistics = stats;
+});
+// Detach listeners when the host view is disposed.
+realtime.setUplinkVideoStatisticsListener(null);
+realtime.setDownlinkVideoStatisticsListener(null);
+```
+
+Callbacks run asynchronously on the ArkTS event loop, independently of RTC log
+settings. Uplink samples are delivered while local video is published. Downlink
+samples are delivered only after the current generation stream has been matched
+by task SEI; unrelated users and screen streams are excluded. A lifecycle change
+clears the corresponding statistics with `undefined`. Disconnect preserves the
+registered listeners for a later connection. Replacing or removing a listener
+invalidates its queued callbacks. Statistics are not cached or replayed when a
+listener is installed.
+
+Individual unavailable metrics are `undefined`; valid zero values are preserved.
+Dimensions are in pixels, frame rates in fps, bitrates in kbps, and packet loss
+is a percentage from 0 to 100 (VolcEngine's fractional precision is retained).
+`renderFrameRate` is the RTC render rate before SDK interpolation.
+`endToEndDelayMs` measures RTC media transport, not the full AI generation time.
+The Harmony `userId` field follows the platform's existing identifier naming.
+
+XLab's Realtime camera, image and video pages have a **Stats** button. The panel
+is hidden by default and shows both video directions, network quality and RTC
+latency; missing values display `—`. Hiding it keeps the listeners installed so
+it shows the latest sample when reopened. Leaving the page detaches all three
+listeners and clears their values.
+
+## Adaptive transmission quality
+
+The SDK automatically manages independent uplink and downlink tiers while
+`GENERATING`, using VolcEngine network quality events (normally every two seconds).
+No application listener is required; `setNetworkQualityListener` still receives
+all events independently of adaptation. Both directions start at L2 unless a
+successful tier was saved within the last hour for the same model and direction.
+History uses SDK-private Preferences with a `volcengine` namespace.
+
+| Tier | Dimension scale | Uplink FPS cap | Downlink bitrate calculation FPS |
+| --- | --- | --- | --- |
+| L1 | 1.0 | 30 | 24 |
+| L2 | 0.8 | 24 | 24 |
+| L3 | 0.65 | 24 | 24 |
+| L4 | 0.5 | 20 | 24 |
+| L5 | 0.5 | 16 | 24 |
+
+Scales apply to the processed local media baseline. The short side is bounded
+below by `min(originalShortSide, 240)` without upscaling. Upload dimensions use
+ratio-preserving even alignment; return dimensions use the media service's
+four-pixel alignment. Uplink FPS never exceeds the source FPS. Explicit uplink
+bitrates and encoder preferences survive tier changes; tiers whose merged bitrate
+bounds are invalid are skipped.
+
+Three consecutive BAD/VERY_BAD samples propose one downgrade; five consecutive
+EXCELLENT/GOOD samples propose one upgrade. POOR, DOWN and UNKNOWN clear the
+continuous counters. Duplicate, out-of-order and stale samples cannot trigger a
+change, and a gap greater than five seconds restarts counting. Every attempt has
+a four-second stable window. If an upgrade falls back within twenty seconds,
+further upgrades wait sixty seconds. Identical adjacent formats are skipped.
+
+Uplink changes use VolcEngine's video encoder configuration. Downlink changes send
+`change_target_size` with `target_size`, `min_bitrate: 100` and a calculated
+`max_bitrate` capped at 10000 kbps. Initial `start` signals also include the return
+bitrate budget. The server-side VolcEngine generation pipeline must support these
+fields and the update event; local RTC enqueue success does not acknowledge server
+application. Model generation dimensions, local capture, reference conditions,
+task identity and normalized interaction coordinates remain independent of tiers.
+
+Adaptation skips active user operations, never queues stale samples into a new
+task, and stops on disconnect or generation restart. Encoding or signaling failure
+keeps that direction's previous tier and does not interrupt generation. Successful
+RTC configuration/enqueue results are recorded in history; persistence failures
+are logged without interrupting streaming. Camera orientation updates rebase the
+same tiers onto the new processed media dimensions.
+
 ## Switch cameras or change capture specifications
 
 Camera output follows the current display orientation: the short side is the
@@ -551,8 +639,9 @@ const format = new RealtimeVideoFormat(
 const stream = await realtime.createLocalCameraStream(format);
 ```
 
-Omit either bitrate (or pass `undefined`) to calculate that bound from the final
-upload dimensions and frame rate, using the same rules as iOS. A minimum of `0`
+Omit the minimum bitrate to use `100 kbps`. Omit the maximum bitrate to use
+`max(100, roundToNearestEven(referenceMaximum × 0.6))`, calculated from the final
+upload dimensions and frame rate using the same reference table as iOS. A minimum of `0`
 disables the lower bound; an explicit maximum must be positive. The minimum must
 not exceed the maximum, including after SDK defaults are applied. Invalid
 configurations throw `INVALID_CONFIGURATION`.

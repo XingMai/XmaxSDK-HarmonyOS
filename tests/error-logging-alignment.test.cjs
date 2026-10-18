@@ -248,7 +248,7 @@ test('session close failures preserve the original error', async () => {
 function streamFixture() {
   const f = fixture({
     RoomController: { RoomController: class { startGeneration() {} stopGeneration() {} } },
-    QualityController: { QualityController: class {} }, EncodingController: { EncodingController: class {} }
+    QualityController: { QualityController: class { setUplinkVideoStatisticsEnabled() {} setDownlinkVideoStatisticsUser() {} setAdaptiveQualityListener() {} resetQualitySamples() {} resetQuality() {} } }, EncodingController: { EncodingController: class {} }
   });
   const { StreamController } = f.load('stream/StreamController.ets');
   const received = [];

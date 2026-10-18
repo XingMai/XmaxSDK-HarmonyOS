@@ -1,3 +1,5 @@
+import { UplinkVideoStatistics, DownlinkVideoStatistics } from './VideoStatistics';
+
 export enum RtcQualityLevel {
   UNKNOWN,
   EXCELLENT,
@@ -9,6 +11,9 @@ export enum RtcQualityLevel {
 }
 
 export interface RtcQualityListener {
+  onUplinkVideoStatistics(statistics: UplinkVideoStatistics): void;
+  onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics): void;
+
   /**
    * 处理实时网络质量变化。
    *

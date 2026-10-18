@@ -141,6 +141,10 @@ export class RoomController implements RoomControlling {
     ));
   }
 
+  changeTargetSize(taskId: string, targetSize: ImageSize): void {
+    this.send(RoomEvent.changeTargetSize(this.requireUserId(), taskId, targetSize));
+  }
+
   /**
    * 尝试发送实时生成停止信令。
    *

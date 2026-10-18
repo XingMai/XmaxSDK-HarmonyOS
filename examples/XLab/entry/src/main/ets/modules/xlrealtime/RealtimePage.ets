@@ -18,6 +18,7 @@ import {
   RealtimeViewState
 } from './mvvm/model/RealtimeViewState';
 import { RealtimeLoadingView } from './mvvm/view/RealtimeLoadingView';
+import { RealtimeStatisticsPanel, RealtimeStatisticsButton } from './mvvm/view/RealtimeStatisticsPanel';
 import { RealtimeAudioControlsView } from './mvvm/view/RealtimeAudioControlsView';
 import { RealtimePromptInputView } from './mvvm/view/RealtimePromptInputView';
 import { RealtimeReferenceListView } from './mvvm/view/RealtimeReferenceListView';
@@ -29,6 +30,7 @@ import { ReferenceUploader } from './reference/ReferenceUploader';
 
 const CAMERA_SWITCH_BLUR_RADIUS: number = 48;
 const LOCAL_FILE_VIEW_TOP_INSET: number = 84;
+const STATISTICS_PANEL_TOP_INSET: number = 80;
 const LOG_DOMAIN: number = 0x0000;
 const LOG_TAG: string = 'RealtimePage';
 
@@ -91,6 +93,7 @@ export struct RealtimePage {
   @State private cameraSwitchRotation: number = 0;
   @State private isPickingLocalMedia: boolean = false;
   @State private isLandscape: boolean = false;
+  @State private isStatisticsVisible: boolean = false;
   private orientationQuery: mediaquery.MediaQueryListener | null = null;
   private readonly orientationListener = (result: mediaquery.MediaQueryResult): void => {
     this.isLandscape = result.matches;
@@ -534,6 +537,22 @@ export struct RealtimePage {
             void this.presentLocalMediaPicker();
           })
         }
+        if (this.isStatisticsVisible) {
+          RealtimeStatisticsPanel({
+            state: this.state,
+            maximumHeight: `calc(100% - ${STATISTICS_PANEL_TOP_INSET + 12}vp)`
+          })
+            .width(this.isLandscape ? 216 : 228)
+            .position({ left: 12, top: STATISTICS_PANEL_TOP_INSET })
+        }
+        RealtimeStatisticsButton({
+          isActive: this.isStatisticsVisible,
+          onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
+        })
+          .position({
+            right: this.hasLocalFile() ? (this.hasLocalImage() ? 74 : 148) : 8,
+            top: this.hasLocalFile() ? 18 : 134
+          })
       }
       .width('100%')
       .layoutWeight(1)

@@ -874,6 +874,9 @@ export class RtcManager implements RtcManaging {
       }
 
       RtcStatsLogger.logLocalStreamStats(stats);
+      if (!stats.is_screen) {
+        this.qualityListener?.onUplinkVideoStatistics(RtcQualityConverter.uplinkVideoStatistics(stats.video_stats));
+      }
     });
 
     room.on('onRemoteStreamStats', (stats: RemoteStreamStats): void => {
@@ -882,6 +885,9 @@ export class RtcManager implements RtcManaging {
       }
 
       RtcStatsLogger.logRemoteStreamStats(stats);
+      if (!stats.is_screen) {
+        this.qualityListener?.onDownlinkVideoStatistics(RtcQualityConverter.downlinkVideoStatistics(stats.uid, stats.video_stats));
+      }
     });
 
     room.on(

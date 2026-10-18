@@ -479,6 +479,90 @@
     {
       "name": "storage_success",
       "value": "SUCCESS"
+    },
+    {
+      "name": "stats_title",
+      "value": "Stats"
+    },
+    {
+      "name": "stats_enabled",
+      "value": "Statistics shown"
+    },
+    {
+      "name": "stats_disabled",
+      "value": "Statistics hidden"
+    },
+    {
+      "name": "stats_uplink",
+      "value": "Uplink video"
+    },
+    {
+      "name": "stats_downlink",
+      "value": "Downlink video"
+    },
+    {
+      "name": "stats_resolution",
+      "value": "Resolution"
+    },
+    {
+      "name": "stats_capture_fps",
+      "value": "Capture frame rate"
+    },
+    {
+      "name": "stats_encode_fps",
+      "value": "Encode frame rate"
+    },
+    {
+      "name": "stats_send_fps",
+      "value": "Send frame rate"
+    },
+    {
+      "name": "stats_decode_fps",
+      "value": "Decode frame rate"
+    },
+    {
+      "name": "stats_render_fps",
+      "value": "Render frame rate"
+    },
+    {
+      "name": "stats_bitrate",
+      "value": "Bitrate"
+    },
+    {
+      "name": "stats_loss",
+      "value": "Packet loss"
+    },
+    {
+      "name": "stats_quality",
+      "value": "Network quality"
+    },
+    {
+      "name": "stats_delay",
+      "value": "End-to-end delay"
+    },
+    {
+      "name": "stats_quality_excellent",
+      "value": "Excellent"
+    },
+    {
+      "name": "stats_quality_good",
+      "value": "Good"
+    },
+    {
+      "name": "stats_quality_poor",
+      "value": "Fair"
+    },
+    {
+      "name": "stats_quality_bad",
+      "value": "Poor"
+    },
+    {
+      "name": "stats_quality_very_bad",
+      "value": "Very poor"
+    },
+    {
+      "name": "stats_quality_down",
+      "value": "Disconnected"
     }
   ]
 }

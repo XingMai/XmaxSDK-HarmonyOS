@@ -1,3 +1,8 @@
+import { UplinkVideoStatistics, DownlinkVideoStatistics, UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
+import { QualityClock } from './QualityClock';
+import { QualityConfiguration, QualityChange, AdaptiveQualityListener } from './QualityConfiguration';
+import { QualityDirection } from './QualityDirection';
+import { QualityHistory, QualityHistoryStore, MemoryQualityHistoryStore } from './QualityHistory';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import {
@@ -17,8 +22,102 @@ import {
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { QualityControlling } from './QualityControlling';
 
-/** 转换 RTC 质量事件并通知实时生成业务监听器。 */
+/** 管理上下行传输档位、历史和 RTC 质量事件，独立通知业务监听器。 */
 export class QualityController implements QualityControlling, RtcQualityListener {
+
+  private uplinkStatisticsListener: UplinkVideoStatisticsListener | null = null;
+  private downlinkStatisticsListener: DownlinkVideoStatisticsListener | null = null;
+  private uplinkStatisticsEnabled: boolean = false;
+  private downlinkStatisticsUser: string | undefined;
+  private uplinkStatisticsVersion: number = 0;
+  private downlinkStatisticsVersion: number = 0;
+
+  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
+    this.uplinkStatisticsVersion++;
+    this.uplinkStatisticsListener = listener;
+  }
+  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
+    this.downlinkStatisticsVersion++;
+    this.downlinkStatisticsListener = listener;
+  }
+  setUplinkVideoStatisticsEnabled(enabled: boolean): void {
+    this.uplinkStatisticsEnabled = enabled;
+    this.deliverUplink(undefined, ++this.uplinkStatisticsVersion);
+  }
+  setDownlinkVideoStatisticsUser(userId: string | undefined): void {
+    this.downlinkStatisticsUser = userId;
+    this.deliverDownlink(undefined, ++this.downlinkStatisticsVersion);
+  }
+  onUplinkVideoStatistics(statistics: UplinkVideoStatistics): void {
+    if (this.uplinkStatisticsEnabled) { this.deliverUplink(statistics, this.uplinkStatisticsVersion); }
+  }
+  onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics): void {
+    if (statistics.userId === this.downlinkStatisticsUser) { this.deliverDownlink(statistics, this.downlinkStatisticsVersion); }
+  }
+  private deliverUplink(statistics: UplinkVideoStatistics | undefined, version: number): void {
+    if (this.uplinkStatisticsListener === null) { return; }
+    void Promise.resolve().then((): void => {
+      if (version !== this.uplinkStatisticsVersion || (statistics !== undefined && !this.uplinkStatisticsEnabled)) { return; }
+      try { this.uplinkStatisticsListener?.(statistics); }
+      catch (error) { XmaxLogger.error('Uplink statistics listener failed: ' + String(error), 'Quality'); }
+    });
+  }
+  private deliverDownlink(statistics: DownlinkVideoStatistics | undefined, version: number): void {
+    if (this.downlinkStatisticsListener === null) { return; }
+    void Promise.resolve().then((): void => {
+      if (version !== this.downlinkStatisticsVersion ||
+        (statistics !== undefined && statistics.userId !== this.downlinkStatisticsUser)) { return; }
+      try { this.downlinkStatisticsListener?.(statistics); }
+      catch (error) { XmaxLogger.error('Downlink statistics listener failed: ' + String(error), 'Quality'); }
+    });
+  }
+
+  private readonly historyStore: QualityHistoryStore;
+  private uplinkQuality: QualityDirection | undefined;
+  private downlinkQuality: QualityDirection | undefined;
+  private history: QualityHistory | undefined;
+  private adaptiveListener: AdaptiveQualityListener | null = null;
+
+  get qualityConfiguration(): QualityConfiguration | undefined {
+    return this.uplinkQuality === undefined || this.downlinkQuality === undefined ? undefined :
+      new QualityConfiguration(this.uplinkQuality.baseline, this.uplinkQuality.level, this.downlinkQuality.level);
+  }
+  prepareQuality(baseline: RealtimeVideoFormat, model: string): QualityConfiguration {
+    baseline.validate();
+    this.history = new QualityHistory(model, this.historyStore);
+    this.uplinkQuality = new QualityDirection(baseline, this.history.read(false), false);
+    this.downlinkQuality = new QualityDirection(baseline, this.history.read(true), true);
+    return new QualityConfiguration(baseline, this.uplinkQuality.level, this.downlinkQuality.level);
+  }
+  rebaseQuality(baseline: RealtimeVideoFormat): QualityConfiguration | undefined {
+    const configuration: QualityConfiguration | undefined = this.qualityConfiguration;
+    if (configuration === undefined) { return undefined; }
+    this.uplinkQuality = new QualityDirection(baseline, configuration.uplinkLevel, false);
+    this.downlinkQuality = new QualityDirection(baseline, configuration.downlinkLevel, true);
+    return this.qualityConfiguration;
+  }
+  setAdaptiveQualityListener(listener: AdaptiveQualityListener | null): void { this.adaptiveListener = listener; }
+  proposeQuality(quality: RealtimeNetworkQuality, sampledAt: number): QualityChange {
+    const now: number = QualityClock.now();
+    return new QualityChange(this.uplinkQuality?.observe(quality.uplink, sampledAt, now),
+      this.downlinkQuality?.observe(quality.downlink, sampledAt, now));
+  }
+  completeQuality(downlink: boolean, level: number, success: boolean): void {
+    const direction: QualityDirection | undefined = downlink ? this.downlinkQuality : this.uplinkQuality;
+    if (direction === undefined) { return; }
+    direction.complete(level, success, QualityClock.now());
+    if (success) { this.history?.write(direction.level, downlink); }
+  }
+  resetQualitySamples(): void {
+    this.uplinkQuality?.resetSamples();
+    this.downlinkQuality?.resetSamples();
+  }
+  resetQuality(): void {
+    this.uplinkQuality = undefined;
+    this.downlinkQuality = undefined;
+    this.history = undefined;
+    this.adaptiveListener = null;
+  }
 
   // 事件监听
   private networkQualityListener: RealtimeNetworkQualityListener | null = null;
@@ -29,7 +128,8 @@ export class QualityController implements QualityControlling, RtcQualityListener
    *
    * @param rtcManager 提供质量事件的 RTC Manager。
    */
-  constructor(rtcManager: RtcManaging) {
+  constructor(rtcManager: RtcManaging, historyStore: QualityHistoryStore = new MemoryQualityHistoryStore()) {
+    this.historyStore = historyStore;
     rtcManager.setQualityListener(this);
   }
 
@@ -66,17 +166,18 @@ export class QualityController implements QualityControlling, RtcQualityListener
   ): void {
     const listener: RealtimeNetworkQualityListener | null =
       this.networkQualityListener;
-    if (listener === null) {
-      return;
-    }
-
     const quality: RealtimeNetworkQuality = new RealtimeNetworkQuality(
       QualityController.networkQualityLevel(uplink),
       QualityController.networkQualityLevel(downlink)
     );
 
     try {
-      listener(quality);
+      this.adaptiveListener?.(quality, QualityClock.now());
+    } catch (error) {
+      XmaxLogger.warn('Adaptive quality listener failed: ' + String(error), 'Quality');
+    }
+    try {
+      listener?.(quality);
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(

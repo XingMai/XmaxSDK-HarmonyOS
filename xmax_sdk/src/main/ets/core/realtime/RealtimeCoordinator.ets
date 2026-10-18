@@ -8,7 +8,8 @@ export enum RealtimeOperationKind {
   PLAYBACK,
   CONNECTION,
   GENERATION,
-  CAMERA_SWITCH
+  CAMERA_SWITCH,
+  CONFIGURATION
 }
 
 /** 清理范围由小到大，较大的范围包含较小的范围。 */
@@ -187,6 +188,22 @@ export class RealtimeCoordinator {
     // 只等待操作体，不等待包含清理的 run 返回值，避免取消与清理相互等待。
     operation.completion = execution.then((): void => {}, (_error: Object): void => {});
     return this.finishRun(execution, operation);
+  }
+
+  /** 自动调档不排队、不报告忙碌错误，也不覆盖用户状态原因。 */
+  runAdaptiveConfiguration(body: (token: RealtimeOperationToken) => void): boolean {
+    if (this.termination !== null || this.activeOperation !== null ||
+      this.state.connectionState !== RealtimeConnectionState.GENERATING) { return false; }
+    const operation: RealtimeOperation = new RealtimeOperation(RealtimeOperationKind.CONFIGURATION, null);
+    this.activeOperation = operation;
+    try {
+      operation.token.ensureCurrent();
+      body(operation.token);
+      operation.token.ensureCurrent();
+      return true;
+    } finally {
+      this.finish(operation);
+    }
   }
 
   private async execute<T>(body: (token: RealtimeOperationToken) => Promise<T>,

@@ -1,3 +1,4 @@
+import { EncodingBitratePolicy, VideoBitrateBudget } from '../encoding/EncodingBitratePolicy';
 import { ImageSize } from '../../service/media/ImageSize';
 import { RuntimeInfo, RuntimeInfoPayload } from '../../foundation/runtime/RuntimeInfo';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
@@ -19,6 +20,8 @@ class GenerationParameters {
   detection: boolean;
   face_replace: boolean;
   target_size?: number[];
+  min_bitrate?: number;
+  max_bitrate?: number;
   padding?: string;
 
   constructor(
@@ -37,6 +40,35 @@ class GenerationParameters {
     this.face_replace = faceRestoration;
     this.target_size = targetSize === undefined ? undefined : [targetSize.width, targetSize.height];
     this.padding = paddingContain ? 'contain' : undefined;
+    if (targetSize !== undefined) {
+      const budget: TargetSizeParameters = new TargetSizeParameters(targetSize);
+      this.min_bitrate = budget.min_bitrate;
+      this.max_bitrate = budget.max_bitrate;
+    }
+  }
+}
+
+class TargetSizeParameters {
+  readonly target_size: number[];
+  readonly min_bitrate: number = 100;
+  readonly max_bitrate: number;
+  constructor(size: ImageSize) {
+    const budget: VideoBitrateBudget = EncodingBitratePolicy.resolve(new RealtimeVideoFormat(size.width, size.height, 24));
+    this.target_size = [size.width, size.height];
+    this.max_bitrate = Math.min(10000, budget.maximum);
+  }
+}
+
+class ChangeTargetSizeRoomEvent extends RuntimeRoomEvent {
+  readonly event: string = 'change_target_size';
+  readonly user_id: string;
+  readonly uid: string;
+  readonly params: TargetSizeParameters;
+  constructor(userId: string, taskId: string, size: ImageSize) {
+    super();
+    this.user_id = userId;
+    this.uid = taskId;
+    this.params = new TargetSizeParameters(size);
   }
 }
 
@@ -128,6 +160,10 @@ class HeartbeatRoomEvent extends RuntimeRoomEvent {
 }
 
 export class RoomEvent {
+  static changeTargetSize(userId: string, taskId: string, size: ImageSize): string {
+    return JSON.stringify(new ChangeTargetSizeRoomEvent(userId, taskId, size));
+  }
+
   static start(
     userId: string,
     taskId: string,

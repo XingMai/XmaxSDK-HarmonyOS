@@ -83,3 +83,8 @@ export { RealtimeVideoFrame, RealtimeVideoFrameListener } from './src/main/ets/s
 export { VideoFramePlane } from './src/main/ets/foundation/media/video/VideoFramePlane';
 export { VideoPixelFormat } from './src/main/ets/foundation/media/video/VideoPixelFormat';
 export { VideoRotation } from './src/main/ets/foundation/media/video/VideoRotation';
+
+export {
+  UplinkVideoStatistics, DownlinkVideoStatistics,
+  UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener
+} from './src/main/ets/foundation/rtc/VideoStatistics';

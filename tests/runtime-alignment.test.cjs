@@ -186,7 +186,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     extra: {
       RoomHeartbeat: { RoomHeartbeat: class { start() {} stop() {} } },
       EncodingController: { EncodingController: class {} },
-      QualityController: { QualityController: class {} }
+      QualityController: { QualityController: class { setUplinkVideoStatisticsEnabled() {} setDownlinkVideoStatisticsUser() {} setAdaptiveQualityListener() {} resetQualitySamples() {} resetQuality() {} } }
     },
     globals: {
       setTimeout: (callback, ms) => { timers.set(++timerId, { callback, ms }); return timerId; },

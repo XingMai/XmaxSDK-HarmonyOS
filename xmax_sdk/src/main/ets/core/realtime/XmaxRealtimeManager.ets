@@ -1,3 +1,9 @@
+import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
+import { ImageSize } from '../../service/media/ImageSize';
+import { QualityConfiguration, QualityChange } from '../../stream/quality/QualityConfiguration';
+import { QualityVideoFormat } from '../../stream/quality/QualityVideoFormat';
+import { QualityPreferences } from '../../stream/quality/QualityPreferences';
+import { RealtimeNetworkQuality } from '../../service/realtime/RealtimeNetworkQuality';
 import { RealtimeVideoTrack, setRealtimeVideoTrackOrientationHandler, updateRealtimeVideoTrackOrientation } from '../../service/realtime/RealtimeVideoTrack';
 import {
   LocalVideoPlaybackState,
@@ -73,6 +79,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /** 转屏重启的采集稳定等待定时器挂起标志，避免重复调度。 */
   private orientationRestartPending: boolean = false;
+  private qualityPending: boolean = false;
 
   /** 转屏重启重新提交的操作句柄；非空时用户新条件并入该任务而不是新建操作。 */
   private orientationRestartCompletion: Promise<void> | null = null;
@@ -119,7 +126,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       (error: XmaxError): void => {
         this.handleRuntimeError(error, RealtimeTerminationScope.CONNECTION);
       },
-      this.timing
+      this.timing,
+      new QualityPreferences(context)
     );
     this.mediaController = new MediaController(
       context,
@@ -205,6 +213,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @param listener 网络质量监听器；传入空值时清除监听器。
    * @returns 无返回值。
    */
+  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
+    this.streamController.setUplinkVideoStatisticsListener(listener);
+  }
+  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
+    this.streamController.setDownlinkVideoStatisticsListener(listener);
+  }
+
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
     this.streamController.setNetworkQualityListener(listener);
   }
@@ -479,12 +494,16 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.generationManager.reset();
     this.coordinator.commit(new RealtimeState(RealtimeConnectionState.CONNECTING), token);
+    const quality: QualityConfiguration = this.streamController.prepareQuality(videoFormat, this.options.model.name);
+    this.streamController.setVideoEncoderConfig(quality.uplink);
+    token.ensureCurrent();
     this.mediaController.startMicrophoneCapture();
     token.ensureCurrent();
     const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
       this.options.model.name, videoFormat, this.mediaController.hasAudio,
       (): boolean => token.isCurrent,
-      (sessionId: string, error: XmaxError): Promise<void> => this.handleHeartbeatFailure(sessionId, error));
+      (sessionId: string, error: XmaxError): Promise<void> => this.handleHeartbeatFailure(sessionId, error),
+      this.resolveQualityTarget(quality));
     token.ensureCurrent();
     const sessionId: string = this.connectionManager.currentSessionId;
     if (sessionId.length === 0) {
@@ -656,6 +675,23 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const previous: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
     const orientationChanged: boolean = previous !== undefined &&
       (previous.width > previous.height) !== (format.width > format.height);
+    const quality: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
+    if (quality !== undefined && !QualityVideoFormat.same(quality.baseline, format)) {
+      const rebased: QualityConfiguration | undefined = this.streamController.rebaseQuality(format);
+      if (rebased !== undefined) {
+        this.streamController.setVideoEncoderConfig(rebased.uplink);
+        const taskId: string | undefined = this.currentState.taskId;
+        if (!orientationChanged && current === RealtimeConnectionState.GENERATING && taskId !== undefined) {
+          try {
+            const target: ImageSize = this.resolveQualityTarget(rebased);
+            this.streamController.changeTargetSize(taskId, target);
+            this.connectionManager.updateTargetSize(target, format);
+          } catch (error) {
+            XmaxLogger.warn('Failed to update return size after media change: ' + String(error), 'Quality');
+          }
+        }
+      }
+    }
     const track = this.mediaController.currentTrack;
     if (orientationChanged && track !== null) {
       updateRealtimeVideoTrackOrientation(track, format.width > format.height, false);
@@ -789,13 +825,22 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
     this.generationManager.validateContext(context);
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
+    const previousQuality: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
+    const quality: QualityConfiguration | undefined = previousQuality === undefined ? undefined :
+      QualityVideoFormat.same(previousQuality.baseline, videoFormat) ? previousQuality : this.streamController.rebaseQuality(videoFormat);
+    if (quality !== undefined) {
+      this.streamController.setVideoEncoderConfig(quality.uplink);
+      this.connectionManager.updateTargetSize(this.resolveQualityTarget(quality), videoFormat);
+    }
+    token.ensureCurrent();
     this.mediaController.setLocalAudioPreviewEnabled(false);
     // 记录本次提交方向，用于发现确认等待期的转屏漂移；update 分支不改尺寸无需记录。
     this.lastSubmittedFormat = videoFormat;
     try {
       const taskId: string = await this.generationManager.start(videoFormat, context,
         (): void => token.ensureCurrent(),
-        (confirmation: Promise<void>): Promise<void> => token.wait(confirmation), faceRestoration);
+        (confirmation: Promise<void>): Promise<void> => token.wait(confirmation), faceRestoration,
+        this.connectionManager.currentTargetSize);
       token.ensureCurrent();
       await token.wait(this.renderController.waitUntilRemoteFrameReady());
       token.ensureCurrent();
@@ -808,10 +853,74 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         throw RealtimeOperationToken.cancelledError();
       }
       this.coordinator.commit(new RealtimeState(RealtimeConnectionState.GENERATING, sessionId, taskId), token);
+      if (quality !== undefined) {
+        this.streamController.completeQuality(false, quality.uplinkLevel, true);
+        this.streamController.completeQuality(true, quality.downlinkLevel, true);
+      }
+      this.streamController.setAdaptiveQualityListener((sample: RealtimeNetworkQuality, sampledAt: number): void => {
+        this.scheduleAdaptiveQuality(sample, sampledAt, taskId);
+      });
       this.timing.finish(taskId);
     } catch (error) {
       this.restoreLocalAudioPreview();
       throw XmaxError.from(error);
+    }
+  }
+
+  /** 下行按处理后的媒体比例与档位上限计算，鸿蒙不启用 iOS 插帧。 */
+  private resolveQualityTarget(configuration: QualityConfiguration): ImageSize {
+    const baseline: RealtimeVideoFormat = configuration.baseline;
+    return new MediaService(this.options.model).resolveTargetSize(new ImageSize(baseline.width, baseline.height),
+      QualityVideoFormat.resolveDownlinkMaximumSize(baseline, configuration.downlinkLevel));
+  }
+
+  private scheduleAdaptiveQuality(sample: RealtimeNetworkQuality, sampledAt: number, taskId: string): void {
+    if (this.qualityPending) { return; }
+    this.qualityPending = true;
+    // 用户的同步网络监听先执行；用户发起的操作可使本次后台采样直接跳过。
+    void Promise.resolve().then((): void => {
+      if (this.currentState.taskId !== taskId) { return; }
+      const accepted: boolean = this.coordinator.runAdaptiveConfiguration((token: RealtimeOperationToken): void => {
+        if (this.currentState.taskId !== taskId) { return; }
+        const change: QualityChange = this.streamController.proposeQuality(sample, sampledAt);
+        if (change.uplink !== undefined) { this.applyQualityLevel(change.uplink, false, taskId, token); }
+        token.ensureCurrent();
+        if (change.downlink !== undefined) { this.applyQualityLevel(change.downlink, true, taskId, token); }
+      });
+      if (!accepted) { this.streamController.resetQualitySamples(); }
+    }).catch((error: Object): void => {
+      this.streamController.resetQualitySamples();
+      if (this.currentState.taskId === taskId && XmaxError.from(error).code !== XmaxErrorCode.CANCELLED) {
+        XmaxLogger.warn('Adaptive quality skipped: ' + String(error), 'Quality');
+      }
+    }).finally((): void => { this.qualityPending = false; });
+  }
+
+  private applyQualityLevel(level: number, downlink: boolean, taskId: string, token: RealtimeOperationToken): void {
+    const configuration: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
+    if (configuration === undefined) { return; }
+    try {
+      token.ensureCurrent();
+      if (this.currentState.taskId !== taskId) { return; }
+      if (downlink) {
+        const candidate: QualityConfiguration = new QualityConfiguration(configuration.baseline, configuration.uplinkLevel, level);
+        const target: ImageSize = this.resolveQualityTarget(candidate);
+        const previous: ImageSize | undefined = this.connectionManager.currentTargetSize;
+        if (previous === undefined || previous.width !== target.width || previous.height !== target.height) {
+          this.streamController.changeTargetSize(taskId, target);
+          token.ensureCurrent();
+          this.connectionManager.updateTargetSize(target, configuration.baseline);
+        }
+      } else {
+        this.streamController.setVideoEncoderConfig(QualityVideoFormat.resolve(configuration.baseline, level, false));
+      }
+      token.ensureCurrent();
+      this.streamController.completeQuality(downlink, level, true);
+      XmaxLogger.debug(`Adaptive quality: ${downlink ? 'downlink' : 'uplink'} L${level}`, 'Quality');
+    } catch (error) {
+      if (!token.isCurrent) { throw XmaxError.from(error); }
+      this.streamController.completeQuality(downlink, level, false);
+      XmaxLogger.warn('Adaptive quality failed: ' + String(error), 'Quality');
     }
   }
 

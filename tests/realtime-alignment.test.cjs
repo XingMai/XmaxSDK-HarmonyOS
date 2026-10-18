@@ -63,11 +63,28 @@ function managerFixture(modelName = 'x2.0-sla') {
     }
   }
   class FakeStream {
-    constructor() { stream = this; this.currentGenerationTaskId = ''; }
+    constructor(_rtc, _remote, _error, _timing, historyStore) {
+      stream = this; this.currentGenerationTaskId = '';
+      const { QualityController } = load('stream/quality/QualityController.ets');
+      this.quality = new QualityController({ setQualityListener() {} }, historyStore);
+    }
+    get qualityConfiguration() { return this.quality.qualityConfiguration; }
+    prepareQuality(...args) { return this.quality.prepareQuality(...args); }
+    rebaseQuality(...args) { return this.quality.rebaseQuality(...args); }
+    setUplinkVideoStatisticsListener(...args) { this.quality.setUplinkVideoStatisticsListener(...args); }
+    setDownlinkVideoStatisticsListener(...args) { this.quality.setDownlinkVideoStatisticsListener(...args); }
+    setNetworkQualityListener(...args) { this.quality.setNetworkQualityListener(...args); }
+    setAdaptiveQualityListener(...args) { this.quality.setAdaptiveQualityListener(...args); }
+    proposeQuality(...args) { return this.quality.proposeQuality(...args); }
+    completeQuality(...args) { this.quality.completeQuality(...args); }
+    resetQualitySamples() { this.quality.resetQualitySamples(); }
+    setVideoEncoderConfig(format) { (calls.encodings ??= []).push(format); }
+    changeTargetSize(task, size) { (calls.targets ??= []).push({ task, size }); }
+
     get remoteAudioVolume() { return this.volume ?? 1; }
     setRemoteAudioVolume(value) { this.volume = value; }
     async connect(_connection, _audio, ensure) { ensure(); }
-    async disconnect() { this.stopGeneration(''); }
+    async disconnect() { this.stopGeneration(''); this.quality.resetQuality(); }
     activateRemoteAudio() {}
     beginGeneration(task, format, context, faceRestoration) {
       this.currentGenerationTaskId = task;
@@ -81,6 +98,8 @@ function managerFixture(modelName = 'x2.0-sla') {
       calls.updates.push({ task, format, context, faceRestoration });
     }
     stopGeneration(task) {
+      this.quality.setAdaptiveQualityListener(null);
+      this.quality.resetQualitySamples();
       calls.stops.push(task);
       this.currentGenerationTaskId = '';
       this.confirmation?.reject(new XmaxError(Code.CANCELLED, 'Stopped'));
@@ -582,7 +601,8 @@ test('camera specifications require disconnect, stop and create; old streams bec
   await assert.rejects(f.manager.startGeneration(local, new f.Context('test')), { code: 'INVALID_CONFIGURATION' });
   const remote = await f.manager.startGeneration(newLocal, new f.Context('new specs'));
   assert.notEqual(remote.videoTrack, firstRemote.videoTrack);
-  assert.equal(remote.videoTrack.videoFormat, format);
+  assert.equal(newLocal.videoTrack.videoFormat, format);
+  assert.deepEqual(remote.videoTrack.videoFormat, new f.Format(624, 1104, 24));
   assert.equal(f.calls.sessions.length, 2);
 });
 
@@ -2454,3 +2474,27 @@ for (const source of ['Camera', 'Image', 'Video']) {
     });
   }
 }
+
+test('XLab observes SDK statistics, clears on disconnect and detaches stale manager callbacks', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  const quality = f.stream.quality;
+  const oldUp = quality.uplinkStatisticsListener, oldDown = quality.downlinkStatisticsListener;
+  const oldNetwork = quality.networkQualityListener;
+  const up = { width: 640, bitrateKbps: 800 }, down = { userId: 'bot', width: 640 };
+  const network = { uplink: 'Good', downlink: 'Excellent' };
+  oldUp(up); oldDown(down); oldNetwork(network);
+  assert.equal(vm.state.uplinkStatistics, up);
+  assert.equal(vm.state.downlinkStatistics, down);
+  assert.equal(vm.state.networkQuality, network);
+  oldDown(undefined); assert.equal(vm.state.downlinkStatistics, undefined);
+  oldDown(down);
+  await vm.disconnect();
+  assert.equal(quality.uplinkStatisticsListener, null);
+  assert.equal(quality.downlinkStatisticsListener, null);
+  assert.equal(quality.networkQualityListener, null);
+  oldUp(up); oldDown(down); oldNetwork(network);
+  assert.equal(vm.state.uplinkStatistics, undefined);
+  assert.equal(vm.state.downlinkStatistics, undefined);
+  assert.equal(vm.state.networkQuality, undefined);
+});

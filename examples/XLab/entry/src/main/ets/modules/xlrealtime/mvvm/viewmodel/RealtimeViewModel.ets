@@ -3,6 +3,9 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   CameraPosition,
+  UplinkVideoStatistics,
+  DownlinkVideoStatistics,
+  RealtimeNetworkQuality,
   LocalVideoPlaybackState,
   RealtimeConfiguration,
   RealtimeConnectionState,
@@ -200,6 +203,15 @@ export class RealtimeViewModel {
       );
       connectingManager = manager;
       this.realtimeManager = manager;
+      manager.setUplinkVideoStatisticsListener((statistics: UplinkVideoStatistics | undefined): void => {
+        if (this.realtimeManager === manager) { this.state.uplinkStatistics = statistics; }
+      });
+      manager.setDownlinkVideoStatisticsListener((statistics: DownlinkVideoStatistics | undefined): void => {
+        if (this.realtimeManager === manager) { this.state.downlinkStatistics = statistics; }
+      });
+      manager.setNetworkQualityListener((quality: RealtimeNetworkQuality): void => {
+        if (this.realtimeManager === manager) { this.state.networkQuality = quality; }
+      });
       manager.setLocalVideoPlaybackStateListener((state: LocalVideoPlaybackState): void => {
         if (this.realtimeManager === manager) {
           this.state.localVideoPlaybackState = state;
@@ -214,6 +226,9 @@ export class RealtimeViewModel {
         }
         const terminal: boolean = state.connectionState === RealtimeConnectionState.READY ||
           state.connectionState === RealtimeConnectionState.IDLE;
+        if (terminal || state.connectionState === RealtimeConnectionState.DISCONNECTING) {
+          this.clearStatistics();
+        }
         if (terminal && state.reason !== undefined) {
           if (state.reason.kind === RealtimeReasonKind.ORIENTATION_CHANGED || state.reason.error !== undefined) {
             this.generationRevision++;
@@ -393,9 +408,13 @@ export class RealtimeViewModel {
     if (manager !== null) {
       manager.setStateListener(null);
       manager.setLocalVideoPlaybackStateListener(null);
+      manager.setUplinkVideoStatisticsListener(null);
+      manager.setDownlinkVideoStatisticsListener(null);
+      manager.setNetworkQualityListener(null);
       closePromise = manager.close();
     }
     this.realtimeManager = null;
+    this.clearStatistics();
     this.localStream = null;
     this.remoteStream = null;
     if (!preservesLocalInput) {
@@ -429,6 +448,12 @@ export class RealtimeViewModel {
     if (this.realtimeManager === null) {
       this.state.connectionState = RealtimeConnectionState.IDLE;
     }
+  }
+
+  private clearStatistics(): void {
+    this.state.uplinkStatistics = undefined;
+    this.state.downlinkStatistics = undefined;
+    this.state.networkQuality = undefined;
   }
 
   selectCategory(categoryId: string): void {

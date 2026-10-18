@@ -14,6 +14,7 @@ function loadEts(stubs = {}, globals = {}) {
     } } };
   }
   const cache = new Map();
+  const preferenceStores = new Map();
   function load(file) {
     const full = path.resolve(root, file);
     if (cache.has(full)) return cache.get(full).exports;
@@ -39,6 +40,14 @@ function loadEts(stubs = {}, globals = {}) {
     const localRequire = spec => {
       const stub = stubs[spec] ?? stubs[path.basename(spec)];
       if (stub !== undefined) return stub;
+      if (spec === '@kit.ArkData') return { preferences: {
+        getPreferencesSync(_context, { name }) {
+          if (!preferenceStores.has(name)) preferenceStores.set(name, new Map());
+          const values = preferenceStores.get(name);
+          return { getSync: (key, fallback) => values.has(key) ? values.get(key) : fallback,
+            putSync: (key, value) => values.set(key, value), async flush() {} };
+        }
+      } };
       if (spec === '@kit.ImageKit') return { image: {
         PixelMapFormat: { RGBA_8888: 0 },
         createPixelMap: async () => ({ release: async () => {} })

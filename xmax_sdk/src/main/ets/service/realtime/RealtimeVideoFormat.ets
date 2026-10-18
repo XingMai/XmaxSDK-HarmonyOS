@@ -21,10 +21,10 @@ export class RealtimeVideoFormat {
   /** 视频帧率，单位为 fps，必须为正整数。 */
   readonly fps: number;
 
-  /** 最低上传码率，单位 kbps；undefined 按最终格式计算，0 表示不设最低码率。 */
+  /** 最低上传码率，单位 kbps；undefined 使用 100，0 表示不设最低码率。 */
   readonly minimumBitrate?: number;
 
-  /** 最高上传码率，单位 kbps；undefined 按最终格式计算，指定时必须大于 0。 */
+  /** 最高上传码率，单位 kbps；undefined 使用最终格式参考上限的 0.6 倍（至少 100），指定时必须大于 0。 */
   readonly maximumBitrate?: number;
 
   /** 上传编码策略偏好，默认为 AUTO，平衡帧率和分辨率。 */

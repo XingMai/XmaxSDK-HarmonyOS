@@ -14,6 +14,11 @@ function fixture(t, timingOptions = {}) {
   class FakeRtc {
     constructor() { rtc = this; }
     setEventListener(listener) { this.listener = listener; }
+    setQualityListener(listener) { this.qualityListener = listener; }
+    configureVideoEncoding(format) {
+      if (this.failEncoding) throw this.failEncoding;
+      (this.encodings ??= []).push(format);
+    }
     setRemoteVideoFrameListener(listener) { this.frameListener = listener; }
     setRemoteVideoRenderedListener(listener) { this.renderedListener = listener; }
     observeRemoteVideoFrames(stream, enabled) { observations.push({ key: stream.key(), enabled }); }
@@ -34,6 +39,7 @@ function fixture(t, timingOptions = {}) {
     subscribeRemoteVideo() {}
     sendRoomMessage(text) {
       const event = JSON.parse(text);
+      if (this.failTarget && event.event === 'change_target_size') throw this.failTarget;
       messages.push(event);
       if (event.event === 'start') now += timingOptions.signalMs ?? 0;
     }
@@ -80,8 +86,6 @@ function fixture(t, timingOptions = {}) {
       if (category === 'Timing') timingLogs.push({ message: typeof message === 'function' ? message() : message, option });
     }, warn() {}, error() {} } },
     RtcManager: { RtcManager: FakeRtc }, MediaController: { MediaController: FakeMedia },
-    EncodingController: { EncodingController: class {} },
-    QualityController: { QualityController: class {} },
     RoomHeartbeat: { RoomHeartbeat: class { start() {} stop() {} } },
     RealtimeSessionService: { RealtimeSessionService: class {
       async createSession() {
@@ -476,7 +480,7 @@ test('SLA image generation separates media, canvas and return sizes through the 
   await settle();
   const message = f.messages.find(m => m.event === 'start');
   assert.deepEqual(message.params.size, [1024, 1920]);
-  assert.deepEqual(message.params.target_size, [1080, 1920]);
+  assert.deepEqual(message.params.target_size, [864, 1536]);
   assert.equal(message.params.padding, 'contain');
   assert.equal(message.params.face_replace, true);
   assert.equal(local.videoTrack.videoFormat.width, 1080);
@@ -484,8 +488,8 @@ test('SLA image generation separates media, canvas and return sizes through the 
   f.frame();
   const result = await pending;
   assert.equal(result.error, undefined);
-  assert.equal(result.value.videoTrack.videoFormat.width, 1080);
-  assert.equal(result.value.videoTrack.videoFormat.height, 1920);
+  assert.equal(result.value.videoTrack.videoFormat.width, 864);
+  assert.equal(result.value.videoTrack.videoFormat.height, 1536);
   await f.manager.startGeneration(new RealtimeContext('second'), false);
   const changed = f.messages.at(-1);
   assert.equal(changed.event, 'change_condition');
@@ -509,4 +513,154 @@ test('SLA image generation separates media, canvas and return sizes through the 
     assert.ok(Math.abs(tracks.tracks[0][0] - 0.431231) < 1e-12);
     assert.ok(Math.abs(tracks.tracks[0][1] - 0.56931) < 1e-12);
   }
+});
+
+async function generated(f) {
+  const started = await f.begin();
+  f.sei(started.task); await settle();
+  f.frame();
+  const result = await started.pending;
+  assert.equal(result.error, undefined);
+  return { task: started.task, remote: result.value };
+}
+async function qualitySamples(f, uplink, downlink, count = 4) {
+  const { RtcQualityLevel: Level } = f.load('foundation/rtc/RtcQualityListener.ets');
+  for (let index = 0; index < count; index++) {
+    f.advance(2000);
+    f.rtc.qualityListener.onNetworkQuality(Level[uplink], Level[downlink]);
+    await settle();
+  }
+}
+
+test('poor uplink independently changes real RTC encoding, persists across reconnect and preserves generation and media', async t => {
+  const f = fixture(t), { task } = await generated(f);
+  const media = f.media.currentTrack.videoFormat;
+  const before = f.rtc.encodings.length;
+  await qualitySamples(f, 'BAD', 'UNKNOWN');
+  const last = f.rtc.encodings.at(-1);
+  assert.equal(f.rtc.encodings.length, before + 1);
+  assert.deepEqual([last.width, last.height, last.frameRate, last.minimumBitrate], [656, 1230, 24, 100]);
+  assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 3);
+  assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, 2);
+  assert.equal(f.media.currentTrack.videoFormat, media);
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.equal(f.messages.filter(m => m.event === 'start').length, 1);
+  assert.equal(f.messages.filter(m => m.event === 'change_target_size').length, 0);
+  await f.manager.disconnect();
+  await generated(f);
+  assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 3);
+  assert.equal(f.rtc.encodings.at(-1).width, 656);
+});
+
+test('poor downlink updates return signaling and remote metadata without touching capture or normalized trajectories', async t => {
+  const f = fixture(t), { task, remote } = await generated(f);
+  const media = f.media.currentTrack.videoFormat;
+  const encoded = f.rtc.encodings.length;
+  await qualitySamples(f, 'UNKNOWN', 'VERY_BAD');
+  const event = f.messages.at(-1);
+  assert.equal(event.event, 'change_target_size');
+  assert.equal(event.uid, task);
+  assert.deepEqual(event.params.target_size, [640, 1200]);
+  assert.equal(event.params.min_bitrate, 100);
+  assert.ok(event.params.max_bitrate >= 100 && event.params.max_bitrate <= 10000);
+  assert.deepEqual(Object.keys(event.params).sort(), ['max_bitrate', 'min_bitrate', 'target_size']);
+  assert.equal(f.rtc.encodings.length, encoded);
+  assert.equal(f.media.currentTrack.videoFormat, media);
+  assert.deepEqual([remote.videoTrack.videoFormat.width, remote.videoTrack.videoFormat.height], [640, 1200]);
+  const { TrajectoryRegistry } = f.load('rendering/trajectory/TrajectoryRegistry.ets');
+  const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
+  const binding = TrajectoryRegistry.binding(remote.videoTrack);
+  assert.deepEqual({ ...binding.resolvedMediaSize }, { width: 1024, height: 1920 });
+  binding.submit([{ x: 0.431231 * 1024, y: 0.56931 * 1920 }], 1024, 1920, VideoContentMode.FIT);
+  assert.deepEqual(f.messages.at(-1).tracks, [[0.431231, 0.56931]]);
+  assert.equal(f.messages.filter(m => m.event === 'start').length, 1);
+  assert.equal(f.manager.currentState.taskId, task);
+});
+
+test('encoder failure retains its tier and generation; a later sample window can retry successfully', async t => {
+  const f = fixture(t), { task } = await generated(f);
+  f.rtc.failEncoding = new f.XmaxError(f.Code.RTC_ERROR, 'encoding failed');
+  await qualitySamples(f, 'BAD', 'UNKNOWN');
+  assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 2);
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.deepEqual(f.errors, []);
+  f.rtc.failEncoding = undefined;
+  await qualitySamples(f, 'BAD', 'UNKNOWN');
+  assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 3);
+});
+
+test('return signal failure preserves expected dimensions and retries without disconnecting', async t => {
+  const f = fixture(t), { remote, task } = await generated(f);
+  const previous = remote.videoTrack.videoFormat;
+  f.rtc.failTarget = new f.XmaxError(f.Code.RTC_ERROR, 'send failed');
+  await qualitySamples(f, 'UNKNOWN', 'BAD');
+  assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, 2);
+  assert.equal(remote.videoTrack.videoFormat, previous);
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.deepEqual(f.errors, []);
+  f.rtc.failTarget = undefined;
+  await qualitySamples(f, 'UNKNOWN', 'BAD');
+  assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, 3);
+  assert.equal(remote.videoTrack.videoFormat.width, 640);
+});
+
+test('application network listeners can disconnect before adaptation and old-task samples cannot affect reconnect', async t => {
+  const f = fixture(t);
+  await generated(f);
+  const oldListener = f.manager.streamController.qualityController.adaptiveListener;
+  await qualitySamples(f, 'BAD', 'BAD', 3);
+  const count = f.rtc.encodings.length;
+  let closing;
+  f.manager.setNetworkQualityListener(() => { closing ??= f.manager.disconnect(); });
+  await qualitySamples(f, 'BAD', 'BAD', 1);
+  await closing;
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.rtc.encodings.length, count);
+  assert.equal(f.messages.filter(m => m.event === 'change_target_size').length, 0);
+  f.manager.setNetworkQualityListener(null);
+  const next = await generated(f);
+  const { RealtimeNetworkQuality, RealtimeNetworkQualityLevel } = f.load('service/realtime/RealtimeNetworkQuality.ets');
+  const baseline = f.manager.streamController.qualityConfiguration;
+  oldListener(new RealtimeNetworkQuality(RealtimeNetworkQualityLevel.BAD, RealtimeNetworkQualityLevel.BAD), 0);
+  await settle();
+  assert.equal(f.manager.currentState.taskId, next.task);
+  assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, baseline.uplinkLevel);
+  assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, baseline.downlinkLevel);
+});
+
+test('public statistics listeners follow publication, matched SEI, remote removal and reconnection', async t => {
+  const f = fixture(t), up = [], down = [];
+  const { UplinkVideoStatistics: Up, DownlinkVideoStatistics: Down } = f.load('foundation/rtc/VideoStatistics.ets');
+  const uplink = new Up(640, 360), downlink = new Down('bot', 640, 360);
+  f.manager.setUplinkVideoStatisticsListener(s => up.push(s));
+  f.manager.setDownlinkVideoStatisticsListener(s => down.push(s));
+  f.rtc.qualityListener.onUplinkVideoStatistics(uplink);
+  const first = await f.begin();
+  f.rtc.qualityListener.onUplinkVideoStatistics(uplink);
+  f.rtc.qualityListener.onDownlinkVideoStatistics(downlink);
+  await settle();
+  assert.equal(up.at(-1), uplink);
+  assert.equal(down.includes(downlink), false);
+  f.sei('wrong-task');
+  f.rtc.qualityListener.onDownlinkVideoStatistics(downlink); await settle();
+  assert.equal(down.includes(downlink), false);
+  f.sei(first.task); f.frame(); await first.pending;
+  f.rtc.qualityListener.onDownlinkVideoStatistics(new Down('someone-else'));
+  f.rtc.qualityListener.onDownlinkVideoStatistics(downlink); await settle();
+  assert.equal(down.at(-1), downlink);
+  f.rtc.listener.onRemoteVideoPublished('bot', false); await settle();
+  assert.equal(down.at(-1), undefined);
+  f.rtc.qualityListener.onDownlinkVideoStatistics(downlink); await settle();
+  assert.equal(down.at(-1), undefined);
+  await f.manager.disconnect(); await settle();
+  assert.equal(up.at(-1), undefined);
+  const count = up.length;
+  f.rtc.qualityListener.onUplinkVideoStatistics(uplink); await settle();
+  assert.equal(up.length, count);
+  const second = await f.begin();
+  f.sei(second.task); f.frame(); await second.pending;
+  f.rtc.qualityListener.onUplinkVideoStatistics(uplink);
+  f.rtc.qualityListener.onDownlinkVideoStatistics(downlink); await settle();
+  assert.equal(up.at(-1), uplink); assert.equal(down.at(-1), downlink);
 });

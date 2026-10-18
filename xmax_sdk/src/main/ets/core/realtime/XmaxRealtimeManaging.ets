@@ -1,3 +1,4 @@
+import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -19,7 +20,6 @@ import { RealtimeConfiguration } from './RealtimeConfiguration';
 
 /** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
 export interface XmaxRealtimeManaging {
-
   /** 实时能力配置。 */
   readonly options: RealtimeConfiguration;
 
@@ -62,6 +62,21 @@ export interface XmaxRealtimeManaging {
    * @returns 无返回值。
    */
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void;
+
+  /**
+   * 设置实际视频上行统计监听器；null 移除，不回放历史样本。
+   * ArkTS 事件循环异步回调；发布状态变化或断开时收到 undefined。
+   * 断开后保留监听器配置，不依赖 RTC 日志开关。
+   */
+  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void;
+
+  /**
+   * 设置实际视频下行统计监听器；null 移除，不回放历史样本。
+   * 仅异步交付当前任务 SEI 匹配的生成流，流清理时收到 undefined。
+   * 断开后保留监听器配置，不依赖 RTC 日志开关。
+   */
+  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void;
+
 
   /**
    * 设置实时性能告警监听器。

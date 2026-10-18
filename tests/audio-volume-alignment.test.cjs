@@ -192,7 +192,7 @@ function streamFixture() {
     RoomController: { RoomController: class {
       async join() {} async leave() {} startGeneration() {} stopGeneration() {}
     } },
-    QualityController: { QualityController: class {} },
+    QualityController: { QualityController: class { setUplinkVideoStatisticsEnabled() {} setDownlinkVideoStatisticsUser() {} setAdaptiveQualityListener() {} resetQualitySamples() {} resetQuality() {} } },
     EncodingController: { EncodingController: class {} }
   });
   const { StreamController } = load('stream/StreamController.ets');

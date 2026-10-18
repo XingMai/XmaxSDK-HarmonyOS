@@ -1,4 +1,4 @@
-import { LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
+import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
 
@@ -55,6 +55,9 @@ export class RealtimeViewState {
   localVideoTrack: RealtimeVideoTrack | null = null;
   remoteVideoTrack: RealtimeVideoTrack | null = null;
   localVideoPlaybackState: LocalVideoPlaybackState | undefined = undefined;
+  uplinkStatistics: UplinkVideoStatistics | undefined = undefined;
+  downlinkStatistics: DownlinkVideoStatistics | undefined = undefined;
+  networkQuality: RealtimeNetworkQuality | undefined = undefined;
   isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;

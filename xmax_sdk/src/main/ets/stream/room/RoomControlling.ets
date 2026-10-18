@@ -6,6 +6,9 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 
 /** 定义 RTC 房间生命周期和房间信令发送能力。 */
 export interface RoomControlling {
+  /** 只更新回传规格和码率，不改变生成画布。 */
+  changeTargetSize(taskId: string, targetSize: ImageSize): void;
+
 
   /**
    * 加入实时房间。

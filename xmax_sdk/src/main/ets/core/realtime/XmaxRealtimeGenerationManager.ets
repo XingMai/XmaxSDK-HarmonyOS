@@ -72,7 +72,8 @@ export class XmaxRealtimeGenerationManager {
     context: RealtimeContext | undefined,
     ensureCurrent: GenerationValidity,
     waitForConfirmation?: GenerationConfirmationWait,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    targetSize?: ImageSize
   ): Promise<string> {
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
@@ -89,7 +90,7 @@ export class XmaxRealtimeGenerationManager {
     try {
       const confirmation: Promise<void> = this.streamController.beginGeneration(
         taskId, this.generationFormat(videoFormat), resolvedContext, this.startingFaceRestoration,
-        this.targetSize(videoFormat), this.mediaController.usesContainPadding);
+        targetSize ?? this.targetSize(videoFormat), this.mediaController.usesContainPadding);
       await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
@@ -182,7 +183,7 @@ export class XmaxRealtimeGenerationManager {
 
   private targetSize(format: RealtimeVideoFormat): ImageSize {
     const size: ImageSize = new ImageSize(format.width, format.height);
-    // 鸿蒙当前无插帧或自动下行尺寸档位，按媒体基准回传，预留独立的回传尺寸计算。
+    // 内部独立使用时的回退值；实时 Manager 会显式传入调档后的回传尺寸。
     return this.mediaService.resolveTargetSize(size, size);
   }
 

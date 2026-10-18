@@ -1,3 +1,6 @@
+import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../foundation/rtc/VideoStatistics';
+import { QualityConfiguration, QualityChange, AdaptiveQualityListener } from './quality/QualityConfiguration';
+import { RealtimeNetworkQuality } from '../service/realtime/RealtimeNetworkQuality';
 import { ImageSize } from '../service/media/ImageSize';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';
 import { VideoFrame } from '../foundation/media/video/VideoFrame';
@@ -10,6 +13,20 @@ import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 
 /** 定义流层向 Core 和其他业务层暴露的统一能力。 */
 export interface StreamControlling {
+  /** 设置上行统计监听；null 移除。停止发布或断开时收到 undefined。 */
+  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void;
+  /** 设置下行统计监听；null 移除。仅交付当前生成流，流清理时收到 undefined。 */
+  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void;
+
+  readonly qualityConfiguration: QualityConfiguration | undefined;
+  prepareQuality(baseline: RealtimeVideoFormat, model: string): QualityConfiguration;
+  rebaseQuality(baseline: RealtimeVideoFormat): QualityConfiguration | undefined;
+  setAdaptiveQualityListener(listener: AdaptiveQualityListener | null): void;
+  proposeQuality(quality: RealtimeNetworkQuality, sampledAt: number): QualityChange;
+  completeQuality(downlink: boolean, level: number, success: boolean): void;
+  resetQualitySamples(): void;
+  changeTargetSize(taskId: string, targetSize: ImageSize): void;
+
 
   /** 当前远端播放音量（0～1），按 RTC 百分比精度返回。 */
   readonly remoteAudioVolume: number;

@@ -1,3 +1,7 @@
+import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../foundation/rtc/VideoStatistics';
+import { QualityConfiguration, QualityChange, AdaptiveQualityListener } from './quality/QualityConfiguration';
+import { QualityHistoryStore, MemoryQualityHistoryStore } from './quality/QualityHistory';
+import { RealtimeNetworkQuality } from '../service/realtime/RealtimeNetworkQuality';
 import { ImageSize } from '../service/media/ImageSize';
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
 import { RealtimeTiming } from '../core/realtime/RealtimeTiming';
@@ -99,16 +103,41 @@ export class StreamController implements StreamControlling, RtcEventListener {
     rtcManager: RtcManaging,
     remoteStreamListener: RemoteStreamListener,
     errorListener: XmaxErrorListener = (_error: XmaxError): void => {},
-    timing: RealtimeTiming = new RealtimeTiming()
+    timing: RealtimeTiming = new RealtimeTiming(),
+    historyStore: QualityHistoryStore = new MemoryQualityHistoryStore()
   ) {
     this.timing = timing;
     this.rtcManager = rtcManager;
     this.roomController = new RoomController(rtcManager, timing);
     this.encodingController = new EncodingController(rtcManager);
-    this.qualityController = new QualityController(rtcManager);
+    this.qualityController = new QualityController(rtcManager, historyStore);
     this.remoteStreamListener = remoteStreamListener;
     this.errorListener = errorListener;
     this.rtcManager.setEventListener(this);
+  }
+
+  get qualityConfiguration(): QualityConfiguration | undefined { return this.qualityController.qualityConfiguration; }
+  prepareQuality(baseline: RealtimeVideoFormat, model: string): QualityConfiguration {
+    return this.qualityController.prepareQuality(baseline, model);
+  }
+  rebaseQuality(baseline: RealtimeVideoFormat): QualityConfiguration | undefined {
+    return this.qualityController.rebaseQuality(baseline);
+  }
+  setAdaptiveQualityListener(listener: AdaptiveQualityListener | null): void {
+    this.qualityController.setAdaptiveQualityListener(listener);
+  }
+  proposeQuality(quality: RealtimeNetworkQuality, sampledAt: number): QualityChange {
+    return this.qualityController.proposeQuality(quality, sampledAt);
+  }
+  completeQuality(downlink: boolean, level: number, success: boolean): void {
+    this.qualityController.completeQuality(downlink, level, success);
+  }
+  resetQualitySamples(): void { this.qualityController.resetQualitySamples(); }
+  changeTargetSize(taskId: string, targetSize: ImageSize): void {
+    if (taskId.length === 0 || this.currentTask?.id !== taskId) {
+      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Generation task is no longer active');
+    }
+    this.roomController.changeTargetSize(taskId, targetSize);
   }
 
   /** @inheritdoc */
@@ -136,6 +165,13 @@ export class StreamController implements StreamControlling, RtcEventListener {
   }
 
   /** @inheritdoc */
+  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
+    this.qualityController.setUplinkVideoStatisticsListener(listener);
+  }
+  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
+    this.qualityController.setDownlinkVideoStatisticsListener(listener);
+  }
+
   setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
     this.qualityController.setNetworkQualityListener(listener);
   }
@@ -354,6 +390,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
         return;
       }
       this.activeRemoteStream = stream;
+      this.qualityController.setDownlinkVideoStatisticsUser(stream.userId);
     } catch (error) {
       this.rejectGenerationStart(taskId, XmaxError.from(error));
       return;
@@ -412,6 +449,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
   /** 发布本地视频，并按需发布本地音频。 */
   private publishLocalStream(includeAudio: boolean): void {
     this.rtcManager.publishLocalVideo();
+    this.qualityController.setUplinkVideoStatisticsEnabled(true);
     if (includeAudio) {
       this.rtcManager.publishLocalAudio();
       this.localAudioPublished = true;
@@ -441,6 +479,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return '';
     }
 
+    this.qualityController.setAdaptiveQualityListener(null);
+    this.qualityController.resetQualitySamples();
     this.rejectGenerationStart(
       currentTaskId,
       new XmaxError(XmaxErrorCode.CANCELLED, reason)
@@ -457,7 +497,9 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
   /** 清理当前房间内的本地发布和生成流状态。 */
   private resetStream(): void {
+    this.qualityController.setUplinkVideoStatisticsEnabled(false);
     this.stopStreamGeneration();
+    this.qualityController.resetQuality();
     this.localAudioPublished = false;
     this.rtcManager.unpublishLocalVideo();
     this.rtcManager.unpublishLocalAudio();
@@ -467,6 +509,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
 
   /** 通知监听器清除当前远端生成流。 */
   private clearRemoteStream(): void {
+    this.qualityController.setDownlinkVideoStatisticsUser(undefined);
     this.remoteStreamListener(null);
   }
 

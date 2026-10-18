@@ -479,6 +479,90 @@
     {
       "name": "storage_success",
       "value": "成功"
+    },
+    {
+      "name": "stats_title",
+      "value": "统计"
+    },
+    {
+      "name": "stats_enabled",
+      "value": "统计已显示"
+    },
+    {
+      "name": "stats_disabled",
+      "value": "统计已隐藏"
+    },
+    {
+      "name": "stats_uplink",
+      "value": "上行视频"
+    },
+    {
+      "name": "stats_downlink",
+      "value": "下行视频"
+    },
+    {
+      "name": "stats_resolution",
+      "value": "分辨率"
+    },
+    {
+      "name": "stats_capture_fps",
+      "value": "采集帧率"
+    },
+    {
+      "name": "stats_encode_fps",
+      "value": "编码帧率"
+    },
+    {
+      "name": "stats_send_fps",
+      "value": "发送帧率"
+    },
+    {
+      "name": "stats_decode_fps",
+      "value": "解码帧率"
+    },
+    {
+      "name": "stats_render_fps",
+      "value": "渲染帧率"
+    },
+    {
+      "name": "stats_bitrate",
+      "value": "码率"
+    },
+    {
+      "name": "stats_loss",
+      "value": "丢包率"
+    },
+    {
+      "name": "stats_quality",
+      "value": "网络质量"
+    },
+    {
+      "name": "stats_delay",
+      "value": "端到端延迟"
+    },
+    {
+      "name": "stats_quality_excellent",
+      "value": "极好"
+    },
+    {
+      "name": "stats_quality_good",
+      "value": "良好"
+    },
+    {
+      "name": "stats_quality_poor",
+      "value": "一般"
+    },
+    {
+      "name": "stats_quality_bad",
+      "value": "较差"
+    },
+    {
+      "name": "stats_quality_very_bad",
+      "value": "很差"
+    },
+    {
+      "name": "stats_quality_down",
+      "value": "断开"
     }
   ]
 }

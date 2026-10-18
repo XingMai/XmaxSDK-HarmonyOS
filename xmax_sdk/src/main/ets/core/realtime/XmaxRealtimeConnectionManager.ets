@@ -44,6 +44,18 @@ export class XmaxRealtimeConnectionManager {
   // 连接资源
   private activeRemoteTrack: RealtimeVideoTrack | null = null;
   private activeSession: RealtimeSession | null = null;
+  private activeTargetSize: ImageSize | undefined;
+
+  get currentTargetSize(): ImageSize | undefined { return this.activeTargetSize; }
+
+  /** 仅更新预期回传规格，不能改动轨迹的本地媒体基准。 */
+  updateTargetSize(size: ImageSize, baseline: RealtimeVideoFormat): void {
+    this.activeTargetSize = size;
+    if (this.activeRemoteTrack !== null) {
+      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, baseline.resized(size.width, size.height));
+      VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
+    }
+  }
 
   /**
    * 创建实时连接 Manager。
@@ -86,7 +98,8 @@ export class XmaxRealtimeConnectionManager {
 
   updateVideoFormat(format: RealtimeVideoFormat): void {
     if (this.activeRemoteTrack !== null) {
-      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, format);
+      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, this.activeTargetSize === undefined ? format :
+        format.resized(this.activeTargetSize.width, this.activeTargetSize.height));
       VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
       // 此入口仅由本地相机格式变化触发，不能用回传帧尺寸更新交互基准。
       TrajectoryRegistry.binding(this.activeRemoteTrack)?.updateResolvedMediaSize(new ImageSize(format.width, format.height));
@@ -128,7 +141,8 @@ export class XmaxRealtimeConnectionManager {
     videoFormat: RealtimeVideoFormat,
     includeLocalAudio: boolean,
     isCurrent: ConnectionValidity,
-    onHeartbeatFailure: ConnectionHeartbeatFailureHandler
+    onHeartbeatFailure: ConnectionHeartbeatFailureHandler,
+    targetSize?: ImageSize
   ): Promise<RealtimeMediaStream> {
     this.timing.beginConnection();
     let session: RealtimeSession | null = null;
@@ -162,7 +176,7 @@ export class XmaxRealtimeConnectionManager {
       const resolvedMediaFormat: RealtimeVideoFormat = this.mediaController.currentVideoFormat ?? videoFormat;
       const remoteTrack = new RealtimeVideoTrack(
         connection.botName ?? 'video-remote',
-        resolvedMediaFormat
+        targetSize === undefined ? resolvedMediaFormat : resolvedMediaFormat.resized(targetSize.width, targetSize.height)
       );
       this.renderController.registerRemoteTrack(
         remoteTrack,
@@ -170,6 +184,7 @@ export class XmaxRealtimeConnectionManager {
         new ImageSize(resolvedMediaFormat.width, resolvedMediaFormat.height)
       );
 
+      this.activeTargetSize = targetSize;
       this.activeSession = session;
       this.activeRemoteTrack = remoteTrack;
       sessionActivated = true;
@@ -213,6 +228,7 @@ export class XmaxRealtimeConnectionManager {
     const session: RealtimeSession | null = this.activeSession;
     const remoteTrack: RealtimeVideoTrack | null = this.activeRemoteTrack;
 
+    this.activeTargetSize = undefined;
     this.activeSession = null;
     this.activeRemoteTrack = null;
 

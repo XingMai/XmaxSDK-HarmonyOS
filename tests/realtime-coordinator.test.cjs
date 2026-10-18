@@ -226,3 +226,22 @@ test('media preparation cancellation resets to IDLE without reason or duplicate 
   assert.equal(f.events.some(event => event.startsWith('cleanup:')), false);
   assert.deepEqual(f.logs, []);
 });
+
+test('adaptive configuration skips busy and disconnected states without changing user state or reporting errors', async () => {
+  const f = fixture();
+  let applied = 0;
+  assert.equal(f.coordinator.runAdaptiveConfiguration(() => applied++), false);
+  await f.coordinator.run(f.Kind.GENERATION, null, async token => {
+    f.coordinator.commit(new f.RealtimeState(f.State.GENERATING, 'session', 'task', f.Reason.ORIENTATION_CHANGED), token);
+    assert.equal(f.coordinator.runAdaptiveConfiguration(() => applied++), false);
+  });
+  const state = f.coordinator.currentState, stateCount = f.states.length;
+  assert.equal(f.coordinator.runAdaptiveConfiguration(token => { token.ensureCurrent(); applied++; }), true);
+  assert.equal(applied, 1);
+  assert.equal(f.coordinator.currentState, state);
+  assert.equal(f.states.length, stateCount);
+  assert.deepEqual(f.errors, []);
+  assert.throws(() => f.coordinator.runAdaptiveConfiguration(() => { throw new Error('encoder'); }), /encoder/);
+  assert.equal(f.coordinator.hasActiveOperation(), false);
+  assert.equal(await f.coordinator.run(f.Kind.GENERATION, null, async () => 7), 7);
+});
