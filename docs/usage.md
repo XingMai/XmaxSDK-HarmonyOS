@@ -114,9 +114,8 @@ Harmony applies its current downlink tier to the bounded media size; it does not
 enable iOS frame interpolation. Interaction geometry and coordinates
 use the processed local media size, independently of the return frame dimensions.
 
-`createMediaService()` continues to default to `x2.0`. The legacy
-`resolveModelInputSize()` is deprecated and retains its previous strict input
-rules for compatibility; new integrations should use the three methods above.
+`createMediaService()` continues to default to `x2.0`. Use the three sizing
+methods above for local media, generation canvases, and return frames respectively.
 These frame limits do not limit memory needed to decode the original file.
 
 The former `x2.0-pro` model is replaced by `x2.0-sla`. XLab migrates a saved Pro

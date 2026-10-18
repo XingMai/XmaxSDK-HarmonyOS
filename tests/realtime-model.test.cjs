@@ -84,24 +84,24 @@ test('realtime managers and storage use the configured production environment wi
   assert.equal(services.at(-1).apiKey, '');
 });
 
-test('SLA accepts only exact buckets in either orientation without rounding or resizing', () => {
+test('SLA camera input accepts only exact buckets in either orientation without rounding or resizing', () => {
   const f = fixture(), service = new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA));
   for (const [width, height] of [[1024, 1920], [1920, 1024]]) {
     const size = new f.Size(width, height);
-    assert.deepEqual(service.resolveModelInputSize(size), size);
+    assert.deepEqual(service.resolveMediaSize(size, 'camera'), size);
   }
   for (const [width, height] of [[832, 1472], [1920, 1080], [512, 960], [2048, 3840],
     [1120, 1120], [1024, 1919.9], [1023.9, 1920], [0, 1920], [NaN, 1920], [Infinity, 1920]]) {
-    assert.throws(() => service.resolveModelInputSize(new f.Size(width, height)), { code: 'INVALID_CONFIGURATION' });
+    assert.throws(() => service.resolveMediaSize(new f.Size(width, height), 'camera'), { code: 'INVALID_CONFIGURATION' });
   }
-  assert.throws(() => service.resolveModelInputSize(new f.Size(1920, 1080)), error => {
+  assert.throws(() => service.resolveMediaSize(new f.Size(1920, 1080), 'camera'), error => {
     assert.match(error.message, /x2.0-sla/);
     assert.match(error.message, /1024×1920, 1920×1024/);
     return true;
   });
 });
 
-test('models without fixed buckets resolve aligned input sizes within pixel bounds, including rounding and extreme aspect ratios', () => {
+test('generation canvases without fixed buckets respect pixel bounds, alignment and extreme aspect ratios', () => {
   const f = fixture();
   const sizes = [[799, 751], [1130, 1130], [1445, 1445], [1024, 1920], [1920, 1024], [832, 1472], [1472, 832],
     [3840, 2160], [1, 100000], [100000, 1], [1, 1], [32, 32], [640, 480]];
@@ -109,23 +109,23 @@ test('models without fixed buckets resolve aligned input sizes within pixel boun
     const service = new f.MediaService(f.Models.realtime(name)), model = service.model;
     if (model.resolutionBuckets.length > 0) continue;
     for (const [width, height] of sizes) {
-      const result = service.resolveModelInputSize(new f.Size(width, height));
+      const result = service.resolveGenerationSize(new f.Size(width, height));
       const pixels = result.width * result.height;
       assert.ok(pixels >= model.minimumInputPixels && pixels <= model.maximumInputPixels,
         `${name}: ${width}x${height} resolved to ${JSON.stringify(result)}`);
       assert.equal(result.width % 32, 0);
       assert.equal(result.height % 32, 0);
-      assert.deepEqual(service.resolveModelInputSize(result), result);
+      assert.deepEqual(service.resolveGenerationSize(result), result);
     }
   }
   const x2 = new f.MediaService();
   assert.equal(x2.model.name, f.Model.X2_0);
-  assert.deepEqual(x2.resolveModelInputSize(new f.Size(799, 751)), new f.Size(800, 768));
-  assert.deepEqual(x2.resolveModelInputSize(new f.Size(1130, 1130)), new f.Size(1120, 1120));
+  assert.deepEqual(x2.resolveGenerationSize(new f.Size(799, 751)), new f.Size(800, 768));
+  assert.deepEqual(x2.resolveGenerationSize(new f.Size(1130, 1130)), new f.Size(1120, 1120));
   const pro = new f.MediaService(f.Models.realtime(f.Model.X2_0_SLA));
-  assert.deepEqual(pro.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
-  assert.deepEqual(x2.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(800, 1536));
-  assert.throws(() => x2.resolveModelInputSize(new f.Size(1e308, 1e308)), { code: 'INVALID_CONFIGURATION' });
+  assert.deepEqual(pro.resolveGenerationSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
+  assert.deepEqual(x2.resolveGenerationSize(new f.Size(1024, 1920)), new f.Size(800, 1536));
+  assert.throws(() => x2.resolveGenerationSize(new f.Size(1e308, 1e308)), { code: 'INVALID_CONFIGURATION' });
 });
 
 test('the public media-service factory accepts a model and defaults to x2.0', () => {
@@ -136,7 +136,7 @@ test('the public media-service factory accepts a model and defaults to x2.0', ()
   const client = new XmaxClient({ apiKey: 'test-only', loggerOptions: 0 });
   assert.equal(client.createMediaService().model.name, f.Model.X2_0);
   const service = client.createMediaService(f.Model.X2_0_SLA);
-  assert.deepEqual(service.resolveModelInputSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
+  assert.deepEqual(service.resolveGenerationSize(new f.Size(1024, 1920)), new f.Size(1024, 1920));
 });
 
 function mediaFixture(imageSize = [1024, 1920], videoSize = [1920, 1024]) {

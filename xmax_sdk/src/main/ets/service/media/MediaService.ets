@@ -54,10 +54,10 @@ export class MediaService implements MediaServicing {
   }
 
   /**
-   * 选择模型生成画布，不改变本地媒体规格。
+   * 按媒体比例选择固定画布，或按模型像素面积与对齐约束计算画布，不改变本地媒体规格。
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @returns 计算得到的媒体宽高。
+   * @param size 处理后的本地媒体尺寸，用于确定生成画布的比例。
+   * @returns 符合模型固定分辨率桶或像素面积与对齐约束的生成画布尺寸。
    */
   resolveGenerationSize(size: ImageSize): ImageSize {
     this.validateSize(size);
@@ -76,7 +76,38 @@ export class MediaService implements MediaServicing {
       }
       return best;
     }
-    return this.resolveModelInputSize(size);
+    const sourceWidth: number = size.width;
+    const sourceHeight: number = size.height;
+    const pixels: number = sourceWidth * sourceHeight;
+    if (!Number.isFinite(pixels) || pixels <= 0) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Image pixel count must be finite and positive');
+    }
+    let scale: number = 1;
+    let rounding: (value: number) => number = Math.round;
+
+    if (pixels < this.model.minimumInputPixels) {
+      scale = Math.sqrt(this.model.minimumInputPixels / pixels);
+      rounding = Math.ceil;
+    } else if (pixels > this.model.maximumInputPixels) {
+      scale = Math.sqrt(this.model.maximumInputPixels / pixels);
+      rounding = Math.floor;
+    }
+
+    const alignment: number = this.model.inputSizeAlignment;
+    const width: number = Math.max(
+      rounding(sourceWidth * scale / alignment) * alignment,
+      alignment
+    );
+    const height: number = Math.max(
+      rounding(sourceHeight * scale / alignment) * alignment,
+      alignment
+    );
+
+    const alignedPixels: number = width * height;
+    if (alignedPixels >= this.model.minimumInputPixels && alignedPixels <= this.model.maximumInputPixels) {
+      return new ImageSize(width, height);
+    }
+    return this.boundedAlignedSize(sourceWidth * scale, sourceHeight * scale);
   }
 
   /**
@@ -142,62 +173,7 @@ export class MediaService implements MediaServicing {
   }
 
   /**
-   * 计算符合模型固定分辨率或像素量约束的输入尺寸。
-   *
-   * @param size 原始媒体尺寸；宽高必须为有限且大于零的数值。
-   * @returns 满足模型固定分辨率或像素量与对齐约束的尺寸。
-   * @deprecated 使用 resolveMediaSize 或 resolveGenerationSize 区分媒体帧与生成画布。
-   * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
-   */
-  resolveModelInputSize(size: ImageSize): ImageSize {
-    const buckets: ImageSize[] = this.model.resolutionBuckets;
-    if (buckets.length > 0) {
-      if (!buckets.some((bucket: ImageSize): boolean =>
-        bucket.width === size.width && bucket.height === size.height)) {
-        const supportedSizes: string = buckets.map((bucket: ImageSize): string =>
-          `${bucket.width}×${bucket.height}`).join(', ');
-        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-          `Model ${this.model.name} does not support input resolution ${size.width}×${size.height}. ` +
-          `Supported resolutions: ${supportedSizes}`);
-      }
-      return size;
-    }
-    const sourceWidth: number = Math.max(Math.round(size.width), 1);
-    const sourceHeight: number = Math.max(Math.round(size.height), 1);
-    const pixels: number = sourceWidth * sourceHeight;
-    if (!Number.isFinite(pixels) || pixels <= 0) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Image pixel count must be finite and positive');
-    }
-    let scale: number = 1;
-    let rounding: (value: number) => number = Math.round;
-
-    if (pixels < this.model.minimumInputPixels) {
-      scale = Math.sqrt(this.model.minimumInputPixels / pixels);
-      rounding = Math.ceil;
-    } else if (pixels > this.model.maximumInputPixels) {
-      scale = Math.sqrt(this.model.maximumInputPixels / pixels);
-      rounding = Math.floor;
-    }
-
-    const alignment: number = this.model.inputSizeAlignment;
-    const width: number = Math.max(
-      rounding(sourceWidth * scale / alignment) * alignment,
-      alignment
-    );
-    const height: number = Math.max(
-      rounding(sourceHeight * scale / alignment) * alignment,
-      alignment
-    );
-
-    const alignedPixels: number = width * height;
-    if (alignedPixels >= this.model.minimumInputPixels && alignedPixels <= this.model.maximumInputPixels) {
-      return new ImageSize(width, height);
-    }
-    return this.boundedAlignedSize(sourceWidth * scale, sourceHeight * scale);
-  }
-
-  /**
-   * 对齐造成面积越界时，选择面积合法且相对目标偏差最小的尺寸。
+   * 生成画布对齐后面积越界时，选择面积合法且相对目标偏差最小的尺寸。
    *
    * @param width 画面宽度，单位像素。
    * @param height 画面高度，单位像素。

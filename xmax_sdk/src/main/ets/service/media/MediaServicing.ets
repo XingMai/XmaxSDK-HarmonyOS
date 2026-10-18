@@ -32,8 +32,8 @@ export interface MediaServicing {
   /**
    * 按媒体比例选择生成画布，保留独立的本地媒体规格。
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @returns 计算得到的媒体宽高。
+   * @param size 处理后的本地媒体尺寸，用于确定生成画布的比例。
+   * @returns 符合模型固定分辨率桶或像素面积与对齐约束的生成画布尺寸。
    */
   resolveGenerationSize(size: ImageSize): ImageSize;
 
@@ -46,16 +46,4 @@ export interface MediaServicing {
    * @returns 计算得到的媒体宽高。
    */
   resolveTargetSize(size: ImageSize, maximumSize: ImageSize, frameInterpolationEnabled?: boolean): ImageSize;
-
-  /**
-   * 计算符合模型固定分辨率或像素量约束的输入尺寸。
-   *
-   * @param size 原始图片尺寸。
-   * @returns 满足模型输入约束的尺寸。
-   * @deprecated 使用 resolveMediaSize 或 resolveGenerationSize。
-   * 固定分辨率必须精确匹配；其他模型按像素量与对齐约束计算尺寸。
-   */
-  resolveModelInputSize(
-    size: ImageSize
-  ): ImageSize;
 }
