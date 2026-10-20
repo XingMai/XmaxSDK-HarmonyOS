@@ -218,9 +218,10 @@ export struct XmaxVideoView {
       ForEach(this.track === undefined ? [] : [this.viewId], (viewId: string) => {
         XComponent({
           id: viewId,
-          type: XComponentType.SURFACE,
+          type: XComponentType.TEXTURE,
           libraryname: this.renderLibraryName()
         })
+          .backgroundColor(Color.Transparent)
           .opacity(this.stillImage !== undefined && (!this.videoReady || this.showsStillImage) ? 0 : 1)
           .animation({ duration: 0 })
           .width(this.previewWidth())
