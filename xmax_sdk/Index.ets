@@ -99,3 +99,6 @@ export {
   UplinkVideoStatistics, DownlinkVideoStatistics,
   UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener
 } from './src/main/ets/foundation/rtc/VideoStatistics';
+
+export { RealtimeGenerationOptions, RealtimeGenerationParameters } from './src/main/ets/service/realtime/RealtimeGenerationOptions';
+export { RealtimeInteractionPhase, RealtimeInteractionListener } from './src/main/ets/service/realtime/RealtimeInteraction';

@@ -86,6 +86,11 @@ export class XmaxRealtimeGenerationManager {
    * @returns 无返回值。
    */
   validateContext(context?: RealtimeContext): void {
+    const resolved: RealtimeContext | null = context ?? this.currentContext;
+    if (resolved?.extraParams?.static_generate && !resolved.extraParams.static_image_path) {
+      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
+        'Static generation requires a non-empty static_image_path');
+    }
     if (context === undefined && this.currentContext === null) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'A realtime context is required for the first generation');
@@ -111,6 +116,7 @@ export class XmaxRealtimeGenerationManager {
     faceRestoration?: boolean,
     targetSize?: ImageSize
   ): Promise<string> {
+    this.validateContext(context);
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
       throw new XmaxError(

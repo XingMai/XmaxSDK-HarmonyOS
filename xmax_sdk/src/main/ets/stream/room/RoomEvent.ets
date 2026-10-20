@@ -33,6 +33,9 @@ class GenerationParameters {
   size: number[];
   prompt: string;
   ref_image_path?: string;
+  /** 是否启用静态图片生成及其服务端输入地址。 */
+  static_generate?: boolean;
+  static_image_path?: string;
   detection: boolean;
   face_replace: boolean;
 
@@ -66,6 +69,8 @@ class GenerationParameters {
     if (context.referencePath !== undefined) {
       this.ref_image_path = context.referencePath;
     }
+    this.static_generate = context.extraParams?.static_generate;
+    this.static_image_path = context.extraParams?.static_image_path;
     this.detection = context.faceDetection ?? false;
     this.face_replace = faceRestoration;
     this.target_size = targetSize === undefined ? undefined : [targetSize.width, targetSize.height];

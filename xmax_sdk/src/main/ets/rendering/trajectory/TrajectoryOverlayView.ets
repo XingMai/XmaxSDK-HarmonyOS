@@ -9,6 +9,8 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
+import { RealtimeInteractionPhase, RealtimeInteractionListener } from '../../service/realtime/RealtimeInteraction';
 import { InteractionCoordinateMapper, InteractionMediaFrame } from '../../media/interaction/InteractionCoordinateMapper';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { InteractionPoint } from '../../media/interaction/InteractionPoint';
@@ -46,6 +48,9 @@ export struct TrajectoryOverlayView {
   /** 视频内容显示模式。 */
   @Prop @Watch('onContentModeChanged')
   contentMode: VideoContentMode = VideoContentMode.FILL;
+
+  /** 有效交互生命周期；多指交互按整体通知。 */
+  onInteractionChanged?: RealtimeInteractionListener;
 
   /** 轨迹效果绘制依赖 */
   /** 轨迹效果渲染器。 */
@@ -124,10 +129,28 @@ export struct TrajectoryOverlayView {
    * @returns 无返回值。
    */
   private cancelInteraction(): void {
+    const wasActive: boolean = this.activeTouches.size > 0;
     this.stopSampling();
     this.stopTicking();
     this.activeTouches.clear();
     this.renderer.reset();
+    if (wasActive) {
+      this.notifyInteraction('cancelled');
+    }
+  }
+
+  /**
+   * 通知接入方有效交互的整体阶段；接入方异常不影响轨迹采样与清理。
+   *
+   * @param phase 有效触点交互的开始、结束或取消阶段。
+   * @returns 无返回值。
+   */
+  private notifyInteraction(phase: RealtimeInteractionPhase): void {
+    try {
+      this.onInteractionChanged?.(phase);
+    } catch (error) {
+      XmaxLogger.error('Interaction listener failed: ' + String(error), 'Interaction');
+    }
   }
 
   /**
@@ -308,7 +331,11 @@ export struct TrajectoryOverlayView {
       x: this.clampX(touchObject.x),
       y: this.clampY(touchObject.y)
     };
+    const wasEmpty: boolean = this.activeTouches.size === 0;
     this.activeTouches.set(touchObject.id, touch);
+    if (wasEmpty) {
+      this.notifyInteraction('began');
+    }
     this.renderer.renderBegan([
       this.trajectoryPoint(touch, timestamp)
     ]);
@@ -362,6 +389,7 @@ export struct TrajectoryOverlayView {
     this.renderer.renderEnded([activeTouch.identifier]);
     if (this.activeTouches.size === 0) {
       this.stopSampling();
+      this.notifyInteraction('ended');
     }
   }
 
@@ -390,7 +418,11 @@ export struct TrajectoryOverlayView {
       return;
     }
 
-    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+    if (event.type === TouchType.Cancel) {
+      this.cancelInteraction();
+      return;
+    }
+    if (event.type === TouchType.Up) {
       for (let index: number = 0; index < event.changedTouches.length; index++) {
         this.endTouch(event.changedTouches[index]);
       }
@@ -413,8 +445,7 @@ export struct TrajectoryOverlayView {
 
     this.viewportWidth = width;
     this.viewportHeight = height;
-    this.activeTouches.clear();
-    this.stopSampling();
+    this.cancelInteraction();
     this.renderer.resize(width, height);
   }
 

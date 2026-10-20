@@ -664,3 +664,37 @@ test('public statistics listeners follow publication, matched SEI, remote remova
   f.rtc.qualityListener.onDownlinkVideoStatistics(downlink); await settle();
   assert.equal(up.at(-1), uplink); assert.equal(down.at(-1), downlink);
 });
+
+test('restart retains the connection and gates interaction on the new task SEI and frame', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  const options = { localStream: local, context: new RealtimeContext(''),
+    extraParams: { static_generate: true, static_image_path: 'https://example.test/cat.jpg' } };
+  const initial = outcome(f.manager.startGeneration(options));
+  await settle();
+  const first = f.messages.filter(m => m.event === 'start').at(-1);
+  assert.equal(first.params.static_generate, true);
+  assert.equal(first.params.padding, 'contain');
+  f.sei(first.uid); await settle(); f.frame();
+  const initialResult = await initial;
+  assert.ok(!initialResult.error);
+  let finished = false;
+  const restart = outcome(f.manager.startGeneration({ ...options, restart: true })).then(result => {
+    finished = true; return result;
+  });
+  await settle();
+  const second = f.messages.filter(m => m.event === 'start').at(-1);
+  assert.notEqual(first.uid, second.uid);
+  assert.equal(f.manager.currentState.sessionId, 'session');
+  f.sei(first.uid); f.frame(); await settle();
+  assert.equal(finished, false);
+  f.sei(second.uid); await settle();
+  assert.equal(finished, false);
+  f.frame();
+  const result = await restart;
+  assert.ok(!result.error);
+  assert.equal(result.value.videoTrack.id, initialResult.value.videoTrack.id);
+  assert.equal(f.media.task, second.uid);
+  assert.equal(second.params.static_image_path, 'https://example.test/cat.jpg');
+});

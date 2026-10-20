@@ -281,3 +281,21 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
     await starting.catch(() => {});
   }
 });
+
+test('static input options reach start and updates without turning the input into a reference', () => {
+  const f = fixture();
+  const params = { static_generate: true, static_image_path: '  https://example.test/input.jpg  ' };
+  const context = new f.Context('', undefined, false, params);
+  params.static_image_path = 'changed';
+  for (const method of ['start', 'changeCondition']) {
+    const message = JSON.parse(f.RoomEvent[method]('user', 'task', f.format, context));
+    assert.equal(message.params.static_generate, true);
+    assert.equal(message.params.static_image_path, 'https://example.test/input.jpg');
+    assert.equal(message.params.prompt, '');
+    assert.equal(Object.hasOwn(message.params, 'ref_image_path'), false);
+  }
+  const normal = JSON.parse(f.RoomEvent.start('user', 'task', f.format, new f.Context('', 'ref.jpg')));
+  assert.equal(Object.hasOwn(normal.params, 'static_generate'), false);
+  assert.equal(Object.hasOwn(normal.params, 'static_image_path'), false);
+  assert.equal(normal.params.ref_image_path, 'ref.jpg');
+});

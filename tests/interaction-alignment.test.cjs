@@ -143,3 +143,22 @@ test('a different track with the same ID still cancels the previous drag', () =>
     assert.equal(f.overlay.tickTimer, -1);
   } finally { f.close(); }
 });
+
+test('interaction lifecycle ignores letterboxing and ends only when the last finger lifts', () => {
+  const f = overlayFixture(), phases = [];
+  f.overlay.onInteractionChanged = phase => phases.push(phase);
+  try {
+    f.overlay.beginTouch({ id: 0, x: 10, y: 10 });
+    assert.deepEqual(phases, []);
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.overlay.beginTouch({ id: 2, x: 200, y: 200 });
+    assert.deepEqual(phases, ['began']);
+    f.overlay.endTouch({ id: 1 });
+    assert.deepEqual(phases, ['began']);
+    f.overlay.endTouch({ id: 2 });
+    assert.deepEqual(phases, ['began', 'ended']);
+    f.overlay.beginTouch({ id: 3, x: 100, y: 150 });
+    f.overlay.updateArea({ width: 420, height: 400 });
+    assert.deepEqual(phases, ['began', 'ended', 'began', 'cancelled']);
+  } finally { f.close(); }
+});

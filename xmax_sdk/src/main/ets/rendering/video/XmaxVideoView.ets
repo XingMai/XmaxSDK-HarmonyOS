@@ -9,6 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { RealtimeInteractionListener } from '../../service/realtime/RealtimeInteraction';
 import { image } from '@kit.ImageKit';
 import { VideoOrientationObserver } from './VideoOrientationObserver';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
@@ -44,6 +45,14 @@ export struct XmaxVideoView {
   /** 是否开启远端视频的轨迹交互。 */
   @Prop
   isInteractionEnabled: boolean = true;
+
+  /** 有效拖拽的整体生命周期通知。 */
+  onInteractionChanged?: RealtimeInteractionListener;
+
+  /** 静态遮罩位于视频之上、轨迹之下；图片由接入方持有并负责释放。 */
+  @Prop stillImage?: image.PixelMap = undefined;
+  /** 是否立即显示静态遮罩，默认 false；保留视频渲染和交互绑定。 */
+  @Prop showsStillImage: boolean = false;
 
   /** 轨迹效果渲染器。 */
   trajectoryRenderer: TrajectoryEffectRendering =
@@ -225,12 +234,21 @@ export struct XmaxVideoView {
           .objectFit(this.previewImageFit())
       }
 
+      if (this.showsStillImage && this.stillImage !== undefined) {
+        Image(this.stillImage)
+          .width('100%')
+          .height('100%')
+          .objectFit(this.contentMode === VideoContentMode.FIT ? ImageFit.Contain : ImageFit.Cover)
+          .hitTestBehavior(HitTestMode.None)
+      }
+
       if (this.supportsInteraction()) {
         TrajectoryOverlayView({
           track: this.track,
           isInteractionEnabled: this.isInteractionEnabled,
           contentMode: this.contentMode,
-          renderer: this.trajectoryRenderer
+          renderer: this.trajectoryRenderer,
+          onInteractionChanged: this.onInteractionChanged
         })
           .width(this.trajectoryOverlayWidth())
           .height(this.trajectoryOverlayHeight())

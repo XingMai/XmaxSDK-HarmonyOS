@@ -852,3 +852,26 @@ outgoing video frame carries UTF-8 SEI in the form
 `task-<id>?os=harmonyos&index=<frame-index>`, with the zero-based frame index reset
 for each generation task. Incoming SEI is matched by the task identity before `?`; query parameters such
 as `os` and `index` do not affect matching. The bare task identity is also accepted.
+
+
+### 静态图生成与任务重启
+
+使用生成选项可从固定图片开始生成，并在同一 RTC 连接内替换生成任务。本地图片流、静态图和界面展示应保持相同比例。
+
+```typescript
+const remote = await manager.startGeneration({
+  localStream,
+  context: new RealtimeContext(''),
+  extraParams: {
+    static_generate: true,
+    static_image_path: uploadedImageUrl
+  }
+});
+
+// 复用本地流、RTC 连接及生成条件，等待新任务的结果确认和首帧就绪。
+await manager.startGeneration({ restart: true });
+```
+
+`extraParams` 需要同时传入 `context`。省略 `context` 可在重启时复用缓存条件；切回常规生成时传入不包含静态图参数的新 `RealtimeContext`，并指定 `restart: true`。
+
+`XmaxVideoView` 与 `XmaxRealtimeVideoView` 支持 `onInteractionChanged`，按有效触点整体通知 `began`、`ended`、`cancelled`；多指交互在末指抬起后才通知结束。`stillImage` 和 `showsStillImage` 可立即覆盖视频，保持轨迹绘制和交互绑定，不改变视频容器尺寸。图片由接入方持有和释放。

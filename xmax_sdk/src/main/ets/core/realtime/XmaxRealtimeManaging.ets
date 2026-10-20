@@ -9,6 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { RealtimeGenerationOptions } from '../../service/realtime/RealtimeGenerationOptions';
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { image } from '@kit.ImageKit';
@@ -258,6 +259,14 @@ export interface XmaxRealtimeManaging {
    * @returns 操作完成后的 Promise。
    */
   startGeneration(context?: RealtimeContext, faceRestoration?: boolean): Promise<void>;
+
+  /**
+   * 启动或更新生成；restart 为 true 时替换生成任务，保留连接及本地流。
+   *
+   * @param options 本地流、生成条件、静态图配置和重启选项。
+   * @returns 当前远端媒体流；重启时等待新任务的结果确认和首帧就绪。
+   */
+  startGeneration(options: RealtimeGenerationOptions): Promise<RealtimeMediaStream>;
 
   /**
    * 使用当前本地流按需连接并开始生成；已经连接时复用连接，生成中更新条件。

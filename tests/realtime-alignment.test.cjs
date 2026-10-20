@@ -2498,3 +2498,37 @@ test('XLab observes SDK statistics, clears on disconnect and detaches stale mana
   assert.equal(vm.state.downlinkStatistics, undefined);
   assert.equal(vm.state.networkQuality, undefined);
 });
+
+test('restart options create a new task while keeping the RTC session and local stream', async () => {
+  const f = managerFixture();
+  const local = await f.create();
+  const remote = await f.manager.startGeneration({ localStream: local, context: new f.Context(''),
+    extraParams: { static_generate: true, static_image_path: 'https://example.test/cat.jpg' } });
+  const first = f.calls.starts[0].task;
+  const result = await f.manager.startGeneration({ restart: true });
+  assert.equal(f.Track.resolve(result.videoTrack), f.Track.resolve(remote.videoTrack));
+  assert.equal(f.calls.sessions.length, 1);
+  assert.equal(f.calls.closed.length, 0);
+  assert.equal(f.media.currentTrack, local.videoTrack);
+  assert.equal(f.calls.starts.length, 2);
+  assert.notEqual(f.calls.starts[1].task, first);
+  assert.equal(f.calls.stops.at(-1), first);
+  assert.equal(f.calls.starts[1].context.extraParams.static_image_path, 'https://example.test/cat.jpg');
+  await f.manager.startGeneration({ context: new f.Context('continuous', 'ref.jpg'), restart: true });
+  assert.equal(f.calls.starts[2].context.extraParams, undefined);
+  assert.equal(f.calls.sessions.length, 1);
+  await f.manager.close();
+});
+
+test('invalid static input cannot stop a valid generation or replace its task', async () => {
+  const f = managerFixture();
+  await f.manager.startGeneration(await f.create(), new f.Context('original'));
+  const task = f.manager.currentState.taskId;
+  const stops = f.calls.stops.length;
+  await assert.rejects(f.manager.startGeneration({ context: new f.Context(''), restart: true,
+    extraParams: { static_generate: true, static_image_path: '   ' } }), { code: f.Code.INVALID_CONFIGURATION });
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.equal(f.calls.stops.length, stops);
+  assert.equal(f.calls.starts.length, 1);
+  await f.manager.close();
+});
