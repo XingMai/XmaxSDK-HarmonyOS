@@ -672,6 +672,10 @@ export class RtcManager implements RtcManaging {
       this.requireRoom().subscribeStreamVideo(userId, subscribe),
       'subscribeStreamVideo'
     );
+    if (!subscribe) {
+      // 重新订阅将产生新的首帧渲染事件，上一轮记录不能让新任务提前显示旧画面。
+      this.renderedRemoteStreams.delete(new RemoteStream(this.activeRoomId, userId).key());
+    }
   }
 
   /**

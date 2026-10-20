@@ -36,6 +36,7 @@ export interface RealtimeGenerationOptions {
   readonly faceRestoration?: boolean;
 
   /** 静态图片输入 */
-  /** 本次静态图配置；需同时提供 context，随其缓存，传入普通 context 可清除。 */
+  /** 本次静态图配置的唯一公开入口；需同时提供 context，由 SDK 独立缓存。
+   * 省略 context 时复用缓存；显式提供 context 但省略 extraParams 时清除静态图配置。 */
   readonly extraParams?: RealtimeGenerationParameters;
 }

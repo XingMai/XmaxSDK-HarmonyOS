@@ -9,6 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { RealtimeGenerationParameters } from '../../service/realtime/RealtimeGenerationOptions';
 import { EncodingBitratePolicy, VideoBitrateBudget } from '../encoding/EncodingBitratePolicy';
 import { ImageSize } from '../../service/media/ImageSize';
 import { RuntimeInfo, RuntimeInfoPayload } from '../../foundation/runtime/RuntimeInfo';
@@ -55,6 +56,7 @@ class GenerationParameters {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 新建的 GenerationParameters 实例。
    */
   constructor(
@@ -62,15 +64,16 @@ class GenerationParameters {
     context: RealtimeContext,
     faceRestoration: boolean,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ) {
     this.size = [videoFormat.width, videoFormat.height];
     this.prompt = context.prompt;
     if (context.referencePath !== undefined) {
       this.ref_image_path = context.referencePath;
     }
-    this.static_generate = context.extraParams?.static_generate;
-    this.static_image_path = context.extraParams?.static_image_path;
+    this.static_generate = extraParams?.static_generate;
+    this.static_image_path = extraParams?.static_image_path;
     this.detection = context.faceDetection ?? false;
     this.face_replace = faceRestoration;
     this.target_size = targetSize === undefined ? undefined : [targetSize.width, targetSize.height];
@@ -156,6 +159,7 @@ class StartRoomEvent extends RuntimeRoomEvent {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 新建的 StartRoomEvent 实例。
    */
   constructor(
@@ -165,10 +169,11 @@ class StartRoomEvent extends RuntimeRoomEvent {
     context: RealtimeContext,
     faceRestoration: boolean,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -197,6 +202,7 @@ class ChangeConditionRoomEvent extends RuntimeRoomEvent {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 新建的 ChangeConditionRoomEvent 实例。
    */
   constructor(
@@ -206,10 +212,11 @@ class ChangeConditionRoomEvent extends RuntimeRoomEvent {
     context: RealtimeContext,
     faceRestoration: boolean,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain);
+    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams);
     this.user_id = userId;
     this.uid = taskId;
   }
@@ -316,6 +323,7 @@ export class RoomEvent {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 包含任务、运行环境和生成参数的 JSON 文本。
    */
   static start(
@@ -325,9 +333,10 @@ export class RoomEvent {
     context: RealtimeContext,
     faceRestoration: boolean = false,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ): string {
-    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration, targetSize, paddingContain));
+    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams));
   }
 
   /**
@@ -340,6 +349,7 @@ export class RoomEvent {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 包含运行环境和生成条件的 JSON 文本。
    */
   static changeCondition(
@@ -349,7 +359,8 @@ export class RoomEvent {
     context: RealtimeContext,
     faceRestoration: boolean = false,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ): string {
     return JSON.stringify(new ChangeConditionRoomEvent(
       userId,
@@ -358,7 +369,8 @@ export class RoomEvent {
       context,
       faceRestoration,
       targetSize,
-      paddingContain
+      paddingContain,
+      extraParams
     ));
   }
 

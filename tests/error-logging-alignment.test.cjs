@@ -327,6 +327,7 @@ test('remote surface bind failure reaches the runtime failure listener without e
   const render = new RenderController({
     setRemoteVideoFrameListener() {}, observeRemoteVideoFrames() {},
     setRemoteVideoRenderedListener() {}, renderLibraryName() { return 'rtc'; },
+    hasRenderedRemoteVideo() { return false; },
     bindRemoteVideo() { throw new f.XmaxError(f.Code.RTC_ERROR, 'bind failed'); },
     unbindRemoteVideo() {}
   }, error => received.push(error));
@@ -335,6 +336,7 @@ test('remote surface bind failure reaches the runtime failure listener without e
   render.setRemoteStream(new RemoteStream('room', 'bot'));
   assert.doesNotThrow(() => VideoRenderRegistry.attach(track, 'surface', 0, () => {}, () => {}));
   assert.equal(received.length, 1);
+  assert.equal(received[0].message, 'bind failed');
 
   render.resetRemoteTrack(track);
 });

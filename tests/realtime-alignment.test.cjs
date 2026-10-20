@@ -86,16 +86,16 @@ function managerFixture(modelName = 'x2.0-sla') {
     async connect(_connection, _audio, ensure) { ensure(); }
     async disconnect() { this.stopGeneration(''); this.quality.resetQuality(); }
     activateRemoteAudio() {}
-    beginGeneration(task, format, context, faceRestoration) {
+    beginGeneration(task, format, context, faceRestoration, _targetSize, _padding, extraParams) {
       this.currentGenerationTaskId = task;
       const gate = deferred();
       this.confirmation = gate;
-      calls.starts.push({ task, format, context, faceRestoration, gate });
+      calls.starts.push({ task, format, context, faceRestoration, extraParams, gate });
       if (autoConfirm) gate.resolve();
       return gate.promise;
     }
-    updateGeneration(task, format, context, faceRestoration) {
-      calls.updates.push({ task, format, context, faceRestoration });
+    updateGeneration(task, format, context, faceRestoration, _targetSize, _padding, extraParams) {
+      calls.updates.push({ task, format, context, faceRestoration, extraParams });
     }
     stopGeneration(task) {
       this.quality.setAdaptiveQualityListener(null);
@@ -670,8 +670,8 @@ test('video view rebinds a changed track, clears frames, and ignores late surfac
   f.Registry.unregister(a);
 });
 
-test('remote rendering waits for first frame, hides on stop, and replays readiness for a reused RTC stream', () => {
-  const f = renderFixture(), readiness = [], rendered = new Set(), bound = [];
+test('a new generation on a reused RTC stream waits for a fresh render, while remounting the same generation replays readiness', () => {
+  const f = renderFixture(), readiness = [], rendered = new Set(), bound = [], subscriptions = [];
   const { RemoteVideoController } = f.load('rendering/video/RemoteVideoController.ets');
   const { RemoteStream } = f.load('foundation/rtc/RemoteStream.ets');
   let listener;
@@ -679,7 +679,11 @@ test('remote rendering waits for first frame, hides on stop, and replays readine
     setRemoteVideoRenderedListener(value) { listener = value; },
     hasRenderedRemoteVideo(stream) { return rendered.has(stream.key()); },
     bindRemoteVideo(stream, view) { bound.push([stream.key(), view]); },
-    unbindRemoteVideo() {}
+    unbindRemoteVideo() {},
+    subscribeRemoteVideo(userId, enabled) {
+      subscriptions.push([userId, enabled]);
+      if (!enabled) rendered.clear();
+    }
   };
   const controller = new RemoteVideoController(rtc, ready => readiness.push(ready));
   const stream = new RemoteStream('room', 'bot');
@@ -694,12 +698,22 @@ test('remote rendering waits for first frame, hides on stop, and replays readine
   listener(stream);
   assert.equal(readiness.at(-1), false);
   controller.setRemoteStream(new RemoteStream('room', 'bot'));
+  assert.deepEqual(subscriptions, [['bot', false], ['bot', true]]);
+  assert.equal(readiness.at(-1), false, 'old publication readiness must not reveal its cached frame');
+  controller.attach('replacement-view', 0);
+  assert.equal(readiness.at(-1), false, 'mounting a view cannot bypass the fresh render wait');
+  rendered.add(stream.key()); listener(stream);
   assert.equal(readiness.at(-1), true);
   controller.detach('old-view');
   assert.equal(readiness.at(-1), true);
-  controller.detach('view');
+  controller.detach('replacement-view');
   assert.equal(readiness.at(-1), false);
+  controller.attach('view', 0);
+  assert.equal(readiness.at(-1), true);
+  assert.equal(subscriptions.length, 2, 'same-generation remount must not restart the subscription');
   controller.reset();
+  listener(stream);
+  assert.equal(readiness.at(-1), false);
 });
 
 test('a disconnect from the GENERATING listener prevents returning a stale successful start', async () => {
@@ -950,7 +964,7 @@ test('camera setup preserves errors originating in RTC', async () => {
   assert.equal(f.calls.some(call => call[0] === 'camera-open'), false);
 });
 
-test('RTC first-frame cache ignores other rooms/engines and resets on unpublish and leaving', async () => {
+test('RTC first-frame cache ignores other rooms/engines and resets on unsubscribe, unpublish and leaving', async () => {
   const handlers = new Map(), roomHandlers = new Map();
   const engine = { on(name, fn) { handlers.set(name, fn); }, off(name) { handlers.delete(name); } };
   const load = loadEts({ ...platform,
@@ -971,8 +985,14 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unpublish 
   const key = { room_id: 'room', user_id: 'bot', stream_index: 0 };
   firstFrame(key, {});
   assert.equal(rtc.hasRenderedRemoteVideo(stream), true);
-  const room = { on(name, fn) { roomHandlers.set(name, fn); } };
+  const room = { on(name, fn) { roomHandlers.set(name, fn); }, subscribeStreamVideo() { return 0; } };
   rtc.room = room; rtc.bindRoomEvents(room);
+  rtc.subscribeRemoteVideo('bot', false);
+  assert.equal(rtc.hasRenderedRemoteVideo(stream), false);
+  rtc.subscribeRemoteVideo('bot', true);
+  assert.equal(rtc.hasRenderedRemoteVideo(stream), false);
+  firstFrame(key, {});
+  assert.equal(rtc.hasRenderedRemoteVideo(stream), true);
   roomHandlers.get('onUserPublishStreamVideo')('room', 'bot', false);
   assert.equal(rtc.hasRenderedRemoteVideo(stream), false);
   firstFrame(key, {});
@@ -2502,8 +2522,14 @@ test('XLab observes SDK statistics, clears on disconnect and detaches stale mana
 test('restart options create a new task while keeping the RTC session and local stream', async () => {
   const f = managerFixture();
   const local = await f.create();
-  const remote = await f.manager.startGeneration({ localStream: local, context: new f.Context(''),
-    extraParams: { static_generate: true, static_image_path: 'https://example.test/cat.jpg' } });
+  const context = new f.Context('', 'ref.jpg');
+  const extraParams = { static_generate: true, static_image_path: '  https://example.test/cat.jpg  ' };
+  const starting = f.manager.startGeneration({ localStream: local, context, extraParams });
+  extraParams.static_image_path = 'changed-after-call';
+  const remote = await starting;
+  assert.equal(Object.hasOwn(context, 'extraParams'), false);
+  assert.equal(context.referencePath, 'ref.jpg');
+  assert.equal(f.calls.starts[0].extraParams.static_image_path, 'https://example.test/cat.jpg');
   const first = f.calls.starts[0].task;
   const result = await f.manager.startGeneration({ restart: true });
   assert.equal(f.Track.resolve(result.videoTrack), f.Track.resolve(remote.videoTrack));
@@ -2513,10 +2539,29 @@ test('restart options create a new task while keeping the RTC session and local 
   assert.equal(f.calls.starts.length, 2);
   assert.notEqual(f.calls.starts[1].task, first);
   assert.equal(f.calls.stops.at(-1), first);
-  assert.equal(f.calls.starts[1].context.extraParams.static_image_path, 'https://example.test/cat.jpg');
+  assert.equal(f.calls.starts[1].extraParams.static_image_path, 'https://example.test/cat.jpg');
+  assert.equal(f.calls.starts[1].context.referencePath, 'ref.jpg');
   await f.manager.startGeneration({ context: new f.Context('continuous', 'ref.jpg'), restart: true });
-  assert.equal(f.calls.starts[2].context.extraParams, undefined);
+  assert.equal(f.calls.starts[2].extraParams, undefined);
   assert.equal(f.calls.sessions.length, 1);
+  await f.manager.close();
+});
+
+test('updated static options are cached independently of context and cleared by an explicit normal context', async () => {
+  const f = managerFixture(), local = await f.create();
+  await f.manager.startGeneration({ localStream: local, context: new f.Context('first', 'ref.jpg'),
+    extraParams: { static_generate: true, static_image_path: 'first.jpg' } });
+  await f.manager.startGeneration({ context: new f.Context('updated', 'next-ref.jpg'),
+    extraParams: { static_generate: true, static_image_path: 'next.jpg' } });
+  assert.equal(f.calls.updates.at(-1).extraParams.static_image_path, 'next.jpg');
+  await f.manager.startGeneration({ restart: true });
+  assert.equal(f.calls.starts.at(-1).extraParams.static_image_path, 'next.jpg');
+  assert.equal(f.calls.starts.at(-1).context.referencePath, 'next-ref.jpg');
+  assert.equal(Object.hasOwn(f.calls.starts.at(-1).context, 'extraParams'), false);
+  await f.manager.startGeneration({ context: new f.Context('normal', 'ref.jpg') });
+  assert.equal(f.calls.updates.at(-1).extraParams, undefined);
+  await f.manager.startGeneration({ restart: true });
+  assert.equal(f.calls.starts.at(-1).extraParams, undefined);
   await f.manager.close();
 });
 

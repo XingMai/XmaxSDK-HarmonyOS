@@ -9,7 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeGenerationOptions } from '../../service/realtime/RealtimeGenerationOptions';
+import { RealtimeGenerationOptions, RealtimeGenerationParameters } from '../../service/realtime/RealtimeGenerationOptions';
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { ImageSize } from '../../service/media/ImageSize';
 import { QualityConfiguration, QualityChange } from '../../stream/quality/QualityConfiguration';
@@ -956,20 +956,22 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     contextOrFaceRestoration?: RealtimeContext | boolean, faceRestoration: boolean = false): Promise<void | RealtimeMediaStream> {
     const options: RealtimeGenerationOptions | undefined = input !== undefined &&
       !(input instanceof RealtimeContext) && !(input instanceof RealtimeMediaStream) ? input : undefined;
-    let resolvedInput: RealtimeContext | RealtimeMediaStream | undefined = options === undefined ?
+    const resolvedInput: RealtimeContext | RealtimeMediaStream | undefined = options === undefined ?
       input as RealtimeContext | RealtimeMediaStream | undefined : options.localStream ?? options.context;
-    let context: RealtimeContext | undefined = options === undefined ?
+    const context: RealtimeContext | undefined = options === undefined ?
       (typeof contextOrFaceRestoration === 'boolean' ? undefined : contextOrFaceRestoration) : options.context;
+    let extraParams: RealtimeGenerationParameters | undefined = undefined;
     if (options?.extraParams !== undefined) {
       if (options.context === undefined) {
         return Promise.reject(new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
           'A context is required when specifying extraParams'));
       }
-      const condition: RealtimeContext = options.context;
-      context = new RealtimeContext(condition.prompt, condition.referencePath, condition.faceDetection, options.extraParams);
-      if (!(resolvedInput instanceof RealtimeMediaStream)) {
-        resolvedInput = context;
-      }
+      // 请求入队前复制参数，外部后续修改不能改变正在启动或已缓存的配置。
+      const path: string | undefined = options.extraParams.static_image_path?.trim();
+      extraParams = {
+        static_generate: options.extraParams.static_generate,
+        static_image_path: path === '' ? undefined : path
+      };
     }
     const restart: boolean = options?.restart ?? false;
     const resolvedFaceRestoration: boolean = options !== undefined ? options.faceRestoration ?? false : resolvedInput instanceof RealtimeMediaStream ? faceRestoration :
@@ -989,9 +991,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
         try {
           if (resolvedInput instanceof RealtimeMediaStream) {
-            return await this.startGenerationWithStream(resolvedInput, context, token, resolvedFaceRestoration, restart);
+            return await this.startGenerationWithStream(resolvedInput, context, token, resolvedFaceRestoration, restart, extraParams);
           }
-          await this.performStartGeneration(resolvedInput, token, resolvedFaceRestoration, restart);
+          await this.performStartGeneration(resolvedInput, token, resolvedFaceRestoration, restart, extraParams);
           if (options !== undefined) {
             const remote: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
             if (remote === null) {
@@ -1024,7 +1026,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 可供 SDK 视频视图展示的生成结果媒体流。
    */
   private async startGenerationWithStream(localStream: RealtimeMediaStream, context: RealtimeContext | undefined,
-    token: RealtimeOperationToken, faceRestoration: boolean, restart: boolean = false): Promise<RealtimeMediaStream> {
+    token: RealtimeOperationToken, faceRestoration: boolean, restart: boolean = false,
+    extraParams?: RealtimeGenerationParameters): Promise<RealtimeMediaStream> {
     if (!this.mediaController.owns(localStream)) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'The local stream must be created and started by this realtime manager');
@@ -1046,7 +1049,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.setFailureScope(null);
     }
     token.ensureCurrent();
-    await this.performStartGeneration(context, token, faceRestoration, restart);
+    await this.performStartGeneration(context, token, faceRestoration, restart, extraParams);
     return remoteStream;
   }
 
@@ -1060,7 +1063,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * @returns 操作完成时兑现的 Promise。
    */
   private async performStartGeneration(context: RealtimeContext | undefined,
-    token: RealtimeOperationToken, faceRestoration?: boolean, restart: boolean = false): Promise<void> {
+    token: RealtimeOperationToken, faceRestoration?: boolean, restart: boolean = false,
+    extraParams?: RealtimeGenerationParameters): Promise<void> {
     token.ensureCurrent();
     const sessionId: string = this.connectionManager.currentSessionId;
     const videoFormat: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
@@ -1071,7 +1075,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       throw new XmaxError(XmaxErrorCode.RTC_ERROR,
         'Realtime connection is not open');
     }
-    this.generationManager.validateContext(context);
+    this.generationManager.validateContext(context, extraParams);
     if (restart && current.connectionState === RealtimeConnectionState.GENERATING) {
       token.setFailureScope(RealtimeTerminationScope.CONNECTION);
       this.renderController.stopRemoteVideoFrameDelivery();
@@ -1081,11 +1085,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       current = this.currentState;
     }
     if (current.connectionState === RealtimeConnectionState.GENERATING && current.taskId !== undefined) {
-      this.generationManager.update(current.taskId, videoFormat, context, faceRestoration);
+      this.generationManager.update(current.taskId, videoFormat, context, faceRestoration, extraParams);
       token.ensureCurrent();
       return;
     }
-    this.generationManager.validateContext(context);
+    this.generationManager.validateContext(context, extraParams);
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     const previousQuality: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
     const quality: QualityConfiguration | undefined = previousQuality === undefined ? undefined :
@@ -1102,7 +1106,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       const taskId: string = await this.generationManager.start(videoFormat, context,
         (): void => token.ensureCurrent(),
         (confirmation: Promise<void>): Promise<void> => token.wait(confirmation), faceRestoration,
-        this.connectionManager.currentTargetSize);
+        this.connectionManager.currentTargetSize, extraParams);
       token.ensureCurrent();
       const waitsForFrame: boolean = !this.generationManager.usesStaticInput;
       if (waitsForFrame) {

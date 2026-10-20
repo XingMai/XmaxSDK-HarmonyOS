@@ -9,7 +9,6 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { image } from '@kit.ImageKit';
 import { RealtimeInteractionListener } from '../../service/realtime/RealtimeInteraction';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
@@ -31,10 +30,8 @@ export struct XmaxRealtimeVideoView {
 
   /** 有效远端拖拽的生命周期通知。 */
   onInteractionChanged?: RealtimeInteractionListener;
-  /** 远端静态遮罩图片，由接入方负责持有和释放。 */
-  @Prop stillImage?: image.PixelMap = undefined;
-  /** 是否显示位于视频与轨迹之间的静态遮罩，默认 false。 */
-  @Prop showsStillImage: boolean = false;
+  /** 是否显示远端视频画面；隐藏时保留轨迹绘制和交互绑定。 */
+  @Prop isVideoVisible: boolean = true;
 
   /** 初始化时设置自定义轨迹效果渲染器。 */
   trajectoryRenderer: TrajectoryEffectRendering = new DefaultTrajectoryEffectRenderer();
@@ -105,8 +102,7 @@ export struct XmaxRealtimeVideoView {
           isInteractionEnabled: this.isInteractionEnabled && this.remoteReady,
           trajectoryRenderer: this.trajectoryRenderer,
           onInteractionChanged: this.onInteractionChanged,
-          stillImage: this.stillImage,
-          showsStillImage: this.showsStillImage,
+          isVideoVisible: this.isVideoVisible,
           onVideoReadyChanged: (ready: boolean): void => {
             this.onRemoteVideoReady(key, ready);
           }

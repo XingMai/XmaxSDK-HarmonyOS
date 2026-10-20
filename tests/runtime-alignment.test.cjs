@@ -282,17 +282,18 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
   }
 });
 
-test('static input options reach start and updates without turning the input into a reference', () => {
+test('internal static options reach start and updates separately from the public reference context', () => {
   const f = fixture();
-  const params = { static_generate: true, static_image_path: '  https://example.test/input.jpg  ' };
-  const context = new f.Context('', undefined, false, params);
-  params.static_image_path = 'changed';
+  const params = { static_generate: true, static_image_path: 'https://example.test/input.jpg' };
+  const context = new f.Context('', 'https://example.test/ref.jpg', false);
+  assert.equal(Object.hasOwn(context, 'extraParams'), false);
+  assert.equal(f.Context.length, 3);
   for (const method of ['start', 'changeCondition']) {
-    const message = JSON.parse(f.RoomEvent[method]('user', 'task', f.format, context));
+    const message = JSON.parse(f.RoomEvent[method]('user', 'task', f.format, context, false, undefined, false, params));
     assert.equal(message.params.static_generate, true);
     assert.equal(message.params.static_image_path, 'https://example.test/input.jpg');
     assert.equal(message.params.prompt, '');
-    assert.equal(Object.hasOwn(message.params, 'ref_image_path'), false);
+    assert.equal(message.params.ref_image_path, 'https://example.test/ref.jpg');
   }
   const normal = JSON.parse(f.RoomEvent.start('user', 'task', f.format, new f.Context('', 'ref.jpg')));
   assert.equal(Object.hasOwn(normal.params, 'static_generate'), false);

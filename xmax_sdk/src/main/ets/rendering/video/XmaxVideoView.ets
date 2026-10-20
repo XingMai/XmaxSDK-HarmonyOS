@@ -49,10 +49,8 @@ export struct XmaxVideoView {
   /** 有效拖拽的整体生命周期通知。 */
   onInteractionChanged?: RealtimeInteractionListener;
 
-  /** 始终保留的视频底图；等待视频就绪时显示，图片由接入方持有并负责释放。 */
-  @Prop stillImage?: image.PixelMap = undefined;
-  /** 是否立即显示底图并隐藏视频，默认 false；保留视频渲染和交互绑定。 */
-  @Prop showsStillImage: boolean = false;
+  /** 是否显示视频画面；隐藏时保留视频渲染、轨迹绘制和交互绑定。 */
+  @Prop isVideoVisible: boolean = true;
 
   /** 轨迹效果渲染器。 */
   trajectoryRenderer: TrajectoryEffectRendering =
@@ -76,7 +74,6 @@ export struct XmaxVideoView {
   @State private cameraPreviewRatio: CameraPreviewRatio = CameraPreviewRatio.FILL;
   @State private previewFrame: image.PixelMap | undefined = undefined;
   @State private videoFormat: RealtimeVideoFormat | undefined = undefined;
-  @State private videoReady: boolean = false;
 
   /**
    * 建立当前轨道句柄并同步预览比例与方向监听。
@@ -172,7 +169,6 @@ export struct XmaxVideoView {
       },
       (ready: boolean): void => {
         if (this.attachedViewId === viewId) {
-          this.videoReady = ready;
           this.onVideoReadyChanged?.(ready);
         }
       },
@@ -193,7 +189,6 @@ export struct XmaxVideoView {
     const viewId: string = this.attachedViewId;
     this.attachedTrack = undefined;
     this.attachedViewId = '';
-    this.videoReady = false;
     if (track !== undefined) {
       VideoRenderRegistry.detach(track, viewId);
     }
@@ -207,14 +202,6 @@ export struct XmaxVideoView {
    */
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      if (this.stillImage !== undefined) {
-        Image(this.stillImage)
-          .width('100%')
-          .height('100%')
-          .objectFit(this.contentMode === VideoContentMode.FIT ? ImageFit.Contain : ImageFit.Cover)
-          .hitTestBehavior(HitTestMode.None)
-      }
-
       ForEach(this.track === undefined ? [] : [this.viewId], (viewId: string) => {
         XComponent({
           id: viewId,
@@ -222,7 +209,7 @@ export struct XmaxVideoView {
           libraryname: this.renderLibraryName()
         })
           .backgroundColor(Color.Transparent)
-          .opacity(this.stillImage !== undefined && (!this.videoReady || this.showsStillImage) ? 0 : 1)
+          .opacity(this.isVideoVisible ? 1 : 0)
           .animation({ duration: 0 })
           .width(this.previewWidth())
           .height(this.previewHeight())
@@ -241,7 +228,7 @@ export struct XmaxVideoView {
           })
       }, (viewId: string): string => viewId)
 
-      if (this.previewFrame !== undefined && !(this.showsStillImage && this.stillImage !== undefined)) {
+      if (this.previewFrame !== undefined && this.isVideoVisible) {
         Image(this.previewFrame)
           .width(this.previewWidth())
           .height(this.previewHeight())

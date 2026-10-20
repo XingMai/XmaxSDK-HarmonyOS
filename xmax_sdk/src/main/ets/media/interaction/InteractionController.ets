@@ -18,9 +18,6 @@ import { InteractionCoordinateMapper } from './InteractionCoordinateMapper';
 import { InteractionFrame } from './InteractionFrame';
 import { InteractionPoint } from './InteractionPoint';
 
-const MAX_PENDING_FRAMES: number = 64;
-const REPLAY_INTERVAL_MS: number = 30;
-
 /**
  * 向当前生成任务发送归一化交互点的回调。
  *
@@ -65,10 +62,6 @@ export class InteractionController implements InteractionControlling {
   /** 活动交互任务 */
   private activeInteraction: ActiveInteraction | null = null;
 
-  /** 任务确认前的有限轨迹缓存与顺序回放 */
-  private readonly pendingFrames: InteractionFrame[] = [];
-  private replayTimer: number = -1;
-
   /**
    * 创建交互采集 Controller。
    *
@@ -92,9 +85,6 @@ export class InteractionController implements InteractionControlling {
     videoFormat: RealtimeVideoFormat
   ): void {
     this.activeInteraction = new ActiveInteraction(taskId, videoFormat);
-    if (this.replayTimer < 0) {
-      this.replayPending();
-    }
   }
 
   /**
@@ -104,50 +94,19 @@ export class InteractionController implements InteractionControlling {
    */
   stop(): void {
     this.activeInteraction = null;
-    this.pendingFrames.length = 0;
-    if (this.replayTimer >= 0) {
-      clearTimeout(this.replayTimer);
-      this.replayTimer = -1;
-    }
   }
 
   /**
-   * 提交交互轨迹；任务确认前暂存最近 64 帧，确认后按采样间隔顺序发送。
+   * 提交交互轨迹；无已确认任务时直接丢弃，不影响视图本地绘制。
    *
    * @param frame 当前容器中的交互点和显示信息。
    * @returns 无返回值。
    */
   submit(frame: InteractionFrame): void {
-    if (frame.points.length === 0) {
-      return;
-    }
-    if (this.activeInteraction === null || this.replayTimer >= 0) {
-      this.pendingFrames.push(new InteractionFrame(frame.points.map((point: InteractionPoint): InteractionPoint =>
-        new InteractionPoint(point.x, point.y)), frame.viewportWidth, frame.viewportHeight, frame.contentMode));
-      if (this.pendingFrames.length > MAX_PENDING_FRAMES) {
-        this.pendingFrames.shift();
-      }
+    if (frame.points.length === 0 || this.activeInteraction === null) {
       return;
     }
     this.send(frame);
-  }
-
-  /**
-   * 按采样间隔发送已缓存的触点，停止任务时取消剩余回放。
-   *
-   * @returns 无返回值。
-   */
-  private replayPending(): void {
-    this.replayTimer = -1;
-    if (this.activeInteraction === null) {
-      return;
-    }
-    const frame: InteractionFrame | undefined = this.pendingFrames.shift();
-    if (frame === undefined) {
-      return;
-    }
-    this.send(frame);
-    this.replayTimer = setTimeout((): void => this.replayPending(), REPLAY_INTERVAL_MS);
   }
 
   /**

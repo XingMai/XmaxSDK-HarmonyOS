@@ -61,7 +61,7 @@ function overlayFixture(mode) {
   };
   overlay.aboutToAppear();
   overlay.updateArea({ width: 400, height: 400 });
-  return { ...f, overlay, track, binding, sent, began, moved, close() {
+  return { ...f, overlay, track, binding, interaction, sent, began, moved, close() {
     overlay.aboutToDisappear();
     TrajectoryRegistry.unregister(track);
   } };
@@ -164,7 +164,7 @@ test('interaction lifecycle ignores letterboxing and ends only when the last fin
 });
 
 
-function bufferingFixture() {
+function interactionFixture() {
   const timers = new Map(), sent = [];
   let next = 0;
   const load = loadEts({ XmaxLogger: { XmaxLogger: { error() {} } } }, {
@@ -178,34 +178,56 @@ function bufferingFixture() {
   return { controller, timers, sent, format: new RealtimeVideoFormat(200, 200, 30),
     frame(x) { return { points: [{ x, y: 100 }], viewportWidth: 200,
       viewportHeight: 200, contentMode: VideoContentMode.FIT }; },
-    tick() { const [id, timer] = timers.entries().next().value;
-      assert.equal(timer.ms, 30); timers.delete(id); timer.fn(); }
   };
 }
 
-test('preconfirmation tracks replay in order alongside newly arriving samples', () => {
-  const f = bufferingFixture();
+test('preconfirmation tracks are discarded and only live samples are sent after readiness', () => {
+  const f = interactionFixture();
   const frame = f.frame(20);
   f.controller.submit(frame); frame.points[0].x = 199;
   f.controller.submit(f.frame(40));
   assert.equal(f.sent.length, 0);
   f.controller.start('new-task', f.format);
+  assert.equal(f.sent.length, 0);
   f.controller.submit(f.frame(60));
-  f.tick(); f.tick(); f.tick();
-  assert.deepEqual(f.sent.map(event => event.points[0].x), [0.1, 0.2, 0.3]);
+  assert.deepEqual(f.sent.map(event => event.points[0].x), [0.3]);
   assert.ok(f.sent.every(event => event.task === 'new-task'));
   assert.equal(f.timers.size, 0);
   f.controller.stop();
 });
 
-test('buffer limits pending work and stop discards old samples and replay timers', () => {
-  const f = bufferingFixture();
-  for (let i = 0; i < 100; i++) f.controller.submit(f.frame(i));
+test('samples between tasks are not replayed into the replacement task', () => {
+  const f = interactionFixture();
   f.controller.start('one', f.format);
-  assert.equal(f.sent[0].points[0].x, 36 / 200);
+  f.controller.submit(f.frame(20));
   f.controller.stop();
+  for (let i = 0; i < 100; i++) f.controller.submit(f.frame(i));
   assert.equal(f.timers.size, 0);
   f.controller.start('two', f.format);
   assert.equal(f.sent.length, 1);
+  f.controller.submit(f.frame(60));
+  assert.deepEqual(f.sent.map(event => [event.task, event.points[0].x]), [['one', 0.1], ['two', 0.3]]);
   f.controller.stop();
+});
+
+test('a held drag keeps drawing through task replacement without replaying discarded samples', () => {
+  const f = overlayFixture();
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.interaction.stop();
+    f.overlay.moveTouch({ id: 1, x: 200, y: 200 });
+    f.overlay.submitInteraction();
+    assert.equal(f.moved.length, 1);
+    assert.equal(f.sent.length, 1);
+    assert.equal(f.overlay.activeTouches.size, 1);
+    f.interaction.start('replacement', new f.Format(200, 100, 30));
+    assert.equal(f.sent.length, 1);
+    f.overlay.moveTouch({ id: 1, x: 300, y: 250 });
+    f.overlay.submitInteraction();
+    assert.equal(f.began.length, 1);
+    assert.equal(f.moved.length, 2);
+    assert.equal(f.sent.length, 2);
+    assert.equal(f.sent[1].task, 'replacement');
+    assert.deepEqual(f.sent[1].points.map(point => ({ ...point })), [{ x: 0.75, y: 0.75 }]);
+  } finally { f.close(); }
 });

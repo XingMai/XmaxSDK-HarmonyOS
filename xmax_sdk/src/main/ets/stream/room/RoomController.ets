@@ -9,6 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { RealtimeGenerationParameters } from '../../service/realtime/RealtimeGenerationOptions';
 import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
 import {
@@ -109,6 +110,7 @@ export class RoomController implements RoomControlling {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 无返回值。
    */
   startGeneration(
@@ -117,7 +119,8 @@ export class RoomController implements RoomControlling {
     context: RealtimeContext,
     faceRestoration: boolean = false,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ): void {
     this.send(RoomEvent.start(
       this.requireUserId(),
@@ -126,7 +129,8 @@ export class RoomController implements RoomControlling {
       context,
       faceRestoration,
       targetSize,
-      paddingContain
+      paddingContain,
+      extraParams
     ));
   }
 
@@ -139,6 +143,7 @@ export class RoomController implements RoomControlling {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 无返回值。
    */
   changeGenerationCondition(
@@ -147,7 +152,8 @@ export class RoomController implements RoomControlling {
     context: RealtimeContext,
     faceRestoration: boolean = false,
     targetSize?: ImageSize,
-    paddingContain: boolean = false
+    paddingContain: boolean = false,
+    extraParams?: RealtimeGenerationParameters
   ): void {
     this.send(RoomEvent.changeCondition(
       this.requireUserId(),
@@ -156,7 +162,8 @@ export class RoomController implements RoomControlling {
       context,
       faceRestoration,
       targetSize,
-      paddingContain
+      paddingContain,
+      extraParams
     ));
   }
 

@@ -33,6 +33,8 @@ export class RemoteVideoController implements RemoteVideoControlling {
   private remoteStream: RemoteStream | null = null;
   private remoteViewId: string = '';
   private remoteContentMode: VideoContentMode = VideoContentMode.FIT;
+  /** 仅缓存当前生成流绑定周期内的真实渲染事件，不复用 RTC 发布周期的历史记录。 */
+  private currentGenerationRendered: boolean = false;
 
   /**
    * 创建远端视频渲染 Controller。
@@ -46,6 +48,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
     this.readinessListener = readinessListener;
     rtcManager.setRemoteVideoRenderedListener((stream: RemoteStream): void => {
       if (this.remoteViewId.length > 0 && this.remoteStream?.key() === stream.key()) {
+        this.currentGenerationRendered = true;
         this.readinessListener(true);
       }
     });
@@ -63,18 +66,35 @@ export class RemoteVideoController implements RemoteVideoControlling {
       this.rtcManager.unbindRemoteVideo(previousStream);
     }
 
+    this.currentGenerationRendered = false;
     this.readinessListener(false);
     this.remoteStream = stream;
     if (stream === null || this.remoteViewId.length === 0) {
       return;
     }
 
-    this.rtcManager.bindRemoteVideo(
-      stream,
-      this.remoteViewId,
-      this.remoteContentMode
-    );
-    this.readinessListener(this.rtcManager.hasRenderedRemoteVideo(stream));
+    this.bindCurrentVideo();
+  }
+
+  /**
+   * 新任务复用已渲染的 RTC 流时重建视频订阅，让 RTC 再次报告真实首帧渲染。
+   * 仅重新绑定画布不会保证触发首帧事件；连接和本地流保持不变。
+   */
+  private bindCurrentVideo(): void {
+    const stream: RemoteStream | null = this.remoteStream;
+    if (stream === null || this.remoteViewId.length === 0) {
+      return;
+    }
+    const renewSubscription: boolean = !this.currentGenerationRendered &&
+      this.rtcManager.hasRenderedRemoteVideo(stream);
+    if (renewSubscription) {
+      this.rtcManager.subscribeRemoteVideo(stream.userId, false);
+    }
+    this.rtcManager.bindRemoteVideo(stream, this.remoteViewId, this.remoteContentMode);
+    if (renewSubscription) {
+      this.rtcManager.subscribeRemoteVideo(stream.userId, true);
+    }
+    this.readinessListener(this.currentGenerationRendered);
   }
 
   /**
@@ -93,8 +113,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
 
     const stream: RemoteStream | null = this.remoteStream;
     if (stream !== null) {
-      this.rtcManager.bindRemoteVideo(stream, viewId, contentMode);
-      this.readinessListener(this.rtcManager.hasRenderedRemoteVideo(stream));
+      this.bindCurrentVideo();
     }
   }
 
@@ -127,6 +146,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
     const stream: RemoteStream | null = this.remoteStream;
     this.remoteStream = null;
     this.remoteViewId = '';
+    this.currentGenerationRendered = false;
     this.readinessListener(false);
     this.remoteContentMode = VideoContentMode.FIT;
 

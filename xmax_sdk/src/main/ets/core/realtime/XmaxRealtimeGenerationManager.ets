@@ -21,6 +21,7 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { MediaControlling } from '../../media/MediaControlling';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
+import { RealtimeGenerationParameters } from '../../service/realtime/RealtimeGenerationOptions';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { StreamControlling } from '../../stream/StreamControlling';
 
@@ -52,6 +53,9 @@ export class XmaxRealtimeGenerationManager {
   /** 已生效与启动中的生成条件 */
   private currentContext: RealtimeContext | null = null;
   private startingContext: RealtimeContext | null = null;
+  /** 静态生成配置仅在 SDK 内缓存，不写入公开的 RealtimeContext。 */
+  private currentExtraParams?: RealtimeGenerationParameters;
+  private startingExtraParams?: RealtimeGenerationParameters;
 
   /** 启动中的视频格式 */
   private startingVideoFormat: RealtimeVideoFormat | null = null;
@@ -85,7 +89,7 @@ export class XmaxRealtimeGenerationManager {
    * @returns 当前生成条件是否启用静态图片输入。
    */
   get usesStaticInput(): boolean {
-    return this.currentContext?.extraParams?.static_generate ?? false;
+    return this.currentExtraParams?.static_generate ?? false;
   }
 
   /**
@@ -94,9 +98,10 @@ export class XmaxRealtimeGenerationManager {
    * @param context 生成提示词、参考图和人脸检测配置。
    * @returns 无返回值。
    */
-  validateContext(context?: RealtimeContext): void {
-    const resolved: RealtimeContext | null = context ?? this.currentContext;
-    if (resolved?.extraParams?.static_generate && !resolved.extraParams.static_image_path) {
+  validateContext(context?: RealtimeContext, extraParams?: RealtimeGenerationParameters): void {
+    const resolved: RealtimeGenerationParameters | undefined =
+      context === undefined ? this.currentExtraParams : extraParams;
+    if (resolved?.static_generate && !resolved.static_image_path) {
       throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
         'Static generation requires a non-empty static_image_path');
     }
@@ -123,9 +128,10 @@ export class XmaxRealtimeGenerationManager {
     ensureCurrent: GenerationValidity,
     waitForConfirmation?: GenerationConfirmationWait,
     faceRestoration?: boolean,
-    targetSize?: ImageSize
+    targetSize?: ImageSize,
+    extraParams?: RealtimeGenerationParameters
   ): Promise<string> {
-    this.validateContext(context);
+    this.validateContext(context, extraParams);
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
       throw new XmaxError(
@@ -136,18 +142,20 @@ export class XmaxRealtimeGenerationManager {
 
     const taskId: string = XmaxRealtimeGenerationManager.createTaskId();
     this.startingContext = resolvedContext;
+    this.startingExtraParams = context === undefined ? this.currentExtraParams : extraParams;
     this.startingVideoFormat = videoFormat;
     this.startingFaceRestoration = faceRestoration ?? this.currentFaceRestoration;
     try {
       const confirmation: Promise<void> = this.streamController.beginGeneration(
         taskId, this.generationFormat(videoFormat), resolvedContext, this.startingFaceRestoration,
-        targetSize ?? this.targetSize(videoFormat), this.mediaController.usesContainPadding);
+        targetSize ?? this.targetSize(videoFormat), this.mediaController.usesContainPadding, this.startingExtraParams);
       await (waitForConfirmation === undefined ? confirmation : waitForConfirmation(confirmation));
       ensureCurrent();
 
       this.mediaController.start(taskId, this.startingVideoFormat ?? videoFormat);
       // 确认等待期可能并入了新条件，与 startingVideoFormat 一样以等待期内的最新值为准。
       this.currentContext = this.startingContext ?? resolvedContext;
+      this.currentExtraParams = this.startingExtraParams;
       this.currentFaceRestoration = this.startingFaceRestoration ?? this.currentFaceRestoration;
       return taskId;
     } catch (error) {
@@ -159,6 +167,7 @@ export class XmaxRealtimeGenerationManager {
       throw XmaxError.from(error);
     } finally {
       this.startingContext = null;
+      this.startingExtraParams = undefined;
       this.startingVideoFormat = null;
       this.startingFaceRestoration = null;
     }
@@ -177,7 +186,8 @@ export class XmaxRealtimeGenerationManager {
       return;
     }
     this.streamController.updateGeneration(taskId, this.generationFormat(format), context,
-      this.startingFaceRestoration ?? this.currentFaceRestoration, undefined, this.mediaController.usesContainPadding);
+      this.startingFaceRestoration ?? this.currentFaceRestoration, undefined, this.mediaController.usesContainPadding,
+      this.startingContext !== null ? this.startingExtraParams : this.currentExtraParams);
     if (this.startingContext !== null) {
       this.startingVideoFormat = format;
     } else {
@@ -198,7 +208,8 @@ export class XmaxRealtimeGenerationManager {
     taskId: string,
     videoFormat: RealtimeVideoFormat,
     context?: RealtimeContext,
-    faceRestoration?: boolean
+    faceRestoration?: boolean,
+    extraParams?: RealtimeGenerationParameters
   ): void {
     this.mediaController.start(taskId, videoFormat);
 
@@ -212,6 +223,8 @@ export class XmaxRealtimeGenerationManager {
     }
     const resolvedFaceRestoration: boolean =
       faceRestoration ?? this.startingFaceRestoration ?? this.currentFaceRestoration;
+    const resolvedExtraParams: RealtimeGenerationParameters | undefined = context !== undefined ? extraParams :
+      this.startingContext !== null ? this.startingExtraParams : this.currentExtraParams;
 
     this.streamController.updateGeneration(
       taskId,
@@ -219,14 +232,17 @@ export class XmaxRealtimeGenerationManager {
       resolvedContext,
       resolvedFaceRestoration,
       undefined,
-      this.mediaController.usesContainPadding
+      this.mediaController.usesContainPadding,
+      resolvedExtraParams
     );
     // 等待确认中的启动以 startingContext 为准，确认时统一落地，避免覆盖新条件。
     if (this.startingContext !== null) {
       this.startingContext = resolvedContext;
+      this.startingExtraParams = resolvedExtraParams;
       this.startingFaceRestoration = resolvedFaceRestoration;
     } else {
       this.currentContext = resolvedContext;
+      this.currentExtraParams = resolvedExtraParams;
       this.currentFaceRestoration = resolvedFaceRestoration;
     }
   }
@@ -278,6 +294,7 @@ export class XmaxRealtimeGenerationManager {
    */
   reset(taskId: string = ''): void {
     this.currentContext = null;
+    this.currentExtraParams = undefined;
     this.currentFaceRestoration = false;
     this.stop(taskId);
   }

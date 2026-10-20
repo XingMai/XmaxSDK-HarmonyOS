@@ -9,6 +9,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import { RealtimeGenerationParameters } from '../service/realtime/RealtimeGenerationOptions';
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../foundation/rtc/VideoStatistics';
 import { QualityConfiguration, QualityChange, AdaptiveQualityListener } from './quality/QualityConfiguration';
 import { RealtimeNetworkQuality } from '../service/realtime/RealtimeNetworkQuality';
@@ -197,6 +198,7 @@ export interface StreamControlling {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 匹配到远端结果流后的 Promise。
    */
   beginGeneration(
@@ -205,7 +207,8 @@ export interface StreamControlling {
     context: RealtimeContext,
     faceRestoration?: boolean,
     targetSize?: ImageSize,
-    paddingContain?: boolean
+    paddingContain?: boolean,
+    extraParams?: RealtimeGenerationParameters
   ): Promise<void>;
 
   /**
@@ -224,6 +227,7 @@ export interface StreamControlling {
    * @param faceRestoration 是否启用人脸修复。
    * @param targetSize 可选的生成结果流目标尺寸。
    * @param paddingContain 是否保持媒体比例并由服务端补边显示。
+   * @param extraParams SDK 内部传递的静态生成配置。
    * @returns 无返回值。
    */
   updateGeneration(
@@ -232,7 +236,8 @@ export interface StreamControlling {
     context: RealtimeContext,
     faceRestoration?: boolean,
     targetSize?: ImageSize,
-    paddingContain?: boolean
+    paddingContain?: boolean,
+    extraParams?: RealtimeGenerationParameters
   ): void;
 
   /**

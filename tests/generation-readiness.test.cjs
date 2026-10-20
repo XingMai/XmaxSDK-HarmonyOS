@@ -22,7 +22,7 @@ function fixture(t, timingOptions = {}) {
     setRemoteVideoFrameListener(listener) { this.frameListener = listener; }
     setRemoteVideoRenderedListener(listener) { this.renderedListener = listener; }
     observeRemoteVideoFrames(stream, enabled) { observations.push({ key: stream.key(), enabled }); }
-    hasRenderedRemoteVideo() { return false; }
+    hasRenderedRemoteVideo() { return this.rendered ?? false; }
     renderLibraryName() { return 'rtc'; }
     bindRemoteVideo() { events.push('bind-surface'); }
     unbindRemoteVideo() {}
@@ -36,7 +36,7 @@ function fixture(t, timingOptions = {}) {
     unpublishLocalAudio() {}
     setRemoteAudioVolume() { events.push('audio-volume'); }
     subscribeRemoteAudio(user, enabled) { events.push(`audio:${user}:${enabled}`); }
-    subscribeRemoteVideo() {}
+    subscribeRemoteVideo(_user, enabled) { if (!enabled) this.rendered = false; }
     sendRoomMessage(text) {
       const event = JSON.parse(text);
       if (this.failTarget && event.event === 'change_target_size') throw this.failTarget;
@@ -328,6 +328,40 @@ test('restarting on the same remote stream requires a new frame and stops old au
   assert.equal(f.events.filter(e => e === 'audio:bot:true').length, 2);
   f.rtc.listener.onRemoteAudioPublished('bot', true); // Repeated publication is idempotent.
   assert.equal(f.events.filter(e => e === 'audio:bot:true').length, 2);
+});
+
+test('refresh holds the image through task confirmation and decode until the replacement frame renders', async t => {
+  const f = fixture(t), readiness = [];
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const { VideoRenderRegistry } = f.load('rendering/video/VideoRenderRegistry.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  const remote = await f.manager.connect(local);
+  VideoRenderRegistry.attach(remote.videoTrack, 'surface', 0, () => {}, () => {},
+    ready => readiness.push(ready));
+  const first = await f.begin();
+  f.sei(first.task); f.frame();
+  f.rtc.rendered = true; f.rtc.renderedListener(f.remote);
+  await first.pending;
+  assert.equal(readiness.at(-1), true);
+
+  const restart = outcome(f.manager.startGeneration({
+    localStream: local, context: new RealtimeContext(''), restart: true
+  }));
+  await settle();
+  assert.equal(readiness.at(-1), false);
+  const task = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  assert.notEqual(task, first.task);
+  f.sei(first.task); f.rtc.renderedListener(f.remote); f.frame();
+  assert.equal(readiness.at(-1), false, 'events from the stopped task must not reveal video');
+  f.sei(task); await settle();
+  assert.equal(readiness.at(-1), false, 'matching SEI cannot replay historic readiness');
+  f.frame();
+  assert.ok(!(await restart).error);
+  assert.equal(readiness.at(-1), false, 'a decoded frame is not a rendered frame');
+  f.rtc.rendered = true; f.rtc.renderedListener(f.remote);
+  assert.equal(readiness.at(-1), true);
+  assert.equal(f.manager.currentState.sessionId, 'session');
+  VideoRenderRegistry.detach(remote.videoTrack, 'surface');
 });
 
 test('remote video removal cancels startup and audio cannot resume from later publication', async t => {
@@ -669,18 +703,19 @@ test('static restart retains the connection and completes at matching SEI withou
   const f = fixture(t);
   const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
   const local = await f.manager.createLocalImageStream('cat');
-  const options = { localStream: local, context: new RealtimeContext(''),
+  const options = { localStream: local, context: new RealtimeContext('', 'https://example.test/cat.jpg'),
     extraParams: { static_generate: true, static_image_path: 'https://example.test/cat.jpg' } };
   const initial = outcome(f.manager.startGeneration(options));
   await settle();
   const first = f.messages.filter(m => m.event === 'start').at(-1);
   assert.equal(first.params.static_generate, true);
+  assert.equal(first.params.ref_image_path, 'https://example.test/cat.jpg');
   assert.equal(first.params.padding, 'contain');
   f.sei(first.uid); await settle(); f.frame();
   const initialResult = await initial;
   assert.ok(!initialResult.error);
   let finished = false;
-  const restart = outcome(f.manager.startGeneration({ ...options, restart: true })).then(result => {
+  const restart = outcome(f.manager.startGeneration({ restart: true })).then(result => {
     finished = true; return result;
   });
   await settle();
@@ -697,10 +732,11 @@ test('static restart retains the connection and completes at matching SEI withou
   assert.equal(result.value.videoTrack.id, initialResult.value.videoTrack.id);
   assert.equal(f.media.task, second.uid);
   assert.equal(second.params.static_image_path, 'https://example.test/cat.jpg');
+  assert.equal(second.params.ref_image_path, 'https://example.test/cat.jpg');
 });
 
 
-test('a short first drag is sent after static task confirmation even if the finger already lifted', async t => {
+test('static task confirmation does not replay early drags and enables subsequent live samples', async t => {
   const f = fixture(t);
   const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
   const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
@@ -718,10 +754,13 @@ test('a short first drag is sent after static task confirmation even if the fing
   f.sei(task); await settle();
   const result = await pending;
   assert.ok(!result.error);
+  assert.equal(f.messages.some(message => message.event === 'tracks'), false);
+  f.media.submit({ points: [{ x: 120, y: 100 }], viewportWidth: 200,
+    viewportHeight: 200, contentMode: VideoContentMode.FILL });
   const tracks = f.messages.filter(message => message.event === 'tracks');
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].uid, task);
-  assert.deepEqual(tracks[0].tracks, [[0.5, 0.5]]);
+  assert.deepEqual(tracks[0].tracks, [[0.6, 0.5]]);
   assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
   const timing = f.timingLogs.at(-1).message;
   assert.match(timing, /静态生成任务确认耗时/);
