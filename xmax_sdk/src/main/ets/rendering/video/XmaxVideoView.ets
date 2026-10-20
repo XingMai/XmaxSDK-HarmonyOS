@@ -49,9 +49,9 @@ export struct XmaxVideoView {
   /** 有效拖拽的整体生命周期通知。 */
   onInteractionChanged?: RealtimeInteractionListener;
 
-  /** 静态遮罩位于视频之上、轨迹之下；图片由接入方持有并负责释放。 */
+  /** 始终保留的视频底图；等待视频就绪时显示，图片由接入方持有并负责释放。 */
   @Prop stillImage?: image.PixelMap = undefined;
-  /** 是否立即显示静态遮罩，默认 false；保留视频渲染和交互绑定。 */
+  /** 是否立即显示底图并隐藏视频，默认 false；保留视频渲染和交互绑定。 */
   @Prop showsStillImage: boolean = false;
 
   /** 轨迹效果渲染器。 */
@@ -76,6 +76,7 @@ export struct XmaxVideoView {
   @State private cameraPreviewRatio: CameraPreviewRatio = CameraPreviewRatio.FILL;
   @State private previewFrame: image.PixelMap | undefined = undefined;
   @State private videoFormat: RealtimeVideoFormat | undefined = undefined;
+  @State private videoReady: boolean = false;
 
   /**
    * 建立当前轨道句柄并同步预览比例与方向监听。
@@ -171,6 +172,7 @@ export struct XmaxVideoView {
       },
       (ready: boolean): void => {
         if (this.attachedViewId === viewId) {
+          this.videoReady = ready;
           this.onVideoReadyChanged?.(ready);
         }
       },
@@ -191,6 +193,7 @@ export struct XmaxVideoView {
     const viewId: string = this.attachedViewId;
     this.attachedTrack = undefined;
     this.attachedViewId = '';
+    this.videoReady = false;
     if (track !== undefined) {
       VideoRenderRegistry.detach(track, viewId);
     }
@@ -204,12 +207,22 @@ export struct XmaxVideoView {
    */
   build() {
     Stack({ alignContent: Alignment.Center }) {
+      if (this.stillImage !== undefined) {
+        Image(this.stillImage)
+          .width('100%')
+          .height('100%')
+          .objectFit(this.contentMode === VideoContentMode.FIT ? ImageFit.Contain : ImageFit.Cover)
+          .hitTestBehavior(HitTestMode.None)
+      }
+
       ForEach(this.track === undefined ? [] : [this.viewId], (viewId: string) => {
         XComponent({
           id: viewId,
           type: XComponentType.SURFACE,
           libraryname: this.renderLibraryName()
         })
+          .opacity(this.stillImage !== undefined && (!this.videoReady || this.showsStillImage) ? 0 : 1)
+          .animation({ duration: 0 })
           .width(this.previewWidth())
           .height(this.previewHeight())
           .clip(true)
@@ -227,19 +240,11 @@ export struct XmaxVideoView {
           })
       }, (viewId: string): string => viewId)
 
-      if (this.previewFrame !== undefined) {
+      if (this.previewFrame !== undefined && !(this.showsStillImage && this.stillImage !== undefined)) {
         Image(this.previewFrame)
           .width(this.previewWidth())
           .height(this.previewHeight())
           .objectFit(this.previewImageFit())
-      }
-
-      if (this.showsStillImage && this.stillImage !== undefined) {
-        Image(this.stillImage)
-          .width('100%')
-          .height('100%')
-          .objectFit(this.contentMode === VideoContentMode.FIT ? ImageFit.Contain : ImageFit.Cover)
-          .hitTestBehavior(HitTestMode.None)
       }
 
       if (this.supportsInteraction()) {
