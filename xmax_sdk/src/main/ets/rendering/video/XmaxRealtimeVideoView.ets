@@ -27,6 +27,8 @@ export struct XmaxRealtimeVideoView {
   /** 显示与交互配置 */
   @Prop contentMode: VideoContentMode = VideoContentMode.FILL;
   @Prop isInteractionEnabled: boolean = true;
+  /** 远端视图松手后是否续发最后触点，默认关闭。 */
+  @Prop continuesInteractionAfterRelease: boolean = false;
 
   /** 有效远端拖拽的生命周期通知。 */
   onInteractionChanged?: RealtimeInteractionListener;
@@ -100,6 +102,7 @@ export struct XmaxRealtimeVideoView {
           track: this.remoteTrack,
           contentMode: this.contentMode,
           isInteractionEnabled: this.isInteractionEnabled && this.remoteReady,
+          continuesInteractionAfterRelease: this.continuesInteractionAfterRelease,
           trajectoryRenderer: this.trajectoryRenderer,
           onInteractionChanged: this.onInteractionChanged,
           isVideoVisible: this.isVideoVisible,

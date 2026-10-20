@@ -963,11 +963,17 @@ export class RtcManager implements RtcManaging {
    * @returns 无返回值。
    */
   private bindRoomEvents(room: RTCRoom): void {
-    room.on('onRoomMessageReceived', (_userId: string, message: string): void => {
+    room.on('onRoomMessageReceived', (userId: string, message: string): void => {
       this.logReceivedRoomSignal(room, message);
+      if (this.room === room) {
+        this.listener?.onRoomSignalReceived?.(userId, message);
+      }
     });
-    room.on('onUserMessageReceived', (_userId: string, message: string): void => {
+    room.on('onUserMessageReceived', (userId: string, message: string): void => {
       this.logReceivedRoomSignal(room, message);
+      if (this.room === room) {
+        this.listener?.onRoomSignalReceived?.(userId, message);
+      }
     });
 
     room.on(

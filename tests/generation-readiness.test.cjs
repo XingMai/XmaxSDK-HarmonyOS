@@ -766,3 +766,112 @@ test('static task confirmation does not replay early drags and enables subsequen
   assert.match(timing, /静态生成任务确认耗时/);
   assert.doesNotMatch(timing, /首帧就绪/);
 });
+
+test('static server acknowledgement enables live tracks without SEI and late SEI binds video once', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
+  const { VideoRenderRegistry } = f.load('rendering/video/VideoRenderRegistry.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  const remote = await f.manager.connect(local);
+  const ready = [];
+  VideoRenderRegistry.attach(remote.videoTrack, 'surface', VideoContentMode.FIT, () => {}, () => {},
+    value => ready.push(value));
+  const pending = outcome(f.manager.startGeneration({ localStream: local,
+    context: new RealtimeContext(''), extraParams: {
+      static_generate: true, static_image_path: 'https://example.test/cat.jpg'
+    } }));
+  await settle();
+  const task = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  const signal = JSON.stringify({ event: 'video_started', uid: task.split('?')[0] });
+  const sample = { points: [{ x: 100, y: 100 }], viewportWidth: 200,
+    viewportHeight: 200, contentMode: VideoContentMode.FILL };
+  f.media.submit(sample);
+  f.rtc.listener.onRoomSignalReceived('bot', signal);
+  await settle();
+  assert.ok(!(await pending).error);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  assert.equal(f.messages.some(message => message.event === 'tracks'), false);
+  assert.equal(ready.includes(true), false, 'server ack must not reveal an old frame');
+  assert.equal(f.events.some(event => event === 'audio:bot:true'), false);
+  assert.equal([...f.timers.values()].some(timer => timer.ms === 30000), false);
+  f.media.submit(sample);
+  assert.equal(f.messages.filter(message => message.event === 'tracks').length, 1);
+  assert.equal(f.messages.at(-1).uid, task);
+  f.rtc.listener.onRoomSignalReceived('bot', signal);
+  f.sei(task); await settle();
+  assert.equal(f.events.filter(event => event === 'bind-surface').length, 1);
+  assert.equal(f.events.filter(event => event === 'audio:bot:true').length, 1);
+  f.sei(task);
+  assert.equal(f.events.filter(event => event === 'bind-surface').length, 1);
+  f.rtc.renderedListener(f.remote);
+  assert.equal(ready.at(-1), true);
+  VideoRenderRegistry.detach(remote.videoTrack, 'surface');
+  await f.manager.disconnect();
+  f.rtc.listener.onRoomSignalReceived('bot', signal);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+});
+
+test('static start acknowledgement rejects other tasks, senders and malformed payloads', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  await f.manager.connect(local);
+  const pending = outcome(f.manager.startGeneration({ localStream: local,
+    context: new RealtimeContext(''), extraParams: {
+      static_generate: true, static_image_path: 'https://example.test/cat.jpg'
+    } }));
+  await settle();
+  const task = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  let completed = false; pending.then(() => { completed = true; });
+  for (const message of ['null', '{}', 'not-json', '{"event":"video_started","uid":42}',
+    JSON.stringify({ event: 'video_completed', uid: task }),
+    JSON.stringify({ event: 'video_started', uid: 'task-old' })]) {
+    f.rtc.listener.onRoomSignalReceived('bot', message);
+  }
+  f.rtc.listener.onRoomSignalReceived('other', JSON.stringify({ event: 'video_started', uid: task }));
+  await settle();
+  assert.equal(completed, false);
+  assert.equal(f.media.task, null);
+  f.sei(task);
+  assert.ok(!(await pending).error, 'existing SEI confirmation still works');
+});
+
+test('continuous generation still waits for matched SEI and a usable frame after server acknowledgement', async t => {
+  const f = fixture(t), { pending, task } = await f.begin();
+  let completed = false; pending.then(() => { completed = true; });
+  f.rtc.listener.onRoomSignalReceived('bot', JSON.stringify({ event: 'video_started', uid: task }));
+  await settle();
+  assert.equal(completed, false);
+  f.sei(task); await settle();
+  assert.equal(completed, false);
+  f.frame();
+  assert.ok(!(await pending).error);
+});
+
+test('a static restart rejects the previous task acknowledgement and accepts the replacement without SEI', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  await f.manager.connect(local);
+  const first = outcome(f.manager.startGeneration({ localStream: local,
+    context: new RealtimeContext(''), extraParams: {
+      static_generate: true, static_image_path: 'https://example.test/cat.jpg'
+    } }));
+  await settle();
+  const firstTask = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  f.sei(firstTask);
+  assert.ok(!(await first).error);
+  const second = outcome(f.manager.startGeneration({ restart: true }));
+  await settle();
+  const task = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  let completed = false; second.then(() => { completed = true; });
+  f.rtc.listener.onRoomSignalReceived('bot', JSON.stringify({ event: 'video_started', uid: firstTask }));
+  f.sei(firstTask); await settle();
+  assert.equal(completed, false);
+  assert.equal(f.media.task, null);
+  f.rtc.listener.onRoomSignalReceived('bot', JSON.stringify({ event: 'video_started', uid: task }));
+  assert.ok(!(await second).error);
+  assert.equal(f.media.task, task);
+  assert.equal(f.manager.currentState.taskId, task);
+});

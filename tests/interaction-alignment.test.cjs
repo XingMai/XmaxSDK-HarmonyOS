@@ -3,17 +3,21 @@ const assert = require('node:assert/strict');
 const { loadEts } = require('./ets-loader.cjs');
 
 function fixture() {
+  const intervals = new Map();
+  let intervalId = 0;
   const load = loadEts({
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     XmaxLogger: { XmaxLogger: { error() {} } },
     DefaultTrajectoryEffectRenderer: { DefaultTrajectoryEffectRenderer: class {} }
-  }, { setInterval: () => 1, clearInterval() {} });
+  }, { setInterval: (fn, ms) => { intervals.set(++intervalId, { fn, ms }); return intervalId; },
+    clearInterval: id => intervals.delete(id) });
   const { ImageSize: Size } = load('service/media/ImageSize.ets');
   const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
   const { RealtimeVideoTrack: Track, updateRealtimeVideoTrackFormat } = load('service/realtime/RealtimeVideoTrack.ets');
   const { VideoContentMode: Mode } = load('foundation/media/video/VideoContentMode.ets');
   const { InteractionCoordinateMapper: Mapper } = load('media/interaction/InteractionCoordinateMapper.ets');
-  return { load, Size, Format, Track, Mode, Mapper, updateRealtimeVideoTrackFormat };
+  return { load, Size, Format, Track, Mode, Mapper, updateRealtimeVideoTrackFormat, intervals,
+    sample() { for (const timer of [...intervals.values()]) if (timer.ms === 30) timer.fn(); } };
 }
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} != ${expected}`);
@@ -229,5 +233,91 @@ test('a held drag keeps drawing through task replacement without replaying disca
     assert.equal(f.sent.length, 2);
     assert.equal(f.sent[1].task, 'replacement');
     assert.deepEqual(f.sent[1].points.map(point => ({ ...point })), [{ x: 0.75, y: 0.75 }]);
+  } finally { f.close(); }
+});
+
+test('release continuation sends the last point every sample until the display window closes', () => {
+  const f = overlayFixture(), phases = [];
+  f.overlay.continuesInteractionAfterRelease = true;
+  f.overlay.onInteractionChanged = phase => phases.push(phase);
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.overlay.moveTouch({ id: 1, x: 300, y: 250 });
+    f.overlay.endTouch({ id: 1 });
+    assert.deepEqual(phases, ['began', 'ended']);
+    assert.equal(f.overlay.activeTouches.size, 0);
+    for (let i = 0; i < 24; i++) f.sample();
+    assert.equal(f.sent.length, 25);
+    assert.ok(f.sent.slice(1).every(event => event.points[0].x === 0.75 && event.points[0].y === 0.75));
+    assert.equal(f.moved.length, 1, 'continuation does not fabricate visual movement');
+    f.overlay.continuesInteractionAfterRelease = false;
+    f.overlay.onReleaseContinuationChanged();
+    f.sample();
+    assert.equal(f.sent.length, 25);
+    assert.equal(f.overlay.sampleTimer, -1);
+  } finally { f.close(); }
+});
+
+test('a new drag replaces the released point immediately and keeps one sampling timer', () => {
+  const f = overlayFixture();
+  f.overlay.continuesInteractionAfterRelease = true;
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.overlay.endTouch({ id: 1 }); f.sample();
+    f.overlay.beginTouch({ id: 2, x: 300, y: 250 }); f.sample();
+    assert.equal(f.sent.at(-1).points.length, 1);
+    assert.equal(f.sent.at(-1).points[0].x, 0.75);
+    assert.equal([...f.intervals.values()].filter(timer => timer.ms === 30).length, 1);
+  } finally { f.close(); }
+});
+
+for (const action of ['disable', 'cancel', 'track', 'disappear']) {
+  test(`${action} stops released-point continuation and clears the old point`, () => {
+    const f = overlayFixture(), phases = [];
+    f.overlay.continuesInteractionAfterRelease = true;
+    f.overlay.onInteractionChanged = phase => phases.push(phase);
+    try {
+      f.overlay.beginTouch({ id: 1, x: 100, y: 150 }); f.overlay.endTouch({ id: 1 });
+      if (action === 'disable') {
+        f.overlay.isInteractionEnabled = false; f.overlay.onInteractionEnabledChanged();
+      } else if (action === 'track') {
+        f.overlay.track = new f.Track('new', f.track.videoFormat); f.overlay.onTrackChanged();
+      } else if (action === 'disappear') f.overlay.aboutToDisappear();
+      else f.overlay.cancelInteraction();
+      f.sample();
+      assert.equal(f.sent.length, 1);
+      assert.equal(f.overlay.releasedTouch, undefined);
+      assert.equal(f.overlay.sampleTimer, -1);
+      assert.deepEqual(phases, ['began', 'ended', 'cancelled']);
+    } finally { f.close(); }
+  });
+}
+
+test('default release stops sending, while a delayed continuation prop can resume the same endpoint', () => {
+  const f = overlayFixture();
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 }); f.overlay.endTouch({ id: 1 });
+    f.sample();
+    assert.equal(f.sent.length, 1);
+    f.overlay.continuesInteractionAfterRelease = true;
+    f.overlay.onReleaseContinuationChanged();
+    assert.equal(f.sent.length, 2);
+    f.sample();
+    assert.equal(f.sent.length, 3);
+  } finally { f.close(); }
+});
+
+test('multi-touch continuation uses only the final released finger', () => {
+  const f = overlayFixture();
+  f.overlay.continuesInteractionAfterRelease = true;
+  try {
+    f.overlay.beginTouch({ id: 1, x: 100, y: 150 });
+    f.overlay.beginTouch({ id: 2, x: 300, y: 250 });
+    f.overlay.endTouch({ id: 1 }); f.sample();
+    assert.equal(f.sent.at(-1).points.length, 1);
+    assert.equal(f.sent.at(-1).points[0].x, 0.75);
+    f.overlay.endTouch({ id: 2 }); f.sample();
+    assert.equal(f.sent.at(-1).points.length, 1);
+    assert.equal(f.sent.at(-1).points[0].x, 0.75);
   } finally { f.close(); }
 });

@@ -13,6 +13,9 @@ import { RemoteStream } from './RemoteStream';
 
 /** 接收远端音视频发布状态及 SEI 消息，供实时业务识别生成结果流。 */
 export interface RtcEventListener {
+  /** 接收当前房间的服务端文本信令（含定向消息）。 */
+  onRoomSignalReceived?(userId: string, message: string): void;
+
   /**
    * 处理远端音频发布状态变化。
    *

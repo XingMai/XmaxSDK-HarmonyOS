@@ -46,6 +46,9 @@ export struct XmaxVideoView {
   @Prop
   isInteractionEnabled: boolean = true;
 
+  /** 松手后续发最后触点；默认关闭，由接入方控制续发结束。 */
+  @Prop continuesInteractionAfterRelease: boolean = false;
+
   /** 有效拖拽的整体生命周期通知。 */
   onInteractionChanged?: RealtimeInteractionListener;
 
@@ -239,6 +242,7 @@ export struct XmaxVideoView {
         TrajectoryOverlayView({
           track: this.track,
           isInteractionEnabled: this.isInteractionEnabled,
+          continuesInteractionAfterRelease: this.continuesInteractionAfterRelease,
           contentMode: this.contentMode,
           renderer: this.trajectoryRenderer,
           onInteractionChanged: this.onInteractionChanged

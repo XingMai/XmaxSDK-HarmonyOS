@@ -45,6 +45,10 @@ export struct TrajectoryOverlayView {
   @Prop @Watch('onInteractionEnabledChanged')
   isInteractionEnabled: boolean = true;
 
+  /** 松手后继续采样最后触点；由接入方在画面保留结束时关闭。 */
+  @Prop @Watch('onReleaseContinuationChanged')
+  continuesInteractionAfterRelease: boolean = false;
+
   /** 视频内容显示模式。 */
   @Prop @Watch('onContentModeChanged')
   contentMode: VideoContentMode = VideoContentMode.FILL;
@@ -58,6 +62,7 @@ export struct TrajectoryOverlayView {
 
   /** 活动触点与原始轨道句柄 */
   private readonly activeTouches: Map<number, ActiveTouch> = new Map();
+  private releasedTouch: ActiveTouch | undefined = undefined;
   private currentTrack: RealtimeVideoTrack | undefined;
 
   /** 交互视口尺寸 */
@@ -123,16 +128,30 @@ export struct TrajectoryOverlayView {
     }
   }
 
+  private onReleaseContinuationChanged(): void {
+    if (!this.continuesInteractionAfterRelease) {
+      this.releasedTouch = undefined;
+      if (this.activeTouches.size === 0) {
+        this.stopSampling();
+      }
+    } else if (this.activeTouches.size === 0 && this.releasedTouch !== undefined && this.isInteractionEnabled) {
+      // 父视图状态可能在松手事件之后才传到 @Prop，仍接续该次手势。
+      this.startSampling();
+    }
+  }
+
   /**
    * 清空活动触点、停止采样与动画，并重置轨迹效果。
    *
    * @returns 无返回值。
    */
   private cancelInteraction(): void {
-    const wasActive: boolean = this.activeTouches.size > 0;
+    const wasActive: boolean = this.activeTouches.size > 0 ||
+      (this.continuesInteractionAfterRelease && this.releasedTouch !== undefined);
     this.stopSampling();
     this.stopTicking();
     this.activeTouches.clear();
+    this.releasedTouch = undefined;
     this.renderer.reset();
     if (wasActive) {
       this.notifyInteraction('cancelled');
@@ -232,7 +251,7 @@ export struct TrajectoryOverlayView {
     }
 
     const binding: TrajectoryBinding | null = TrajectoryRegistry.binding(track);
-    if (binding === null || this.activeTouches.size === 0) {
+    if (binding === null) {
       return;
     }
 
@@ -240,6 +259,12 @@ export struct TrajectoryOverlayView {
     this.activeTouches.forEach((touch: ActiveTouch): void => {
       points.push(new InteractionPoint(touch.x, touch.y));
     });
+    if (points.length === 0 && this.continuesInteractionAfterRelease && this.releasedTouch !== undefined) {
+      points.push(new InteractionPoint(this.releasedTouch.x, this.releasedTouch.y));
+    }
+    if (points.length === 0) {
+      return;
+    }
     binding.submit(
       points,
       this.viewportWidth,
@@ -332,6 +357,7 @@ export struct TrajectoryOverlayView {
       y: this.clampY(touchObject.y)
     };
     const wasEmpty: boolean = this.activeTouches.size === 0;
+    this.releasedTouch = undefined;
     this.activeTouches.set(touchObject.id, touch);
     if (wasEmpty) {
       this.notifyInteraction('began');
@@ -373,7 +399,7 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 结束活动触点并通知渲染器，在无触点时停止交互采样。
+   * 结束触点绘制；按配置续发最后触点，生命周期仍在实际松手时通知。
    *
    * @param touchObject 平台触摸事件中的单个触点。
    * @returns 无返回值。
@@ -388,7 +414,10 @@ export struct TrajectoryOverlayView {
     this.activeTouches.delete(touchObject.id);
     this.renderer.renderEnded([activeTouch.identifier]);
     if (this.activeTouches.size === 0) {
-      this.stopSampling();
+      this.releasedTouch = activeTouch;
+      if (!this.continuesInteractionAfterRelease) {
+        this.stopSampling();
+      }
       this.notifyInteraction('ended');
     }
   }

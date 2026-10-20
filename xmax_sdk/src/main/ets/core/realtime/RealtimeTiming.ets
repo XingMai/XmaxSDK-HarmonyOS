@@ -172,7 +172,7 @@ export class RealtimeTiming {
   }
 
   /**
-   * 首次匹配当前生成任务的 SEI 时记录结果流确认时间。
+   * 首次匹配当前任务的 SEI 或静态任务启动信令时记录确认时间。
    *
    * @param taskId 当前生成任务标识。
    * @returns 无返回值。

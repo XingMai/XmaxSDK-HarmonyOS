@@ -45,6 +45,11 @@ import { StreamControlling } from './StreamControlling';
 const GENERATION_START_TIMEOUT_MS: number = 30000;
 const DEFAULT_REMOTE_AUDIO_VOLUME: number = 100;
 
+interface GenerationStartedSignal {
+  event?: string;
+  uid?: string;
+}
+
 /**
  * 接收生成结果流的建立或清除通知。
  *
@@ -58,6 +63,9 @@ class GenerationTask {
 
   /** 生成任务身份 */
   readonly id: string;
+  /** 静态任务可先通过服务端启动信令确认，允许交互驱动首批视频帧。 */
+  readonly staticInput: boolean;
+  confirmed: boolean = false;
 
   /** 视频帧 SEI 序号 */
   private frameIndex: number = 0;
@@ -68,8 +76,9 @@ class GenerationTask {
    * @param id 生成任务标识。
    * @returns 新建的 GenerationTask 实例。
    */
-  constructor(id: string) {
+  constructor(id: string, staticInput: boolean = false) {
     this.id = id;
+    this.staticInput = staticInput;
   }
 
   /**
@@ -427,7 +436,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     extraParams?: RealtimeGenerationParameters
   ): Promise<void> {
     this.timing.beginSignal(taskId);
-    const confirmation: Promise<void> = this.beginGenerationConfirmation(taskId);
+    const confirmation: Promise<void> = this.beginGenerationConfirmation(taskId, extraParams?.static_generate === true);
     try {
       this.roomController.startGeneration(taskId, videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams);
       this.timing.finishSignal(taskId);
@@ -446,6 +455,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
    */
   activateRemoteAudio(): void {
     const stream: RemoteStream | null = this.activeRemoteStream;
+    if (this.currentTask?.staticInput && stream === null) {
+      // 静态任务已确认但还未产出带 SEI 的视频；等结果流匹配后再激活音频。
+      this.remoteAudioActive = true;
+      return;
+    }
     if (this.currentTask === null || stream === null) {
       throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote generation audio stream is unavailable');
     }
@@ -571,6 +585,28 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
   }
 
+  /** 静态任务不依赖先有视频才能发送交互；只接受当前服务端、当前任务的启动确认。 */
+  onRoomSignalReceived(userId: string, message: string): void {
+    const task: GenerationTask | null = this.currentTask;
+    if (task === null || !task.staticInput || this.generationStartResolve === null ||
+      this.botName.length === 0 || userId !== this.botName) {
+      return;
+    }
+    let signal: GenerationStartedSignal;
+    try {
+      signal = JSON.parse(message) as GenerationStartedSignal;
+    } catch (_error) {
+      return;
+    }
+    if (signal === null || signal.event !== 'video_started' ||
+      typeof signal.uid !== 'string' || !this.matchesTaskSei(signal.uid, task.id)) {
+      return;
+    }
+    this.timing.matchSEI(task.id);
+    XmaxLogger.debug('Static generation confirmed by video_started: ' + task.id, 'Stream');
+    this.resolveGenerationStart(task.id);
+  }
+
   /**
    * 根据 SEI 任务标识匹配远端生成流。
    *
@@ -589,7 +625,8 @@ export class StreamController implements StreamControlling, RtcEventListener {
       return;
     }
 
-    if (this.generationStartResolve === null) {
+    if (this.activeRemoteStream !== null ||
+      (this.generationStartResolve === null && this.currentTask?.confirmed !== true)) {
       return;
     }
 
@@ -601,8 +638,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
       }
       this.activeRemoteStream = stream;
       this.qualityController.setDownlinkVideoStatisticsUser(stream.userId);
+      if (this.remoteAudioActive) {
+        this.subscribeRemoteAudio(stream.userId);
+      }
     } catch (error) {
-      this.rejectGenerationStart(taskId, XmaxError.from(error));
+      this.handleRtcEventError(XmaxError.from(error));
       return;
     }
 
@@ -706,7 +746,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
    * @param taskId 当前生成任务标识。
    * @returns 操作完成时兑现的 Promise。
    */
-  private beginGenerationConfirmation(taskId: string): Promise<void> {
+  private beginGenerationConfirmation(taskId: string, staticInput: boolean = false): Promise<void> {
     if (this.currentTask !== null) {
       throw new XmaxError(
         XmaxErrorCode.RTC_ERROR,
@@ -714,7 +754,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       );
     }
 
-    this.currentTask = new GenerationTask(taskId);
+    this.currentTask = new GenerationTask(taskId, staticInput);
     return this.waitForGenerationStart(taskId);
   }
 
@@ -809,6 +849,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     }
 
     const resolve: () => void = this.generationStartResolve;
+    this.currentTask.confirmed = true;
     this.clearGenerationStartWaiter();
     resolve();
   }

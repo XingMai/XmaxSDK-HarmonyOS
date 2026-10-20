@@ -876,8 +876,10 @@ await manager.startGeneration({ restart: true });
 
 `XmaxVideoView` 与 `XmaxRealtimeVideoView` 支持 `onInteractionChanged`，按有效触点整体通知 `began`、`ended`、`cancelled`；多指交互在末指抬起后才通知结束。`isVideoVisible` 默认 `true`，设为 `false` 可立即隐藏视频画面（组合组件仅隐藏远端画面），保持视频渲染、轨迹绘制和交互绑定，不改变视频容器尺寸。需要原图兜底时，由接入页面在视频组件下方绘制图片；SDK 不接收或绘制业务原图。此前的 `stillImage`、`showsStillImage` 参数已移除，改为由页面管理原图并通过 `isVideoVisible` 控制视频显隐。
 
-静态任务在匹配当前任务的 SEI 后返回，视频可能要收到拖拽轨迹才开始输出。请通过 `onVideoReadyChanged` 判断画面是否可见；进入交互页面时可以先 `connect(localStream)`，首次拖拽时再调用 `startGeneration()`。
+静态任务收到当前服务端发来的、任务 ID 匹配的 `video_started`，或匹配当前任务的 SEI 后返回。视频可能要收到拖拽轨迹才开始输出，因此不要求先收到视频 SEI 才允许发送交互。启动信令只确认任务可接收交互，不代表视频已就绪；SDK 仍在匹配新任务 SEI 后绑定结果流。请通过 `onVideoReadyChanged` 判断画面是否可见；进入交互页面时可以先 `connect(localStream)`，首次拖拽时再调用 `startGeneration()`。
 
-任务准备或重建期间可保持 `XmaxVideoView.isInteractionEnabled` 开启，让本地轨迹持续跟手绘制。没有已确认任务时，SDK 直接丢弃交互采样，不缓存或补发；任务确认后发送后续实时采样。视频是否显示应单独通过 `isVideoVisible` 控制。若首次短拖在任务确认前已结束，该次拖拽只有本地轨迹反馈，不会补发到生成任务。
+任务准备或重建期间可保持 `XmaxVideoView.isInteractionEnabled` 开启，让本地轨迹持续跟手绘制。没有已确认任务时，SDK 直接丢弃交互采样，不缓存或补发；任务确认后发送后续实时采样。视频是否显示应单独通过 `isVideoVisible` 控制。默认关闭松手续发时，若首次短拖在任务确认前已结束，该次拖拽只有本地轨迹反馈，不会补发到生成任务。
+
+`XmaxVideoView` 和 `XmaxRealtimeVideoView` 的 `continuesInteractionAfterRelease` 默认 `false`。开启时，末指松手后仍按 30ms 周期发送最后触点，轨迹绘制和 `ended` 通知仍在实际松手时结束。接入方应在画面保留结束时设回 `false`；新拖拽立即替换旧触点，禁用交互、取消、换轨或卸载会清理续发。该功能发送当前保留的触点，不回放历史轨迹。PetTrack 仅在瞬动期间开启，并与首帧就绪后松手保留 750ms、切回原图的时机同步。
 
 刷新替换任务时，页面应立即隐藏视频并保留原图，直到生成请求完成且 `onVideoReadyChanged(true)` 到达。SDK 不复用上一任务的渲染就绪记录；匹配新任务后，若 RTC 流曾渲染过画面，会重新订阅远端视频并等待新的原生首帧渲染事件。任务确认和解码完成都不会单独触发画面可见通知。同一任务内重新挂载视图仍可复用该任务已经确认的渲染状态。
