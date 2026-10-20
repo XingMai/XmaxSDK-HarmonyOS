@@ -30,7 +30,7 @@ export interface RealtimeGenerationOptions {
   readonly context?: RealtimeContext;
 
   /** 任务替换与图像修复 */
-  /** true 时创建新任务并等待其结果帧，默认 false。 */
+  /** true 时创建新任务，默认 false；静态任务确认后即可交互，普通任务还会等待首帧。 */
   readonly restart?: boolean;
   /** 是否启用原始人脸回贴，默认 false。 */
   readonly faceRestoration?: boolean;

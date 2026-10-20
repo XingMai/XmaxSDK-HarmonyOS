@@ -80,6 +80,15 @@ export class XmaxRealtimeGenerationManager {
   }
 
   /**
+   * 判断已确认的任务是否使用静态图片输入；此类任务可在收到交互后才输出视频。
+   *
+   * @returns 当前生成条件是否启用静态图片输入。
+   */
+  get usesStaticInput(): boolean {
+    return this.currentContext?.extraParams?.static_generate ?? false;
+  }
+
+  /**
    * 在开始生成和修改资源前验证首次生成所需的条件。
    *
    * @param context 生成提示词、参考图和人脸检测配置。

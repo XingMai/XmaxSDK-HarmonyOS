@@ -264,7 +264,7 @@ export interface XmaxRealtimeManaging {
    * 启动或更新生成；restart 为 true 时替换生成任务，保留连接及本地流。
    *
    * @param options 本地流、生成条件、静态图配置和重启选项。
-   * @returns 当前远端媒体流；重启时等待新任务的结果确认和首帧就绪。
+   * @returns 当前远端媒体流；静态任务等待结果确认，普通任务还会等待首帧。静态任务的画面就绪由视频视图回调通知。
    */
   startGeneration(options: RealtimeGenerationOptions): Promise<RealtimeMediaStream>;
 

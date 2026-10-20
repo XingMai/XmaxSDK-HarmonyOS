@@ -187,15 +187,16 @@ export class RealtimeTiming {
    * 结束当前任务的启动计时，并输出成功启动的各阶段耗时。
    *
    * @param taskId 当前生成任务标识。
+   * @param confirmationOnly 是否以任务确认为启动完成节点，适用于等待交互的静态任务。
    * @returns 无返回值。
    */
-  finish(taskId: string): void {
+  finish(taskId: string, confirmationOnly: boolean = false): void {
     const run: RealtimeTimingRun | null = this.active;
     if (run === null || run.finished || run.taskId !== taskId) { return; }
     run.readyAt = this.now();
     this.complete(run);
     if (run.startedAt !== undefined) {
-      this.emit((): string => this.format(run));
+      this.emit((): string => this.format(run, confirmationOnly));
     }
   }
 
@@ -260,22 +261,26 @@ export class RealtimeTiming {
    * 将完整启动记录转换为各阶段耗时摘要。
    *
    * @param run 当前生成启动的计时记录。
+   * @param confirmationOnly 是否仅报告任务确认耗时。
    * @returns 可供性能日志输出的启动耗时文本。
    */
-  private format(run: RealtimeTimingRun): string {
+  private format(run: RealtimeTimingRun, confirmationOnly: boolean): string {
     if (run.startedAt === undefined || run.signalStartedAt === undefined ||
       run.seiMatchedAt === undefined || run.readyAt === undefined) {
       return '实时生成启动耗时不可用 (Realtime Generation Startup Timing Unavailable)';
     }
     const lines: string[] = [
-      '实时生成启动耗时 (Realtime Generation Startup Timing)',
+      confirmationOnly ? '静态生成任务确认耗时 (Static Generation Confirmation Timing)' :
+        '实时生成启动耗时 (Realtime Generation Startup Timing)',
       `${XmaxLogger.localized("├─ 总耗时：", "├─ Total Duration: ")}${this.duration(run.startedAt, run.readyAt)}`
     ];
     if (run.connectionStartedAt !== undefined && run.connectionFinishedAt !== undefined) {
       lines.push(`${XmaxLogger.localized("├─ 实时连接：", "├─ Realtime Connection: ")}${this.duration(run.connectionStartedAt, run.connectionFinishedAt)}`);
     }
     lines.push(`${XmaxLogger.localized("├─ 等待生成结果流确认：", "├─ Waiting for Result Stream Confirmation: ")}${this.duration(run.signalStartedAt, run.seiMatchedAt)}`);
-    lines.push(`${XmaxLogger.localized("└─ 结果流确认到首帧就绪：", "└─ Result Stream Confirmation to First Frame Ready: ")}${this.duration(run.seiMatchedAt, run.readyAt)}`);
+    if (!confirmationOnly) {
+      lines.push(`${XmaxLogger.localized("└─ 结果流确认到首帧就绪：", "└─ Result Stream Confirmation to First Frame Ready: ")}${this.duration(run.seiMatchedAt, run.readyAt)}`);
+    }
     return lines.join('\n');
   }
 

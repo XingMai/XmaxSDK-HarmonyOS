@@ -665,7 +665,7 @@ test('public statistics listeners follow publication, matched SEI, remote remova
   assert.equal(up.at(-1), uplink); assert.equal(down.at(-1), downlink);
 });
 
-test('restart retains the connection and gates interaction on the new task SEI and frame', async t => {
+test('static restart retains the connection and completes at matching SEI without requiring idle video', async t => {
   const f = fixture(t);
   const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
   const local = await f.manager.createLocalImageStream('cat');
@@ -690,11 +690,40 @@ test('restart retains the connection and gates interaction on the new task SEI a
   f.sei(first.uid); f.frame(); await settle();
   assert.equal(finished, false);
   f.sei(second.uid); await settle();
-  assert.equal(finished, false);
-  f.frame();
+  assert.equal(finished, true);
+  assert.equal([...f.timers.values()].some(timer => timer.ms === 10000), false);
   const result = await restart;
   assert.ok(!result.error);
   assert.equal(result.value.videoTrack.id, initialResult.value.videoTrack.id);
   assert.equal(f.media.task, second.uid);
   assert.equal(second.params.static_image_path, 'https://example.test/cat.jpg');
+});
+
+
+test('a short first drag is sent after static task confirmation even if the finger already lifted', async t => {
+  const f = fixture(t);
+  const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+  const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
+  const local = await f.manager.createLocalImageStream('cat');
+  await f.manager.connect(local);
+  f.media.submit({ points: [{ x: 100, y: 100 }], viewportWidth: 200,
+    viewportHeight: 200, contentMode: VideoContentMode.FILL });
+  const pending = outcome(f.manager.startGeneration({ localStream: local,
+    context: new RealtimeContext(''), extraParams: {
+      static_generate: true, static_image_path: 'https://example.test/cat.jpg'
+    } }));
+  await settle();
+  const task = f.messages.filter(message => message.event === 'start').at(-1).uid;
+  assert.equal(f.messages.some(message => message.event === 'tracks'), false);
+  f.sei(task); await settle();
+  const result = await pending;
+  assert.ok(!result.error);
+  const tracks = f.messages.filter(message => message.event === 'tracks');
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].uid, task);
+  assert.deepEqual(tracks[0].tracks, [[0.5, 0.5]]);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+  const timing = f.timingLogs.at(-1).message;
+  assert.match(timing, /静态生成任务确认耗时/);
+  assert.doesNotMatch(timing, /首帧就绪/);
 });

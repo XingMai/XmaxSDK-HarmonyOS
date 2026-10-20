@@ -868,10 +868,12 @@ const remote = await manager.startGeneration({
   }
 });
 
-// 复用本地流、RTC 连接及生成条件，等待新任务的结果确认和首帧就绪。
+// 复用本地流、RTC 连接及生成条件；静态任务确认后即可交互，普通任务还会等待首帧。
 await manager.startGeneration({ restart: true });
 ```
 
 `extraParams` 需要同时传入 `context`。省略 `context` 可在重启时复用缓存条件；切回常规生成时传入不包含静态图参数的新 `RealtimeContext`，并指定 `restart: true`。
 
 `XmaxVideoView` 与 `XmaxRealtimeVideoView` 支持 `onInteractionChanged`，按有效触点整体通知 `began`、`ended`、`cancelled`；多指交互在末指抬起后才通知结束。`stillImage` 和 `showsStillImage` 可立即覆盖视频，保持轨迹绘制和交互绑定，不改变视频容器尺寸。图片由接入方持有和释放。
+
+静态任务在匹配当前任务的 SEI 后返回，视频可能要收到拖拽轨迹才开始输出。请通过 `onVideoReadyChanged` 判断画面是否可见；进入交互页面时可以先 `connect(localStream)`，首次拖拽时再调用 `startGeneration()`。

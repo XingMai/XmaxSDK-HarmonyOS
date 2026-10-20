@@ -162,3 +162,50 @@ test('interaction lifecycle ignores letterboxing and ends only when the last fin
     assert.deepEqual(phases, ['began', 'ended', 'began', 'cancelled']);
   } finally { f.close(); }
 });
+
+
+function bufferingFixture() {
+  const timers = new Map(), sent = [];
+  let next = 0;
+  const load = loadEts({ XmaxLogger: { XmaxLogger: { error() {} } } }, {
+    setTimeout: (fn, ms) => { timers.set(++next, { fn, ms }); return next; },
+    clearTimeout: id => timers.delete(id)
+  });
+  const { InteractionController } = load('media/interaction/InteractionController.ets');
+  const { RealtimeVideoFormat } = load('service/realtime/RealtimeVideoFormat.ets');
+  const { VideoContentMode } = load('foundation/media/video/VideoContentMode.ets');
+  const controller = new InteractionController((task, points) => sent.push({ task, points }));
+  return { controller, timers, sent, format: new RealtimeVideoFormat(200, 200, 30),
+    frame(x) { return { points: [{ x, y: 100 }], viewportWidth: 200,
+      viewportHeight: 200, contentMode: VideoContentMode.FIT }; },
+    tick() { const [id, timer] = timers.entries().next().value;
+      assert.equal(timer.ms, 30); timers.delete(id); timer.fn(); }
+  };
+}
+
+test('preconfirmation tracks replay in order alongside newly arriving samples', () => {
+  const f = bufferingFixture();
+  const frame = f.frame(20);
+  f.controller.submit(frame); frame.points[0].x = 199;
+  f.controller.submit(f.frame(40));
+  assert.equal(f.sent.length, 0);
+  f.controller.start('new-task', f.format);
+  f.controller.submit(f.frame(60));
+  f.tick(); f.tick(); f.tick();
+  assert.deepEqual(f.sent.map(event => event.points[0].x), [0.1, 0.2, 0.3]);
+  assert.ok(f.sent.every(event => event.task === 'new-task'));
+  assert.equal(f.timers.size, 0);
+  f.controller.stop();
+});
+
+test('buffer limits pending work and stop discards old samples and replay timers', () => {
+  const f = bufferingFixture();
+  for (let i = 0; i < 100; i++) f.controller.submit(f.frame(i));
+  f.controller.start('one', f.format);
+  assert.equal(f.sent[0].points[0].x, 36 / 200);
+  f.controller.stop();
+  assert.equal(f.timers.size, 0);
+  f.controller.start('two', f.format);
+  assert.equal(f.sent.length, 1);
+  f.controller.stop();
+});
