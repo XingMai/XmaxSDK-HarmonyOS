@@ -10,6 +10,7 @@
 
 #include "video_frame_converter.h"
 #include "video_frame_geometry.h"
+#include "external_video_converter.h"
 #include "libyuv/planar_functions.h"
 #include "libyuv/rotate.h"
 #include "libyuv/scale.h"
@@ -211,10 +212,43 @@ void CheckInvalidConfiguration() {
   Convert(converter, input, valid);
 }
 
+void CheckExternalVideoConversion() {
+  std::vector<uint8_t> y(6 * 4, 81), uv(8 * 2, 251), output(8 * 8 * 3 / 2);
+  for (int row = 0; row < 2; row++) {
+    for (int col = 0; col < 4; col += 2) {
+      uv[row * 8 + col] = 43;
+      uv[row * 8 + col + 1] = 173;
+    }
+  }
+  xmax::ConvertExternalVideo({y.data(), y.size(), 6}, {uv.data(), uv.size(), 8}, false,
+      4, 4, 8, 8, output.data());
+  for (int i = 0; i < 64; i++) assert(output[i] == 81);
+  for (size_t i = 64; i < output.size(); i += 2) assert(output[i] == 43 && output[i + 1] == 173);
+
+  std::vector<uint8_t> bgra(4 * 4 * 4, 0);
+  for (size_t i = 0; i < bgra.size(); i += 4) {
+    bgra[i + 2] = 255;
+    bgra[i + 3] = 255;
+  }
+  xmax::ConvertExternalVideo({bgra.data(), bgra.size(), 16}, {nullptr, 0, 0}, true,
+      4, 4, 8, 8, output.data());
+  assert(output[0] > 75 && output[0] < 90);
+  assert(output[64] > 80 && output[64] < 100);
+  assert(output[65] > 230);
+
+  bool failed = false;
+  try {
+    xmax::ConvertExternalVideo({y.data(), 3, 6}, {uv.data(), uv.size(), 8}, false,
+        4, 4, 8, 8, output.data());
+  } catch (const std::runtime_error&) { failed = true; }
+  assert(failed);
+}
+
 int main() {
   assert(libyuv::TestCpuFlag(libyuv::kCpuHasNEON));
   CheckExactRotationAndCrop();
   CheckScalingAndReconfiguration();
   CheckInvalidConfiguration();
+  CheckExternalVideoConversion();
   std::cout << "NEON conversion: byte-exact copy-pipeline equivalence, crop, rotations, UV order, strides, scaling and reconfiguration passed\n";
 }

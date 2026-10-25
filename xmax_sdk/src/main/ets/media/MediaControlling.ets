@@ -16,6 +16,7 @@ import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 import { LocalVideoPlaybackState } from '../service/realtime/LocalVideoPlaybackState';
 import { InteractionControlling } from './interaction/InteractionControlling';
+import { RealtimeExternalVideoSource } from './external/RealtimeExternalVideoSource';
 
 /** The media layer interface used by Core. */
 export interface MediaControlling extends InteractionControlling {
@@ -126,6 +127,14 @@ export interface MediaControlling extends InteractionControlling {
    * The Promise fulfills after video file source release.
    */
   stopLocalVideoStream(): Promise<void>;
+
+  /** Binds app-owned external frames for preview and generation, with optional PCM audio. */
+  createExternalVideoStream(
+    source: RealtimeExternalVideoSource
+  ): Promise<RealtimeMediaStream>;
+
+  /** Invalidates the external sink and unbinds its source, without releasing app-owned devices. */
+  stopExternalVideoStream(): Promise<void>;
 
   /** Pauses the current video source and starts frozen-frame publication. */
   pauseLocalVideoStream(): Promise<void>;

@@ -661,19 +661,21 @@ struct Index {
   private openRealtimePlayground(
     localVideoPath: string = '',
     localImagePath: string = '',
-    usesCustomTrajectoryRenderer: boolean = false
+    usesCustomTrajectoryRenderer: boolean = false,
+    usesExternalSource: boolean = false
   ): void {
     void router.pushUrl({
       url: 'pages/RealtimePlayground',
       params: {
         localVideoPath: localVideoPath,
         localImagePath: localImagePath,
-        usesCustomTrajectoryRenderer: usesCustomTrajectoryRenderer
+        usesCustomTrajectoryRenderer: usesCustomTrajectoryRenderer,
+        usesExternalSource: usesExternalSource
       }
     });
   }
 
-  private async presentLocalVideoPicker(): Promise<void> {
+  private async presentLocalVideoPicker(usesExternalSource: boolean = false): Promise<void> {
     if (this.isPickingVideo) {
       return;
     }
@@ -688,7 +690,7 @@ struct Index {
       const result = await picker.select(options);
       const videoPath: string | undefined = result.photoUris[0];
       if (videoPath !== undefined && videoPath.trim().length > 0) {
-        this.openRealtimePlayground(videoPath);
+        this.openRealtimePlayground(videoPath, '', false, usesExternalSource);
       }
     } catch (_error) {
       promptAction.showToast({ message: this.text('read_video_failed') });
@@ -981,6 +983,22 @@ struct Index {
               this.presentUIExtensionPlayground();
             }
           })
+
+          SdkFeatureCard({
+            categoryLabel: 'SDK MEDIA / EXTERNAL INPUT',
+            watermark: 'SRC',
+            accentColor: '#78A9FF',
+            icon: $r('app.media.sdk_feature_ui_extension'),
+            iconLabel: 'SOURCE',
+            title: this.text('external_capture'),
+            subtitle: this.text('external_capture_description'),
+            tags: ['SOURCE', 'SINK', 'VIDEO + PCM'],
+            highlightedTag: 'SOURCE',
+            onOpen: (): void => {
+              void this.presentLocalVideoPicker(true);
+            }
+          })
+            .margin({ top: 14 })
 
           SdkFeatureCard({
             categoryLabel: 'SDK RENDERING / TRAJECTORY',

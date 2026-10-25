@@ -40,6 +40,13 @@ function loadEts(stubs = {}, globals = {}) {
     const localRequire = spec => {
       const stub = stubs[spec] ?? stubs[path.basename(spec)];
       if (stub !== undefined) return stub;
+      // Importing a controller must not pretend to execute a platform native bridge on Node.
+      if (spec === 'libxmax_video.so') return { default: {
+        convertExternalVideoFrame() { throw new Error('Stub external video conversion explicitly'); }
+      } };
+      if (spec === 'libxlab_recorder.so') return {
+        createFileSource() { throw new Error('Stub app-owned file decoding explicitly'); }
+      };
       if (spec === '@kit.ArkData') return { preferences: {
         getPreferencesSync(_context, { name }) {
           if (!preferenceStores.has(name)) preferenceStores.set(name, new Map());

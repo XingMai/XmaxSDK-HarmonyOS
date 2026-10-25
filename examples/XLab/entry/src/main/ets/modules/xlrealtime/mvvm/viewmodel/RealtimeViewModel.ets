@@ -31,6 +31,7 @@ import { ReferenceUploading } from '../../reference/ReferenceUploader';
 import { RealtimeReferenceItemState, RealtimeViewState } from '../model/RealtimeViewState';
 import { RealtimeVideoRecorder } from '../../recording/RealtimeVideoRecorder';
 import { RealtimeRecordingState } from '../../recording/RealtimeRecordingState';
+import { RealtimeFileVideoSource } from '../../external/RealtimeFileVideoSource';
 
 const LOG_DOMAIN: number = 0x0000;
 const LOG_TAG: string = 'RealtimeViewModel';
@@ -72,6 +73,7 @@ export class RealtimeViewModel {
   private submittedPrompt: string = '';
   private localVideoPath: string = '';
   private localImagePath: string = '';
+  private usesExternalSource: boolean = false;
   private moxReferenceSourcePath: string = '';
   private moxReferenceRemoteUrl: string = '';
   private recorder: RealtimeVideoRecorder | null = null;
@@ -312,7 +314,8 @@ export class RealtimeViewModel {
   async connect(
     context: common.UIAbilityContext,
     localVideoPath: string = '',
-    localImagePath: string = ''
+    localImagePath: string = '',
+    usesExternalSource: boolean = false
   ): Promise<void> {
     if (this.realtimeManager !== null || this.connecting) {
       return;
@@ -320,6 +323,7 @@ export class RealtimeViewModel {
     this.connecting = true;
     this.localVideoPath = localVideoPath;
     this.localImagePath = localImagePath;
+    this.usesExternalSource = usesExternalSource;
     this.state.isLocalPreviewLoading = true;
     this.state.errorMessage = '';
 
@@ -466,14 +470,16 @@ export class RealtimeViewModel {
   async resume(
     context: common.UIAbilityContext,
     fallbackVideoPath: string = '',
-    fallbackImagePath: string = ''
+    fallbackImagePath: string = '',
+    usesExternalSource: boolean = false
   ): Promise<void> {
     const hasPreservedInput: boolean = this.localVideoPath.length > 0 ||
       this.localImagePath.length > 0;
     await this.connect(
       context,
       hasPreservedInput ? this.localVideoPath : fallbackVideoPath,
-      hasPreservedInput ? this.localImagePath : fallbackImagePath
+      hasPreservedInput ? this.localImagePath : fallbackImagePath,
+      usesExternalSource
     );
   }
 
@@ -524,7 +530,7 @@ export class RealtimeViewModel {
         manager: XmaxRealtimeManaging,
         resolvedPath: string
       ): Promise<RealtimeMediaStream> =>
-        manager.createLocalVideoStream(resolvedPath)
+        this.createLocalStream(manager, resolvedPath, '')
     );
   }
 
@@ -1062,6 +1068,10 @@ export class RealtimeViewModel {
       return;
     }
     if (localVideoPath.length > 0) {
+      if (this.usesExternalSource) {
+        await manager.stopExternalVideoStream();
+        return;
+      }
       await manager.stopLocalVideoStream();
       return;
     }
@@ -1079,6 +1089,16 @@ export class RealtimeViewModel {
     }
 
     if (localVideoPath.length > 0) {
+      if (this.usesExternalSource) {
+        const source: RealtimeFileVideoSource = await RealtimeFileVideoSource.create(
+          localVideoPath, manager.options.model.defaultCameraVideoFormat.fps);
+        try {
+          return await manager.createExternalVideoStream(source);
+        } catch (error) {
+          await source.stop();
+          throw error as Error;
+        }
+      }
       return manager.createLocalVideoStream(localVideoPath);
     }
 

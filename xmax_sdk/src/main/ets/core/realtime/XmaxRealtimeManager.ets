@@ -32,6 +32,7 @@ import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
 import { RtcManager } from '../../foundation/rtc/RtcManager';
 import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { MediaController } from '../../media/MediaController';
+import { RealtimeExternalVideoSource } from '../../media/external/RealtimeExternalVideoSource';
 import { MediaControlling } from '../../media/MediaControlling';
 import { RenderController } from '../../rendering/RenderController';
 import { RenderControlling } from '../../rendering/RenderControlling';
@@ -626,6 +627,62 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         );
 
         return stream;
+      }
+    );
+  }
+
+  /** Binds an app-owned external video source, with optional audio, for preview and generation. */
+  createExternalVideoStream(
+    source: RealtimeExternalVideoSource
+  ): Promise<RealtimeMediaStream> {
+    return this.coordinator.run(
+      RealtimeOperationKind.MEDIA,
+      null,
+      async (token: RealtimeOperationToken): Promise<RealtimeMediaStream> => {
+        this.ensureLocalMediaCanChange();
+        if (this.mediaController.currentTrack !== null) {
+          throw new XmaxError(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            'Stop the current local stream before creating another one'
+          );
+        }
+
+        this.mediaController.setCameraPreviewReadyHandler(null);
+        this.coordinator.commit(
+          new RealtimeState(RealtimeConnectionState.PREPARING),
+          token
+        );
+
+        const stream: RealtimeMediaStream = await this.mediaController.createExternalVideoStream(source);
+        token.ensureCurrent();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
+
+        this.streamController.setRemoteAudioVolume(0);
+        this.coordinator.commit(
+          new RealtimeState(RealtimeConnectionState.READY),
+          token
+        );
+        return stream;
+      }
+    );
+  }
+
+  /** Unbinds external frames and preview after the realtime connection has been disconnected. */
+  stopExternalVideoStream(): Promise<void> {
+    return this.coordinator.run(
+      RealtimeOperationKind.MEDIA,
+      null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalMediaCanChange();
+        token.setFailureScope(RealtimeTerminationScope.ALL);
+
+        await this.mediaController.stopExternalVideoStream();
+
+        this.coordinator.commit(
+          new RealtimeState(this.mediaController.currentTrack !== null ?
+            RealtimeConnectionState.READY : RealtimeConnectionState.IDLE),
+          token
+        );
       }
     );
   }

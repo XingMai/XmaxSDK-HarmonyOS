@@ -33,11 +33,14 @@ import { InteractionControlling } from './interaction/InteractionControlling';
 import { InteractionFrame } from './interaction/InteractionFrame';
 import { MediaControlling } from './MediaControlling';
 import { VideoController } from './video/VideoController';
+import { ExternalVideoController } from './external/ExternalVideoController';
+import { RealtimeExternalVideoSource } from './external/RealtimeExternalVideoSource';
 
-/** A local camera, image, or video source controller. */
+/** A local camera, image, file video, or app-owned external source controller. */
 type LocalMediaController = CameraController |
   VideoController |
-  ImageController;
+  ImageController |
+  ExternalVideoController;
 
 /**
  * An asynchronous operation creating a local media stream.
@@ -94,6 +97,9 @@ export class MediaController implements MediaControlling {
 
   /** The controller owning local file video media. */
   private readonly videoController: VideoController;
+
+  /** The controller binding app-owned external capture to preview and transport. */
+  private readonly externalController: ExternalVideoController;
 
   // Current local input and lifecycle
 
@@ -154,6 +160,13 @@ export class MediaController implements MediaControlling {
       );
     });
 
+    this.externalController = new ExternalVideoController(
+      rtcManager,
+      streamController,
+      mediaService,
+      errorListener
+    );
+
     this.videoController = new VideoController(
       context,
       rtcManager,
@@ -174,16 +187,20 @@ export class MediaController implements MediaControlling {
     return this.currentTrack?.videoFormat;
   }
 
-  /** Whether input needs aspect-preserving padding; true for images and videos, false for cameras. */
+  /** Whether input needs aspect-preserving padding; true for images, videos, and external sources. */
   get usesContainPadding(): boolean {
     const controller = this.activeSource?.controller;
-    return controller === this.imageController || controller === this.videoController;
+    return controller === this.imageController || controller === this.videoController ||
+      controller === this.externalController;
   }
 
   /** Whether the source uses a camera microphone or an available file audio track. */
   get hasAudio(): boolean {
     if (this.activeSource?.controller === this.cameraController) {
       return this.cameraController.useMicrophone;
+    }
+    if (this.activeSource?.controller === this.externalController) {
+      return this.externalController.hasAudio;
     }
     return this.activeSource?.controller === this.videoController &&
       this.videoController.hasAudio;
@@ -364,6 +381,21 @@ export class MediaController implements MediaControlling {
    */
   stopLocalVideoStream(): Promise<void> {
     return this.stopSource(this.videoController);
+  }
+
+  /** Binds app-owned capture while retaining normal local stream ownership and rollback. */
+  createExternalVideoStream(
+    source: RealtimeExternalVideoSource
+  ): Promise<RealtimeMediaStream> {
+    return this.createSource(
+      this.externalController,
+      (): Promise<RealtimeMediaStream> => this.externalController.createExternalVideoStream(source)
+    );
+  }
+
+  /** Unbinds the external source without taking ownership of the app's devices or player. */
+  stopExternalVideoStream(): Promise<void> {
+    return this.stopSource(this.externalController);
   }
 
   /** Pauses the current video source and starts frozen-frame publication. */
@@ -658,6 +690,9 @@ export class MediaController implements MediaControlling {
     if (controller === this.videoController) {
       return this.videoController.stopLocalVideoStream();
     }
+    if (controller === this.externalController) {
+      return this.externalController.stopExternalVideoStream();
+    }
 
     return this.imageController.stopLocalImageStream();
   }
@@ -676,6 +711,10 @@ export class MediaController implements MediaControlling {
     }
     if (controller === this.videoController) {
       this.videoController.prepareForStop();
+      return;
+    }
+    if (controller === this.externalController) {
+      this.externalController.prepareForStop();
       return;
     }
 

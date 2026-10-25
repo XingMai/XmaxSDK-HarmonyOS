@@ -10,10 +10,10 @@
 
 import { RealtimeVideoFrame } from './RealtimeVideoFrame';
 
-/** An owned packet of signed, little-endian, interleaved 16-bit remote PCM. */
+/** Signed little-endian interleaved PCM16 for remote output or external input. */
 export class RealtimeAudioFrame {
 
-  /** The copied PCM bytes, valid after callback return; treat them as read-only. */
+  /** The PCM bytes; SDK-delivered output owns a copy valid after callback return. */
   readonly data: Uint8Array;
 
   /** The number of samples per second in each channel. */
@@ -25,7 +25,7 @@ export class RealtimeAudioFrame {
   /** The number of samples in each channel of this packet. */
   readonly samplesPerChannel: number;
 
-  /** The sample-based media time anchored to the RTC audio timestamp, in microseconds. */
+  /** The first sample's media time in microseconds, using the producer clock for external input. */
   readonly timestampUs: number;
 
   /** The exact packet duration derived from its sample count, in microseconds. */

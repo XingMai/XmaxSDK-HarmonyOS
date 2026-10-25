@@ -19,14 +19,15 @@ export interface MediaServicing {
   readonly model: ModelDefinition;
 
   /**
-   * Resolves local dimensions without upscaling and validates camera resolution buckets.
+   * Resolves aligned local dimensions and validates camera resolution buckets.
    *
    * @param size The requested camera dimensions or oriented image or video dimensions, in pixels.
    * @param source The media source; camera dimensions must match a bucket when the model defines
    * fixed resolutions.
    *
    * @returns Dimensions aligned to 4 within the model's maximum pixel area, preserving the exact
-   * aspect ratio when possible and rounding down otherwise. Local media is never upscaled.
+   * aspect ratio when possible and rounding down otherwise. External sources are also upscaled
+   * to the model's minimum pixel area; other local media is never upscaled.
    *
    * @throws An INVALID_CONFIGURATION error if dimensions or pixel area are invalid, a camera
    * resolution is unsupported, or no aligned size of at least 4 × 4 pixels fits the limit.

@@ -6,6 +6,7 @@ interface RealtimePlaygroundParameters {
   localVideoPath?: string;
   localImagePath?: string;
   usesCustomTrajectoryRenderer?: boolean;
+  usesExternalSource?: boolean;
 }
 
 @Entry
@@ -32,12 +33,18 @@ struct RealtimePlayground {
     return parameters.usesCustomTrajectoryRenderer ?? false;
   }
 
+  private usesExternalSource(): boolean {
+    const parameters = router.getParams() as RealtimePlaygroundParameters;
+    return parameters.usesExternalSource ?? false;
+  }
+
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       RealtimePage({
         localVideoPath: this.localVideoPath(),
         localImagePath: this.localImagePath(),
-        usesCustomTrajectoryRenderer: this.usesCustomTrajectoryRenderer()
+        usesCustomTrajectoryRenderer: this.usesCustomTrajectoryRenderer(),
+        usesExternalSource: this.usesExternalSource()
       })
 
       Button({ type: ButtonType.Normal }) {

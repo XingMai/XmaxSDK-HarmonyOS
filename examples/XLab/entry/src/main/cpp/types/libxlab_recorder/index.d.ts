@@ -25,3 +25,24 @@ export const create: (path: string, onError: (message: string) => void) => numbe
 export const appendVideo: (handle: number, frame: VideoFrame) => void;
 export const appendAudio: (handle: number, frame: AudioFrame) => void;
 export const finish: (handle: number, cancel: boolean) => Promise<string>;
+
+export interface FileFrame {
+  video: boolean;
+  data: ArrayBuffer;
+  width: number;
+  height: number;
+  sampleRate: number;
+  channels: number;
+  timestampUs: number;
+  error?: string;
+}
+
+export interface FileSource {
+  readonly width: number;
+  readonly height: number;
+  readonly hasAudio: boolean;
+  start(): void;
+  release(): Promise<void>;
+}
+
+export const createFileSource: (fd: number, length: number, onFrame: (frame: FileFrame) => void) => Promise<FileSource>;

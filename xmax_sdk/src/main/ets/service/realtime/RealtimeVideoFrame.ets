@@ -12,7 +12,7 @@ import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 
-/** A processed RTC display frame without view cropping, mirroring, or UI overlays. */
+/** Raw video pixels for remote output or external input, without view cropping or UI overlays. */
 export class RealtimeVideoFrame {
 
   /** The buffer width before rotation, in pixels. */
@@ -21,7 +21,7 @@ export class RealtimeVideoFrame {
   /** The buffer height before rotation, in pixels. */
   readonly height: number;
 
-  /** The pixel format; the current remote sink outputs I420. */
+  /** The pixel format; remote output uses I420 and external input accepts NV12 or BGRA. */
   readonly pixelFormat: VideoPixelFormat;
 
   /**

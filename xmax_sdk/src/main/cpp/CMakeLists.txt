@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(third_party/libyuv)
 
 add_library(xmax_video SHARED
+    external_video_converter.cpp
+    native_external_video.cpp
     audio_pcm_converter.cpp
     native_frame_receiver.cpp
     native_audio_file_decoder.cpp

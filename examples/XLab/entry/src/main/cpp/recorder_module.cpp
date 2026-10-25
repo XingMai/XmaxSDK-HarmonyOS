@@ -1,4 +1,5 @@
 #include "realtime_recorder.h"
+#include "file_frame_source.h"
 
 #include <atomic>
 #include <cmath>
@@ -247,6 +248,7 @@ napi_value Finish(napi_env env, napi_callback_info info) {
 }
 
 napi_value Initialize(napi_env env, napi_value exports) {
+  DefineFileFrameSource(env, exports);
   const napi_property_descriptor properties[] = {
       {"create", nullptr, Create, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"appendVideo", nullptr, AppendVideo, nullptr, nullptr, nullptr, napi_default, nullptr},

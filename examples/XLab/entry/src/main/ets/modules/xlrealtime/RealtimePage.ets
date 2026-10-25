@@ -77,6 +77,7 @@ export struct RealtimePage {
   @Prop localVideoPath: string = '';
   @Prop localImagePath: string = '';
   @Prop usesCustomTrajectoryRenderer: boolean = false;
+  @Prop usesExternalSource: boolean = false;
 
   // 页面组件
   private readonly viewModel: RealtimeViewModel = new RealtimeViewModel();
@@ -276,7 +277,8 @@ export struct RealtimePage {
     await this.viewModel.resume(
       context,
       this.localVideoPath,
-      this.localImagePath
+      this.localImagePath,
+      this.usesExternalSource
     );
   }
 

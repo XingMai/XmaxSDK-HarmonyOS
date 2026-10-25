@@ -21,5 +21,8 @@ export enum RealtimeMediaSource {
   IMAGE = 'image',
 
   /** Local video file input. */
-  VIDEO = 'video'
+  VIDEO = 'video',
+
+  /** App-owned video input with optional PCM audio. */
+  EXTERNAL = 'external'
 }

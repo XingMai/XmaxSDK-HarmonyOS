@@ -45,7 +45,18 @@ function managerFixture(modelName = 'x2.0-sla') {
       return new MediaStream('local', this.currentTrack);
     }
     async stopLocalCameraStream() { this.currentTrack = null; }
-    async stopLocalStream() { this.currentTrack = null; }
+    async stopLocalStream() { this.currentTrack = null; if (this.externalSource) await this.stopExternalVideoStream(); }
+    async createExternalVideoStream(source) {
+      this.externalSource = source; this.hasAudio = source.hasAudio;
+      this.currentTrack = new Track('external0', source.videoFormat);
+      await source.start({ isRequestingFrames: true, videoFormat: source.videoFormat });
+      return new MediaStream('local', this.currentTrack);
+    }
+    async stopExternalVideoStream() {
+      const source = this.externalSource;
+      this.externalSource = null; this.currentTrack = null;
+      await source?.stop();
+    }
     owns(local) { return local.videoTrack !== undefined && Track.resolve(local.videoTrack) === this.currentTrack; }
     setLocalAudioPreviewEnabled(value) { calls.audio.push(value); }
     get localAudioVolume() { return this.volume ?? 0.45; }
@@ -1018,6 +1029,35 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unsubscrib
   assert.equal(handlers.has('onFirstRemoteVideoFrameRendered'), false);
 });
 
+test('external input uses the normal Core lifecycle, is READY without a frame, and remains bound after disconnect', async () => {
+  const f = managerFixture();
+  const source = { videoFormat: new f.Format(1280, 720, 24), hasAudio: false,
+    starts: 0, stops: 0,
+    async start() { this.starts++; }, async stop() { this.stops++; } };
+  const local = await f.manager.createExternalVideoStream(source);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(source.starts, 1);
+  assert.equal(f.manager.remoteAudioVolume, 0);
+  assert.equal(local.videoTrack.videoFormat.fps, 24);
+  assert.equal(f.calls.sessions.length, 0);
+  await f.manager.disconnect();
+  assert.equal(source.stops, 0);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  await f.manager.stopExternalVideoStream();
+  assert.equal(source.stops, 1);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+});
+
+test('close releases an external source through the normal media cleanup path', async () => {
+  const f = managerFixture();
+  const source = { videoFormat: new f.Format(1280, 720, 24), hasAudio: true,
+    stops: 0, async start() {}, async stop() { this.stops++; } };
+  await f.manager.createExternalVideoStream(source);
+  await f.manager.close();
+  assert.equal(source.stops, 1);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+});
+
 function exampleFixture(modelName = 'x2.0-sla') {
   const f = managerFixture(modelName);
   const recorders = [];
@@ -1037,6 +1077,9 @@ function exampleFixture(modelName = 'x2.0-sla') {
     XLabConfiguration: { XLabConfiguration: { currentApiKey: () => 'test-only' } },
     XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-sla' } },
     ReferenceDataSource: { ReferenceDataSource: { categories: () => [] } },
+    RealtimeFileVideoSource: { RealtimeFileVideoSource: class {
+      static async create() { throw new Error('Stub external file decoding for this test'); }
+    } },
     RealtimeVideoRecorder: { RealtimeVideoRecorder: class {
       constructor() { recorders.push(this); this.frames = []; }
       start(onError) { this.onError = onError; }

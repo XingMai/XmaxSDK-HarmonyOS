@@ -1,5 +1,7 @@
 {
   "string": [
+    { "name": "external_capture", "value": "外部采集" },
+    { "name": "external_capture_description", "value": "App 自行解码 SDR 视频和音频，通过 Source + Sink 接入生成" },
     { "name": "record_start", "value": "录制" },
     { "name": "record_stop", "value": "停止" },
     { "name": "record_saving", "value": "保存中" },

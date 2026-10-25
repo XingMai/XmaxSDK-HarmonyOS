@@ -27,7 +27,7 @@ export class MediaService implements MediaServicing {
     this.model = model;
   }
 
-  /** Validates camera buckets and resolves aligned local dimensions without upscaling. */
+  /** Validates camera buckets and resolves aligned local dimensions, upscaling external input if required. */
   resolveMediaSize(
     size: ImageSize,
     source: RealtimeMediaSource
@@ -46,11 +46,24 @@ export class MediaService implements MediaServicing {
       );
     }
 
-    const scale: number = Math.min(1, Math.sqrt(this.model.maximumInputPixels / (size.width * size.height)));
-    return this.alignedSize(
+    const pixels: number = size.width * size.height;
+    const scale: number = source === RealtimeMediaSource.EXTERNAL && pixels < this.model.minimumInputPixels ?
+      Math.sqrt(this.model.minimumInputPixels / pixels) : Math.min(1, Math.sqrt(this.model.maximumInputPixels / pixels));
+    const resolved: ImageSize = this.alignedSize(
       size,
       scale
     );
+    if (source === RealtimeMediaSource.EXTERNAL &&
+      resolved.width * resolved.height < this.model.minimumInputPixels) {
+      const minimumScale: number = Math.sqrt(this.model.minimumInputPixels / pixels);
+      const width: number = Math.ceil(size.width * minimumScale / 4) * 4;
+      const height: number = Math.ceil(size.height * minimumScale / 4) * 4;
+      if (width * height <= this.model.maximumInputPixels) {
+        return new ImageSize(width, height);
+      }
+      return this.boundedAlignedSize(size.width * minimumScale, size.height * minimumScale);
+    }
+    return resolved;
   }
 
   /** Selects a generation canvas without changing the local media dimensions. */

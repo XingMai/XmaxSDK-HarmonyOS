@@ -134,6 +134,13 @@ export interface NativeFrameReceiver {
 /** ArkTS bridges for native camera receiving and audio/video file decoding. */
 interface XmaxVideoNative {
 
+  /** Copies or scales upright NV12 or BGRA source planes into owned tightly packed NV12. */
+  convertExternalVideoFrame(
+    frame: object,
+    outputWidth: number,
+    outputHeight: number
+  ): ArrayBuffer;
+
   /**
    * Creates a raw CameraKit frame receiver.
    *

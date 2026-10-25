@@ -28,6 +28,7 @@ import {
   LocalVideoPlaybackStateListener
 } from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
+import { RealtimeExternalVideoSource } from '../../media/external/RealtimeExternalVideoSource';
 import { RealtimeQualityLevel } from '../../stream/quality/RealtimeQualityLevel';
 
 /** An interface for local media, realtime connections, and video generation. */
@@ -257,6 +258,26 @@ export interface XmaxRealtimeManaging {
    * The Promise fulfills after stopping completes.
    */
   stopLocalVideoStream(): Promise<void>;
+
+  /**
+   * Binds app-owned external video and optional PCM audio for preview and generation.
+   * Preserves source frame rate and encoding settings while resolving model pixel limits and
+   * four-pixel alignment. Submit original dimensions; sink.videoFormat exposes processed dimensions.
+   * Binding completion marks READY without waiting for a frame or establishing a connection.
+   * Disconnect preserves input and preview. No camera or microphone permission is requested.
+   *
+   * @param source The app-owned producer with immutable videoFormat and hasAudio while bound.
+   * @returns A local stream for SDK views, connection, and generation.
+   */
+  createExternalVideoStream(
+    source: RealtimeExternalVideoSource
+  ): Promise<RealtimeMediaStream>;
+
+  /**
+   * Invalidates the sink, clears preview, and calls source.stop without releasing app-owned devices.
+   * Disconnect first; rejects conflicting or cancelled operations and active connections.
+   */
+  stopExternalVideoStream(): Promise<void>;
 
   /** Pauses local video while RTC continues sending a frozen frame and silent audio. */
   pauseLocalVideoStream(): Promise<void>;

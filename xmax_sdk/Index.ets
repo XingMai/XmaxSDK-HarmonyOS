@@ -76,6 +76,7 @@ export {
 export { XmaxRealtimeVideoView } from './src/main/ets/rendering/video/XmaxRealtimeVideoView';
 export { XmaxVideoView } from './src/main/ets/rendering/video/XmaxVideoView';
 export { XmaxRealtimeManaging } from './src/main/ets/core/realtime/XmaxRealtimeManaging';
+export { RealtimeExternalVideoSource, RealtimeExternalFrameSink } from './src/main/ets/media/external/RealtimeExternalVideoSource';
 export { XmaxStorageManaging } from './src/main/ets/core/storage/XmaxStorageManaging';
 export {
   XmaxDownloadedFile,

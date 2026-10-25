@@ -7,6 +7,7 @@ refer to files supplied by your app. Run realtime operations from a lifecycle-aw
 component and handle rejected promises.
 
 - [Create an input stream](#create-an-input-stream)
+- [External video input](#external-video-input)
 - [Model capabilities](#model-capabilities)
 - [Service environments](#service-environments)
 - [Reference Image Upload](#reference-image-upload)
@@ -24,6 +25,86 @@ component and handle rejected promises.
 - [Runtime information and task IDs](#runtime-information-and-task-ids)
 
 <br>
+
+## External video input
+
+Implement `RealtimeExternalVideoSource` to supply frames from your own camera,
+decoder, or image-processing pipeline. The app owns permissions, producer pacing,
+and resource cleanup; XmaxSDK does not capture microphone audio or play submitted
+audio locally.
+
+```ts
+import {
+  RealtimeExternalVideoSource,
+  RealtimeExternalFrameSink,
+  RealtimeVideoFormat
+} from '@xmax/sdk';
+
+class MyVideoSource implements RealtimeExternalVideoSource {
+  readonly videoFormat: RealtimeVideoFormat = new RealtimeVideoFormat(1280, 720, 30);
+  readonly hasAudio: boolean = false;
+  private sink: RealtimeExternalFrameSink | null = null;
+
+  async start(sink: RealtimeExternalFrameSink): Promise<void> {
+    this.sink = sink;
+    // Install your producer callback; call sink.pushVideo(frame) for each decoded frame.
+  }
+
+  async stop(): Promise<void> {
+    // Remove the producer callback and cancel any pending startup before returning.
+    this.sink = null;
+  }
+}
+
+const source = new MyVideoSource();
+const localStream = await realtime.createExternalVideoStream(source);
+this.localVideoTrack = localStream.videoTrack;
+```
+
+Submit a `RealtimeVideoFrame` containing upright NV12 video-range or BGRA pixels
+at the declared `source.videoFormat` dimensions. Apply orientation and mirroring
+to the pixels before submission. `VideoFramePlane` describes each plane's
+ArrayBuffer, row stride, byte offset, and valid byte length. NV12 has Y and
+interleaved UV planes; BGRA has one packed plane.
+Source dimensions must be even, at most 32768 per side, and at most 16777216 pixels in total.
+
+The sink synchronously copies or resizes pixels, so buffers can be reused after
+`pushVideo` returns. `sink.videoFormat` exposes the processed dimensions within
+model pixel limits and four-pixel alignment, retaining source FPS and encoding
+options. The processed pixels drive both preview and uplink.
+
+For optional audio, declare `hasAudio = true` and call `sink.pushAudio` with a
+`RealtimeAudioFrame`: interleaved little-endian PCM16, 8–192 kHz, 1–8 channels,
+and the number of samples per channel. The SDK converts this to 48 kHz mono PCM16
+in 10 ms packets. Source sample rate and channel count must not change while bound.
+Compressed audio must be decoded first. Remote playback starts muted; call
+`setRemoteAudioVolume` after binding if needed.
+
+Both frame types use nonnegative microsecond timestamps on the same monotonic
+timeline. Preserve their original offset and keep time increasing across loops
+and seeks. Invalid or nonincreasing video timestamps and overlapping audio buffers
+are ignored; audio gaps begin a new segment without silence insertion.
+
+Lifecycle and sink calls run in the manager's ArkTS environment. Marshal Worker
+output through messages before calling the sink; do not share a sink across
+isolated environments. Keep source settings immutable while bound and use
+`isRequestingFrames` to avoid unnecessary work after detachment.
+
+Binding completion marks `READY` without waiting for the first frame. Continue
+delivering frames before generation and after `disconnect()` to retain preview.
+After disconnecting, `stopExternalVideoStream()` invalidates the sink, clears the
+SDK preview, and calls `source.stop()`; `close()` also unbinds it. Stopping must
+cancel pending source startup and detach producer callbacks, but the app decides
+when to release its devices or player. `reportError(error)` permanently ends the
+binding and triggers normal SDK media-error cleanup.
+
+XLab's **External Capture** card picks an SDR video and uses an app-owned native
+system decoder for video and PCM audio, including looping and upright pixels.
+The example deliberately rejects non-NV12 decoder output rather than treating
+HDR/P010 data as SDR; HDR producers must tone-map to supported SDR pixels first.
+
+<br>
+
 
 ## Create an input stream
 
