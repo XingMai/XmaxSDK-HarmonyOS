@@ -11,11 +11,11 @@
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
+import xmaxVideoNative, { NativeRtcRemoteAudioObserver } from 'libxmax_video.so';
 import {
   AudioChannel,
   AudioFrameType,
   AudioFrameCallbackMethod,
-  IAudioFrame,
   AudioSampleRate,
   AudioSourceType,
   ExternalAudioFrame,
@@ -60,7 +60,7 @@ import {
   RtcEngineManager
 } from './RtcEngineManager';
 import { RtcManaging, RtcRemoteAudioFrameListener, RtcRemoteVideoFrameListener, RtcRemoteVideoRenderedListener } from './RtcManaging';
-import { RtcAudioConverter } from './RtcAudioConverter';
+import { RtcAudioConverter, RtcAudioFrameData } from './RtcAudioConverter';
 import { RtcRemoteAudioFrame } from './RtcRemoteAudioFrame';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
@@ -185,8 +185,8 @@ export class RtcManager implements RtcManaging {
   /** The room/user bindings whose audio is currently subscribed by this manager. */
   private readonly subscribedRemoteAudioStreams: Set<string> = new Set();
 
-  /** Whether this engine still owns a registered native audio frame observer. */
-  private audioFrameObserverRegistered: boolean = false;
+  /** The native PCM observer retained through RTC engine destruction. */
+  private remoteAudioObserver: NativeRtcRemoteAudioObserver | null = null;
 
   // Pending remote snapshot
 
@@ -350,28 +350,6 @@ export class RtcManager implements RtcManaging {
       }
     );
 
-    engine.on(
-      'onRemoteUserAudioFrame',
-      (key: RemoteStreamKey, frame: IAudioFrame): void => {
-        if (this.engine !== engine || key.room_id !== this.activeRoomId ||
-          key.stream_index !== StreamIndex.kStreamIndexMain) {
-          return;
-        }
-
-        const stream: RemoteStream = new RemoteStream(
-          key.room_id,
-          key.user_id
-        );
-        if (this.observedRemoteAudioStreams.has(stream.key()) &&
-          this.subscribedRemoteAudioStreams.has(stream.key())) {
-          this.remoteAudioFrameListener?.(
-            stream,
-            (): RtcRemoteAudioFrame => RtcAudioConverter.copyRemoteFrame(frame)
-          );
-        }
-      }
-    );
-
     this.engineLease = lease;
   }
 
@@ -383,6 +361,11 @@ export class RtcManager implements RtcManaging {
   async destroy(): Promise<void> {
     const lease: RtcEngineLease | null = this.engineLease;
     this.stopRemoteAudioObservation();
+    try {
+      this.remoteAudioObserver?.close();
+    } catch (error) {
+      XmaxLogger.error('Native remote audio observer detach failed: ' + String(error), 'RTC');
+    }
     this.engineLease = null;
     this.remoteStreamKeys.clear();
     this.renderedRemoteStreams.clear();
@@ -415,12 +398,6 @@ export class RtcManager implements RtcManaging {
           );
           this.offEngineEventSafely(
             (): void => {
-              engine.off('onRemoteUserAudioFrame');
-            },
-            'onRemoteUserAudioFrame'
-          );
-          this.offEngineEventSafely(
-            (): void => {
               engine.off('onTakeRemoteSnapshotResult');
             },
             'onTakeRemoteSnapshotResult'
@@ -435,7 +412,7 @@ export class RtcManager implements RtcManaging {
           try {
             await RtcEngineManager.release(lease);
           } finally {
-            this.audioFrameObserverRegistered = false;
+            this.remoteAudioObserver = null;
           }
         }
       }
@@ -1165,12 +1142,39 @@ export class RtcManager implements RtcManaging {
 
     if (this.observedRemoteAudioStreams.size === 0) {
       const engine: RTCEngine = this.requireEngine();
-      this.checkResult(
-        engine.registerAudioFrameObserver(true),
-        'registerAudioFrameObserver'
-      );
-      this.audioFrameObserverRegistered = true;
       try {
+        if (this.remoteAudioObserver === null) {
+          this.remoteAudioObserver = xmaxVideoNative.createRtcRemoteAudioObserver(
+            engine.getNativeHandle(),
+            (roomId: string, userId: string, streamIndex: number, data: ArrayBuffer,
+              sampleRate: number, channels: number, timestampUs: number, isDiscontinuous: boolean): void => {
+              if (this.engine !== engine || roomId !== this.activeRoomId ||
+                streamIndex !== StreamIndex.kStreamIndexMain) {
+                return;
+              }
+
+              const stream: RemoteStream = new RemoteStream(roomId, userId);
+              if (!this.observedRemoteAudioStreams.has(stream.key()) ||
+                !this.subscribedRemoteAudioStreams.has(stream.key())) {
+                return;
+              }
+
+              const frame: RtcAudioFrameData = {
+                timestamp_us: timestampUs,
+                sample_rate: sampleRate,
+                channel: channels,
+                data: new Uint8Array(data),
+                data_size: data.byteLength,
+                frame_type: AudioFrameType.kFrameTypePCM16
+              };
+              this.remoteAudioFrameListener?.(
+                stream,
+                (): RtcRemoteAudioFrame => RtcAudioConverter.copyRemoteFrame(frame, isDiscontinuous)
+              );
+            }
+          );
+        }
+        this.remoteAudioObserver.setEnabled(true);
         this.checkResult(
           engine.enableAudioFrameCallback(
             AudioFrameCallbackMethod.kRemoteUser,
@@ -1184,17 +1188,18 @@ export class RtcManager implements RtcManaging {
         );
       } catch (error) {
         this.stopRemoteAudioObservation();
-        throw XmaxError.from(error);
+        throw new XmaxError(XmaxErrorCode.RTC_ERROR, XmaxError.from(error).message);
       }
     }
 
     this.observedRemoteAudioStreams.add(streamId);
   }
 
-  /** Disables native PCM delivery while still attempting observer removal after a failure. */
+  /** Invalidates queued PCM while retaining its observer until the engine lease is released. */
   private disableRemoteAudioObservation(): void {
     const engine: RTCEngine | null = this.engine;
-    if (engine === null || !this.audioFrameObserverRegistered) {
+    const observer: NativeRtcRemoteAudioObserver | null = this.remoteAudioObserver;
+    if (engine === null || observer === null) {
       return;
     }
 
@@ -1204,11 +1209,7 @@ export class RtcManager implements RtcManaging {
         'disableAudioFrameCallback'
       );
     } finally {
-      this.checkResult(
-        engine.registerAudioFrameObserver(false),
-        'registerAudioFrameObserver'
-      );
-      this.audioFrameObserverRegistered = false;
+      observer.setEnabled(false);
     }
   }
 

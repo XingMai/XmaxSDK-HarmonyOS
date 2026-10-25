@@ -63,7 +63,7 @@ export class RemoteAudioTimeline {
   ): ResolvedRemoteAudioFrame {
     let timestampUs: number = this.anchorUs === undefined ? frame.timestampUs :
       this.anchorUs + this.samples * 1000000 / this.sampleRate;
-    const discontinuous: boolean = this.anchorUs === undefined ||
+    const discontinuous: boolean = frame.isDiscontinuous || this.anchorUs === undefined ||
       this.sampleRate !== frame.sampleRate || this.channels !== frame.channels ||
       Math.abs(frame.timestampUs - timestampUs) > 100000;
     if (discontinuous) {

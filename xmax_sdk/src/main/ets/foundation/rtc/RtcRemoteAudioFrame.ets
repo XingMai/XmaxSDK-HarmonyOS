@@ -26,18 +26,23 @@ export class RtcRemoteAudioFrame {
   /** The provider-defined audio timestamp, in microseconds. */
   readonly timestampUs: number;
 
+  /** Whether native bridge loss requires a new audio segment at this packet's timestamp. */
+  readonly isDiscontinuous: boolean;
+
   /** Creates an owned remote PCM packet. */
   constructor(
     data: Uint8Array,
     sampleRate: number,
     channels: number,
     samplesPerChannel: number,
-    timestampUs: number
+    timestampUs: number,
+    isDiscontinuous: boolean = false
   ) {
     this.data = data;
     this.sampleRate = sampleRate;
     this.channels = channels;
     this.samplesPerChannel = samplesPerChannel;
     this.timestampUs = timestampUs;
+    this.isDiscontinuous = isDiscontinuous;
   }
 }

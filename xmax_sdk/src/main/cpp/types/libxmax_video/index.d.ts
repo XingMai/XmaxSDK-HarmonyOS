@@ -131,8 +131,38 @@ export interface NativeFrameReceiver {
   release(): void;
 }
 
-/** ArkTS bridges for native camera receiving and audio/video file decoding. */
+/** Controls PCM admission while retaining the native observer until its engine lease ends. */
+export interface NativeRtcRemoteAudioObserver {
+
+  /** Invalidates queued PCM when observation is disabled or begins a new binding. */
+  setEnabled(
+    enabled: boolean
+  ): void;
+
+  /** Detaches the native observer before the engine is destroyed; safe to repeat. */
+  close(): void;
+}
+
+/** Receives owned PCM with the original native audio timestamp and queue-loss information. */
+type NativeRtcRemoteAudioListener = (
+  roomId: string,
+  userId: string,
+  streamIndex: number,
+  data: ArrayBuffer,
+  sampleRate: number,
+  channels: number,
+  timestampUs: number,
+  isDiscontinuous: boolean
+) => void;
+
+/** ArkTS bridges for native camera receiving, RTC PCM, and audio/video file decoding. */
 interface XmaxVideoNative {
+
+  /** Registers unmixed PCM observation using the opaque native handle of the leased RTC engine. */
+  createRtcRemoteAudioObserver(
+    engineHandle: Object | number | bigint,
+    listener: NativeRtcRemoteAudioListener
+  ): NativeRtcRemoteAudioObserver;
 
   /** Copies or scales upright NV12 or BGRA source planes into owned tightly packed NV12. */
   convertExternalVideoFrame(

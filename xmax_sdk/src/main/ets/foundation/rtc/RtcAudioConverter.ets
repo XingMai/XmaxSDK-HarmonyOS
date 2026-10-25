@@ -8,9 +8,31 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { AudioFrameType, IAudioFrame } from '@bytertc/volcenginertc';
+import { AudioFrameType } from '@bytertc/volcenginertc';
 import { XmaxError, XmaxErrorCode } from '../errors/XmaxError';
 import { RtcRemoteAudioFrame } from './RtcRemoteAudioFrame';
+
+/** The PCM metadata needed from native RTC delivery or a platform callback adapter. */
+export interface RtcAudioFrameData {
+
+  /** The original native audio time, in microseconds. */
+  timestamp_us: number;
+
+  /** The per-channel sample rate, in Hz. */
+  sample_rate: number;
+
+  /** The interleaved channel count. */
+  channel: number;
+
+  /** The callback-borrowed PCM storage. */
+  data: Uint8Array | ArrayBuffer;
+
+  /** The valid PCM byte count in the storage. */
+  data_size: number;
+
+  /** The native sample representation; only PCM16 is supported. */
+  frame_type: AudioFrameType;
+}
 
 /** Copies validated PCM before RTC callback storage can be reused. */
 export class RtcAudioConverter {
@@ -19,11 +41,13 @@ export class RtcAudioConverter {
    * Copies the declared PCM range without changing its format or native timestamp.
    *
    * @param frame The native PCM16 packet, valid only during the RTC callback.
+   * @param isDiscontinuous Whether the native callback queue discarded preceding PCM.
    *
    * @throws An RTC error if PCM metadata, byte bounds, or the timestamp is invalid.
    */
   static copyRemoteFrame(
-    frame: IAudioFrame
+    frame: RtcAudioFrameData,
+    isDiscontinuous: boolean = false
   ): RtcRemoteAudioFrame {
     const sampleRate: number = frame.sample_rate;
     const channels: number = frame.channel;
@@ -53,7 +77,8 @@ export class RtcAudioConverter {
       sampleRate,
       channels,
       samplesPerChannel,
-      frame.timestamp_us
+      frame.timestamp_us,
+      isDiscontinuous
     );
   }
 }

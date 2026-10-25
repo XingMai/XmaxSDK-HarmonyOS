@@ -11,6 +11,7 @@ add_library(xmax_video SHARED
     native_external_video.cpp
     audio_pcm_converter.cpp
     native_frame_receiver.cpp
+    native_remote_audio.cpp
     native_audio_file_decoder.cpp
     native_video_file_decoder.cpp
     video_frame_converter.cpp
@@ -20,6 +21,10 @@ add_library(xmax_video SHARED
 
 target_compile_options(xmax_video PRIVATE
     -O3
+)
+
+target_include_directories(xmax_video PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../oh_modules/@bytertc/volcenginertc/include"
 )
 
 target_link_libraries(xmax_video PUBLIC

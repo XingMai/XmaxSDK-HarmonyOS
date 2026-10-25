@@ -214,10 +214,14 @@ test('delivery yields after 16 packets, contains listener exceptions and counts 
 
 async function rtcFixture() {
   const f = fixture(), handlers = new Map(), roomHandlers = new Map(), calls = [];
-  let failure = '', released = 0;
+  let failure = '', released = 0, nativeObserver = null;
   const engine = {
+    getNativeHandle() { return this; },
     on(name, callback) { handlers.set(name, callback); }, off(name) { handlers.delete(name); },
-    registerAudioFrameObserver(enabled) { calls.push(['register', enabled]); return failure === 'register' ? -1 : 0; },
+    registerAudioFrameObserver(enabled) {
+      calls.push(['register', enabled]);
+      return failure === 'register' || (!enabled && failure === 'unregister') ? -1 : 0;
+    },
     enableAudioFrameCallback(method, format) { calls.push(['enable', method, format]); return failure === 'enable' ? -2 : 0; },
     disableAudioFrameCallback(method) { calls.push(['disable', method]); return failure === 'disable' ? -3 : 0; },
     setRemoteVideoCanvas() { return 0; },
@@ -225,6 +229,29 @@ async function rtcFixture() {
   };
   // This fixture uses the same classes as the converter and output dispatcher.
   const load = loadEts({
+    'libxmax_video.so': { default: {
+      createRtcRemoteAudioObserver(handle, callback) {
+        assert.equal(handle, engine);
+        if (engine.registerAudioFrameObserver(true) !== 0) throw new Error('Native registration failed');
+        const observer = nativeObserver = {
+          enabled: false,
+          setEnabled(value) { this.enabled = value; },
+          close() {
+            this.enabled = false;
+            handlers.delete('onRemoteUserAudioFrame');
+            if (engine.registerAudioFrameObserver(false) !== 0) throw new Error('Native detach failed');
+          }
+        };
+        handlers.set('onRemoteUserAudioFrame', (key, frame) => {
+          if (!observer.enabled) return;
+          const data = frame.data instanceof Uint8Array ?
+            frame.data.buffer.slice(frame.data.byteOffset, frame.data.byteOffset + frame.data.byteLength) : frame.data;
+          callback(key.room_id, key.user_id, key.stream_index, data, frame.sample_rate,
+            frame.channel, frame.timestamp_us, frame.is_discontinuous ?? false);
+        });
+        return observer;
+      }
+    } },
     '@kit.ArkTS': { util: { generateRandomUUID: () => require('node:crypto').randomUUID() } },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     '@bytertc/volcenginertc': {
@@ -236,7 +263,10 @@ async function rtcFixture() {
       VideoApplyRotation: { kVideoApplyRotationDefault: -1 },
       VideoSinkMirrorType: { kVideoSinkMirrorTypeOFF: 2 }
     },
-    RtcEngineManager: { RtcEngineManager: { async acquire() { return { engine }; }, async release() { released++; } } },
+    RtcEngineManager: { RtcEngineManager: {
+      async acquire() { return { engine }; },
+      async release() { calls.push(['release', rtc.remoteAudioObserver]); released++; }
+    } },
     XmaxLogger: { XmaxLogger: { error: value => f.logs.push(value), debug() {} } }
   }, {
     setTimeout(fn) { const id = Symbol(); f.timers.set(id, fn); return id; },
@@ -257,7 +287,8 @@ async function rtcFixture() {
   const render = new RenderController(rtc);
   return { ...f, load, rtc, render, stream, key, engine, handlers, roomHandlers, calls,
     failure(value) { failure = value; }, get released() { return released; },
-    audio(patch = {}, streamKey = key) { handlers.get('onRemoteUserAudioFrame')(streamKey, {
+    get nativeObserver() { return nativeObserver; },
+    audio(patch = {}, streamKey = key) { handlers.get('onRemoteUserAudioFrame')?.(streamKey, {
       timestamp_us: 1000000, sample_rate: 48000, channel: 1,
       frame_type: 0, data_size: 960, data: new Uint8Array(960), ...patch }); },
     video() { handlers.get('onRemoteVideoFrame')(key, 1, {
@@ -287,7 +318,8 @@ test('RTC-to-render unified output observes only the bound subscribed user and p
   f.rtc.subscribeRemoteAudio('bot', false);
   f.audio(); f.flush(); assert.equal(output.length, 2);
   f.render.setRemoteMediaFrameListener(null);
-  assert.deepEqual(f.calls.filter(call => call[0] !== 'video').slice(-2), [['disable', 3], ['register', false]]);
+  assert.deepEqual(f.calls.filter(call => call[0] !== 'video').at(-1), ['disable', 3]);
+  assert.equal(f.nativeObserver.enabled, false);
   f.render.resetRemoteTrack(null); await f.rtc.destroy();
   assert.equal(f.released, 1);
   assert.equal(f.handlers.has('onRemoteUserAudioFrame'), false);
@@ -311,11 +343,42 @@ test('native ArrayBuffer PCM reaches unified media output with owned bytes and u
   f.render.resetRemoteTrack(null); await f.rtc.destroy();
 });
 
+test('native audio queue loss reanchors sample time and is visible even for gaps below 100 ms', async () => {
+  const f = await rtcFixture(), output = [];
+  f.render.setRemoteMediaFrameListener(frame => output.push(frame));
+  f.render.setRemoteStream(f.stream); f.rtc.subscribeRemoteAudio('bot', true);
+  f.audio(); f.flush();
+  f.audio({ timestamp_us: 1030000, is_discontinuous: true }); f.flush();
+  f.audio({ timestamp_us: 1040000 }); f.flush();
+  assert.deepEqual(output.map(frame => frame.timestampUs), [1000000, 1030000, 1040000]);
+  assert.deepEqual(output.map(frame => frame.isDiscontinuous), [true, true, false]);
+  f.render.resetRemoteTrack(null); await f.rtc.destroy();
+});
+
+test('recording restarts reuse one engine observer but replace its media binding and sample timeline', async () => {
+  const f = await rtcFixture(), first = [], second = [];
+  f.render.setRemoteMediaFrameListener(frame => first.push(frame));
+  f.render.setRemoteStream(f.stream); f.rtc.subscribeRemoteAudio('bot', true);
+  f.audio(); f.flush();
+  const observer = f.nativeObserver;
+  f.render.setRemoteMediaFrameListener(null);
+  assert.equal(observer.enabled, false);
+  f.render.setRemoteMediaFrameListener(frame => second.push(frame));
+  f.audio({ timestamp_us: 2000000 }); f.flush();
+  assert.equal(f.nativeObserver, observer);
+  assert.equal(f.calls.filter(call => call[0] === 'register' && call[1]).length, 1);
+  assert.equal(second.length, 1);
+  assert.equal(second[0].timestampUs, 2000000);
+  assert.equal(second[0].isDiscontinuous, true);
+  f.render.resetRemoteTrack(null); await f.rtc.destroy();
+  assert.equal(f.calls.filter(call => call[0] === 'register' && !call[1]).length, 1);
+});
+
 test('malformed PCM does not terminate playback and valid audio and video continue through one listener', async () => {
   const f = await rtcFixture(), unified = [];
   f.render.setRemoteMediaFrameListener(frame => unified.push(frame));
   f.render.setRemoteStream(f.stream); f.rtc.subscribeRemoteAudio('bot', true);
-  f.audio({ data_size: 3 }); f.video(); f.flush();
+  f.audio({ timestamp_us: NaN }); f.video(); f.flush();
   assert.equal(unified.length, 1);
   assert.match(f.logs.at(-1), /Invalid remote PCM16/);
   f.audio(); f.flush(); assert.equal(unified.length, 2);
@@ -331,7 +394,7 @@ test('observer registration failures preserve existing delivery and rollback nat
   assert.throws(() => f.render.setRemoteMediaFrameListener(frame => output.push(frame)), { code: 'RTC_ERROR' });
   assert.equal(f.render.mediaFrameDispatcher.hasListener, false);
   assert.equal(f.rtc.observedRemoteAudioStreams.size, 0);
-  assert.equal(f.rtc.audioFrameObserverRegistered, false);
+  assert.equal(f.nativeObserver.enabled, false);
   f.failure('');
   f.render.setRemoteMediaFrameListener(frame => output.push(frame));
   f.rtc.subscribeRemoteAudio('bot', true); f.audio(); f.flush();
@@ -363,10 +426,24 @@ test('PCM disable failure still unregisters the native observer and cannot preve
   f.render.setRemoteMediaFrameListener(() => {}); f.render.setRemoteStream(f.stream);
   f.failure('disable');
   f.render.resetRemoteTrack(null);
-  assert.equal(f.rtc.audioFrameObserverRegistered, false);
+  assert.equal(f.nativeObserver.enabled, false);
   await f.rtc.destroy();
   assert.equal(f.released, 1);
   assert.ok(f.logs.some(message => /cleanup failed/.test(message)));
+});
+
+test('native detach failure retains the disabled observer until engine destruction completes', async () => {
+  const f = await rtcFixture();
+  f.render.setRemoteMediaFrameListener(() => {}); f.render.setRemoteStream(f.stream);
+  const observer = f.nativeObserver;
+  f.failure('unregister');
+  f.render.resetRemoteTrack(null);
+  await f.rtc.destroy();
+  assert.equal(observer.enabled, false);
+  assert.equal(f.calls.find(call => call[0] === 'release')[1], observer);
+  assert.equal(f.rtc.remoteAudioObserver, null);
+  assert.equal(f.released, 1);
+  assert.ok(f.logs.some(message => /detach failed/.test(message)));
 });
 
 test('audio unpublication filters late PCM until a successful resubscription', async () => {
@@ -394,9 +471,12 @@ test('multiple watched users share one native observer and disable it after the 
   f.rtc.observeRemoteAudioFrames(f.stream, false);
   assert.equal(f.calls.some(call => call[0] === 'disable'), false);
   f.rtc.observeRemoteAudioFrames(other, false);
-  assert.deepEqual(f.calls.slice(-2), [['disable', 3], ['register', false]]);
+  assert.deepEqual(f.calls.at(-1), ['disable', 3]);
+  assert.equal(f.nativeObserver.enabled, false);
   assert.throws(() => f.rtc.observeRemoteAudioFrames(new RemoteStream('old', 'bot'), true), { code: 'RTC_ERROR' });
   await f.rtc.destroy();
+  assert.deepEqual(f.calls.at(-2), ['register', false]);
+  assert.equal(f.calls.at(-1)[0], 'release');
 });
 
 test('native observer registration failure can be retried without replacing the application receiver', async () => {
@@ -405,7 +485,7 @@ test('native observer registration failure can be retried without replacing the 
   f.failure('register');
   assert.throws(() => f.render.setRemoteMediaFrameListener(frame => output.push(frame)), { code: 'RTC_ERROR' });
   assert.equal(f.render.mediaFrameDispatcher.hasListener, false);
-  assert.equal(f.rtc.audioFrameObserverRegistered, false);
+  assert.equal(f.rtc.remoteAudioObserver, null);
   f.failure('');
   f.render.setRemoteMediaFrameListener(frame => output.push(frame));
   f.rtc.subscribeRemoteAudio('bot', true); f.audio(); f.flush();
