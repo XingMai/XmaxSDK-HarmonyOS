@@ -58,6 +58,17 @@ test('PCM copying honors typed-array offset and declared length and owns bytes a
   assert.equal(copied.channels, 2);
 });
 
+test('PCM copying accepts the native ArrayBuffer representation without including trailing bytes', () => {
+  const f = fixture(), storage = new Uint8Array([1, 2, 3, 4, 99, 98]);
+  const copied = f.Converter.copyRemoteFrame({ timestamp_us: 123456, sample_rate: 48000, channel: 1,
+    data_size: 4, data: storage.buffer, frame_type: 0 });
+  assert.deepEqual([...copied.data], [1, 2, 3, 4]);
+  assert.equal(copied.samplesPerChannel, 2);
+  assert.equal(copied.timestampUs, 123456);
+  storage.fill(0);
+  assert.deepEqual([...copied.data], [1, 2, 3, 4]);
+});
+
 test('PCM copying rejects invalid time, format, sample rate, channels and byte bounds', () => {
   const f = fixture();
   const raw = { timestamp_us: 1, sample_rate: 48000, channel: 1,
@@ -66,7 +77,8 @@ test('PCM copying rejects invalid time, format, sample rate, channels and byte b
     { sample_rate: 0 }, { sample_rate: 192001 }, { sample_rate: 44099.5 },
     { channel: 0 }, { channel: 3 }, { data_size: 0 }, { data_size: -2 },
     { data_size: 961 }, { data_size: 962 }, { data_size: 3 }, { data_size: 1.5 },
-    { data: undefined }, { data: new ArrayBuffer(960) }, { frame_type: 1 }]) {
+    { data: undefined }, { data: new Int16Array(480) }, { data: new DataView(new ArrayBuffer(960)) },
+    { data: new Uint8ClampedArray(960) }, { data: new ArrayBuffer(959) }, { frame_type: 1 }]) {
     assert.throws(() => f.Converter.copyRemoteFrame({ ...raw, ...patch }), { code: 'RTC_ERROR' });
   }
   assert.equal(f.audio(0).timestampUs, 0);
@@ -279,6 +291,24 @@ test('RTC-to-render unified output observes only the bound subscribed user and p
   f.render.resetRemoteTrack(null); await f.rtc.destroy();
   assert.equal(f.released, 1);
   assert.equal(f.handlers.has('onRemoteUserAudioFrame'), false);
+});
+
+test('native ArrayBuffer PCM reaches unified media output with owned bytes and unchanged timing', async () => {
+  const f = await rtcFixture(), output = [], samples = new Uint8Array(960).fill(17);
+  f.render.setRemoteMediaFrameListener(frame => output.push(frame));
+  f.render.setRemoteStream(f.stream); f.rtc.subscribeRemoteAudio('bot', true);
+  f.audio({ data: samples.buffer });
+  samples.fill(0);
+  f.video(); f.flush();
+  assert.equal(output.length, 2);
+  assert.equal(output[0].content.data.byteLength, 960);
+  assert.ok(output[0].content.data.every(value => value === 17));
+  assert.equal(output[0].content.sampleRate, 48000);
+  assert.equal(output[0].content.channels, 1);
+  assert.equal(output[0].content.samplesPerChannel, 480);
+  assert.deepEqual(output.map(frame => frame.timestampUs), [1000000, 990000]);
+  assert.deepEqual(f.logs, []);
+  f.render.resetRemoteTrack(null); await f.rtc.destroy();
 });
 
 test('malformed PCM does not terminate playback and valid audio and video continue through one listener', async () => {

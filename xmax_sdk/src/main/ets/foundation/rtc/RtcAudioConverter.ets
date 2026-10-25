@@ -29,20 +29,25 @@ export class RtcAudioConverter {
     const channels: number = frame.channel;
     const byteCount: number = frame.data_size;
     const samplesPerChannel: number = byteCount / (channels * 2);
+    const storage: Uint8Array | ArrayBuffer = frame.data;
+    const input: Uint8Array | undefined = storage instanceof Uint8Array ? storage :
+      storage instanceof ArrayBuffer ? new Uint8Array(storage) : undefined;
+
     if (frame.frame_type !== AudioFrameType.kFrameTypePCM16 ||
       !Number.isSafeInteger(frame.timestamp_us) || frame.timestamp_us < 0 ||
       !Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 192000 ||
       (channels !== 1 && channels !== 2) || !Number.isSafeInteger(byteCount) ||
-      !(frame.data instanceof Uint8Array) || byteCount > frame.data.byteLength ||
+      input === undefined || byteCount > input.byteLength ||
       !Number.isInteger(samplesPerChannel) || samplesPerChannel < 1 || samplesPerChannel > 192000) {
       throw new XmaxError(
         XmaxErrorCode.RTC_ERROR,
-        'Invalid remote PCM16 audio frame'
+        `Invalid remote PCM16 audio frame: type=${frame.frame_type}, rate=${sampleRate}, ` +
+        `channels=${channels}, bytes=${byteCount}, available=${input?.byteLength}, timestampUs=${frame.timestamp_us}`
       );
     }
 
     const data: Uint8Array = new Uint8Array(byteCount);
-    data.set(frame.data.subarray(0, byteCount));
+    data.set(input.subarray(0, byteCount));
     return new RtcRemoteAudioFrame(
       data,
       sampleRate,
