@@ -198,11 +198,12 @@ bool FileVideoSurface::Read(const PixelConsumer &consume) {
   OH_NativeBuffer_GetConfig(buffer.native, &config);
   RequireSurface(buffer.mapped && address && planes.planeCount >= 2 &&
       config.format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP &&
-      config.width == impl_->width && config.height == impl_->height && config.stride >= config.width,
+      config.width > 0 && config.height > 0 && config.width % 2 == 0 && config.height % 2 == 0 &&
+      config.stride >= config.width,
       "External HDR Surface did not output SDR NV12");
 
   const auto *bytes = static_cast<const uint8_t *>(address);
   consume(bytes + planes.planes[0].offset, config.stride,
-      bytes + planes.planes[1].offset, config.stride);
+      bytes + planes.planes[1].offset, config.stride, config.width, config.height);
   return true;
 }

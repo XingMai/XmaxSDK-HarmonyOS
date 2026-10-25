@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -9,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -50,11 +52,12 @@ int images = 0, processors = 0, callbacks = 0, windows = 0, starts = 0, stops = 
 int acquired = 0, released = 0, referenced = 0, mapped = 0, rendered = 0, decoderRendered = 0, freed = 0;
 int failStage = 0, pixelFormat = 24;
 int pendingFence = -1;
+int requestedWidth = 0, requestedHeight = 0;
 
 OH_NativeImage *OH_ConsumerSurface_Create() { images++; return new OH_NativeImage; }
 int OH_ConsumerSurface_SetDefaultUsage(OH_NativeImage *, int) { return 0; }
 int OH_ConsumerSurface_SetDefaultSize(OH_NativeImage *, int width, int height) {
-  assert(width == 4 && height == 2); return 0;
+  requestedWidth = width; requestedHeight = height; return 0;
 }
 OHNativeWindow *OH_NativeImage_AcquireNativeWindow(OH_NativeImage *image) { return &image->window; }
 int OH_NativeWindow_NativeWindowHandleOpt(OHNativeWindow *window, int, int format) { window->format = format; return 0; }
@@ -127,15 +130,17 @@ int OH_NativeBuffer_Unmap(OH_NativeBuffer *) { mapped--; return 0; }
 
 struct OH_AVCodecBufferAttr { int64_t pts; int size, flags; };
 struct OH_AVBuffer { OH_AVCodecBufferAttr attr; };
-constexpr int AVCODEC_BUFFER_FLAGS_EOS = 1;
+constexpr int AV_ERR_OK = 0, AVCODEC_BUFFER_FLAGS_EOS = 1;
 int OH_AVBuffer_GetBufferAttr(OH_AVBuffer *buffer, OH_AVCodecBufferAttr *attr) { *attr = buffer->attr; return 0; }
 int OH_VideoDecoder_RenderOutputBuffer(void *, uint32_t) { decoderRendered++; return 0; }
 void Check(int code, const char *message) { if (code) throw std::runtime_error(message); }
 struct Frame { bool video; int width, height; int64_t timestampUs; std::vector<uint8_t> data; };
 struct Track {
   int width = 4, height = 2, rotation = 90;
-  bool ended = false, surfacePending = false;
-  int64_t surfacePts = 0;
+  int outputWidth = 4, outputHeight = 2;
+  bool video = true, hdrVivid = true, ended = false, surfaceInputEnded = false, hasVideoAnchor = false;
+  int64_t videoAnchorPts = 0, videoBucket = -1;
+  std::deque<int64_t> surfaceTimes;
   void *codec = nullptr;
   std::unique_ptr<FileVideoSurface> surface;
   std::unique_ptr<Frame> pending;
@@ -146,6 +151,8 @@ struct Harness {
   using Buffer = Track::Buffer;
   std::atomic<bool> stopping_{false};
   int64_t firstMediaUs_ = -1;
+  int fps_ = 30, width = 0, height = 0;
+  std::unique_ptr<Track> video_;
   bool timelineStarted_ = false;
   bool Pop(std::deque<Buffer> &queue, Buffer &buffer) {
     if (queue.empty()) return false;
@@ -156,6 +163,7 @@ struct Harness {
     throw std::runtime_error("HDR pixels must not use the decoder byte-buffer path");
   }
   // FILE_VIDEO_COPY
+  // FILE_VIDEO_CONFIGURE
   // FILE_VIDEO_DRAIN
 };
 
@@ -166,6 +174,30 @@ void VerifyClean() {
 }
 
 int main() {
+  // Resolve dimensions before binding and request only the model-sized Surface, not the 4K original.
+  {
+    Harness source;
+    source.video_ = std::make_unique<Track>();
+    source.video_->width = 3840; source.video_->height = 2160;
+    source.ConfigureVideoOutput(1280000, 24);
+    assert(source.width == 828 && source.height == 1472 && source.fps_ == 24);
+    assert(source.video_->width == 3840 && source.video_->height == 2160);
+    FileVideoSurface scaled(source.video_->outputWidth, source.video_->outputHeight, source.stopping_);
+    assert(requestedWidth == 1472 && requestedHeight == 828);
+  }
+  VerifyClean();
+
+  // Native output filtering must not halve 30 fps when integer PTS alternates 33333/33334 us.
+  for (int inputFps : {24, 30, 60, 120}) for (int targetFps : {24, 30}) {
+    Harness source; source.fps_ = targetFps;
+    Track video;
+    int count = 0;
+    for (int i = 0; i < inputFps; i++)
+      if (source.ShouldOutputVideo(video, static_cast<int64_t>(i) * 1000000 / inputFps)) count++;
+    assert(count == std::min(inputFps, targetFps));
+    assert(!source.ShouldOutputVideo(video, -1));
+  }
+
   for (int y = 0; y < 2; y++) for (int x = 0; x < 4; x++) pixels[y * 8 + x] = y * 4 + x;
   pixels[32] = 100; pixels[33] = 150; pixels[34] = 101; pixels[35] = 151;
   for (int cycle = 0; cycle < 8; cycle++) {
@@ -178,29 +210,52 @@ int main() {
     video.outputs.push_back({0, &frame}); video.outputs.push_back({1, &eos});
     const int previousFreed = freed, previousRendered = decoderRendered;
     source.Drain(video);
-    assert(video.surfacePending && !video.ended && !video.pending && decoderRendered == previousRendered + 1);
-    assert(freed == previousFreed);
+    assert(video.surfaceTimes.size() == 1 && !video.ended && !video.pending && decoderRendered == previousRendered + 1);
+    assert(freed == previousFreed + 1 && video.surfaceInputEnded);
     source.Drain(video);
-    assert(video.outputs.size() == 1 && video.surfacePending && !video.ended);
+    assert(video.outputs.empty() && video.surfaceTimes.size() == 1 && !video.ended);
     Output(); source.Drain(video);
-    assert(!video.surfacePending && !video.ended && video.pending);
+    assert(video.surfaceTimes.empty() && video.ended && video.pending);
     assert(video.pending->timestampUs == 12500 && video.pending->width == 2 && video.pending->height == 4);
     assert(video.pending->data == std::vector<uint8_t>({4,0,5,1,6,2,7,3,100,150,101,151}));
     source.Drain(video);
-    assert(!video.ended && video.outputs.size() == 1);
+    assert(video.ended && video.outputs.empty() && video.pending);
     video.pending.reset(); source.Drain(video);
     assert(video.ended && freed == previousFreed + 1);
     video.surface.reset(); VerifyClean();
   }
   assert(starts == stops && starts == 8);
 
+  // Keep GPU work bounded but allow its next frame to run while the previous one is mapped or paced.
+  {
+    Harness source; Track video;
+    video.surface = std::make_unique<FileVideoSurface>(4, 2, source.stopping_);
+    video.surface->Start();
+    OH_AVBuffer first{{0, 0, 0}}, second{{33333, 0, 0}}, third{{66666, 0, 0}},
+        eos{{100000, 0, AVCODEC_BUFFER_FLAGS_EOS}};
+    video.outputs = {{0, &first}, {1, &second}, {2, &third}, {3, &eos}};
+    const int previousRendered = decoderRendered;
+    source.Drain(video);
+    assert(video.surfaceTimes.size() == 2 && video.outputs.size() == 2 && !video.ended);
+    assert(decoderRendered == previousRendered + 2);
+    Output(); source.Drain(video);
+    assert(video.pending->timestampUs == 0 && video.surfaceTimes.size() == 2 && video.outputs.size() == 1);
+    assert(decoderRendered == previousRendered + 3);
+    video.pending.reset(); Output(); source.Drain(video);
+    assert(video.pending->timestampUs == 33333 && video.surfaceTimes.size() == 1 && video.surfaceInputEnded);
+    assert(!video.ended);
+    video.pending.reset(); Output(); source.Drain(video);
+    assert(video.pending->timestampUs == 66666 && video.surfaceTimes.empty() && video.ended);
+  }
+  VerifyClean();
+
   // A pending Surface frame must be cancellable without rendering or consuming the next output.
   {
     Harness source; Track video;
     video.surface = std::make_unique<FileVideoSurface>(4, 2, source.stopping_);
-    video.surface->Start(); video.surfacePending = true;
+    video.surface->Start(); video.surfaceTimes.push_back(0);
     source.stopping_ = true; source.Drain(video);
-    assert(video.surfacePending && !video.pending);
+    assert(video.surfaceTimes.size() == 1 && !video.pending);
   }
   VerifyClean();
 
@@ -213,7 +268,7 @@ int main() {
     pendingFence = descriptors[0];
     std::thread cancel([&] { std::this_thread::sleep_for(std::chrono::milliseconds(20)); stopping = true; });
     const auto begin = std::chrono::steady_clock::now();
-    const bool received = surface.Read([](const uint8_t *, int, const uint8_t *, int) { assert(false); });
+    const bool received = surface.Read([](const uint8_t *, int, const uint8_t *, int, int, int) { assert(false); });
     cancel.join(); close(descriptors[1]);
     assert(!received && std::chrono::steady_clock::now() - begin < std::chrono::seconds(1));
     assert(mapped == 0 && referenced == 0 && acquired == released);
@@ -228,7 +283,7 @@ int main() {
     try {
       FileVideoSurface surface(4, 2, stopping);
       surface.Start(); Output();
-      surface.Read([](const uint8_t *, int, const uint8_t *, int) {});
+      surface.Read([](const uint8_t *, int, const uint8_t *, int, int, int) {});
     } catch (const std::runtime_error &) { failed = true; }
     assert(failed); VerifyClean();
   }
@@ -239,7 +294,7 @@ int main() {
     surface.Start(); Output();
     bool failed = false;
     try {
-      surface.Read([](const uint8_t *, int, const uint8_t *, int) { throw std::runtime_error("sink failed"); });
+      surface.Read([](const uint8_t *, int, const uint8_t *, int, int, int) { throw std::runtime_error("sink failed"); });
     } catch (const std::runtime_error &) { failed = true; }
     assert(failed && mapped == 0 && referenced == 0 && acquired == released);
     processor->callback->error(processor, 42, processor->context);

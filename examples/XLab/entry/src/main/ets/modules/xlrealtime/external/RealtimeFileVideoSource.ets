@@ -12,8 +12,6 @@ export class RealtimeFileVideoSource implements RealtimeExternalVideoSource {
   private readonly decoder: FileSource;
   private sink: RealtimeExternalFrameSink | null = null;
   private stopping: Promise<void> | null = null;
-  private videoAnchorUs: number | undefined;
-  private videoBucket: number = -1;
 
   private constructor(decoder: FileSource, fps: number) {
     this.decoder = decoder;
@@ -22,12 +20,12 @@ export class RealtimeFileVideoSource implements RealtimeExternalVideoSource {
   }
 
   /** Opens file metadata on a native worker; decoding starts only after the sink is installed. */
-  static async create(path: string, fps: number): Promise<RealtimeFileVideoSource> {
+  static async create(path: string, fps: number, maximumPixels: number): Promise<RealtimeFileVideoSource> {
     let source: RealtimeFileVideoSource | null = null;
     const file: fileIo.File = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
     try {
       const size: number = (await fileIo.stat(file.fd)).size;
-      const decoder: FileSource = await createFileSource(file.fd, size, (frame: FileFrame): void => {
+      const decoder: FileSource = await createFileSource(file.fd, size, maximumPixels, fps, (frame: FileFrame): void => {
         source?.receive(frame);
       });
       source = new RealtimeFileVideoSource(decoder, fps);
@@ -65,14 +63,6 @@ export class RealtimeFileVideoSource implements RealtimeExternalVideoSource {
     }
 
     if (frame.video) {
-      if (this.videoAnchorUs === undefined) {
-        this.videoAnchorUs = frame.timestampUs;
-      }
-      const bucket: number = Math.floor((frame.timestampUs - this.videoAnchorUs) * this.videoFormat.fps / 1000000);
-      if (bucket <= this.videoBucket) {
-        return;
-      }
-      this.videoBucket = bucket;
       const ySize: number = frame.width * frame.height;
       sink.pushVideo(new RealtimeVideoFrame(frame.width, frame.height, VideoPixelFormat.NV12,
         [new VideoFramePlane(frame.data, frame.width, 0, ySize),

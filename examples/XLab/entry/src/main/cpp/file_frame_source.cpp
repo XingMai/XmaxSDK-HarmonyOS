@@ -3,12 +3,14 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
 #include <fcntl.h>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
@@ -52,17 +54,20 @@ public:
     std::deque<Buffer> inputs, outputs;
     std::unique_ptr<Frame> pending;
     bool inputEnded = false, ended = false;
-    bool hdrVivid = false, surfacePending = false;
-    int64_t surfacePts = 0;
+    bool hdrVivid = false, surfaceInputEnded = false;
+    bool hasVideoAnchor = false;
+    int64_t videoAnchorPts = 0, videoBucket = -1;
+    std::deque<int64_t> surfaceTimes;
     std::unique_ptr<FileVideoSurface> surface;
     int width = 0, height = 0, rotation = 0, sampleRate = 0, channels = 0;
+    int outputWidth = 0, outputHeight = 0;
     Track(FileSource *owner, bool video, uint32_t id) : owner(owner), video(video), id(id) {}
   };
 
   explicit FileSource(napi_threadsafe_function callback) : callback_(callback) {}
   ~FileSource() { Stop(); Close(); }
 
-  void Open(int inputFd, int64_t length) {
+  void Open(int inputFd, int64_t length, int64_t maximumPixels, int fps) {
     fd_ = dup(inputFd);
     struct stat info{};
     if (fd_ < 0 || fstat(fd_, &info) != 0 || info.st_size <= 0) throw std::runtime_error("Cannot open external video");
@@ -82,8 +87,7 @@ public:
       if (type == MEDIA_TYPE_AUD && !audio_) audio_ = MakeTrack(i, false, track.get());
     }
     if (!video_) throw std::runtime_error("The selected file has no video");
-    width = video_->rotation % 180 ? video_->height : video_->width;
-    height = video_->rotation % 180 ? video_->width : video_->height;
+    ConfigureVideoOutput(maximumPixels, fps);
     hasAudio = audio_ != nullptr;
   }
 
@@ -114,6 +118,7 @@ public:
 private:
   int fd_ = -1;
   int64_t length_ = 0;
+  int fps_ = 30;
   OH_AVSource *source_ = nullptr;
   OH_AVDemuxer *demuxer_ = nullptr;
   std::unique_ptr<Track> video_, audio_;
@@ -150,6 +155,26 @@ private:
         static_cast<int64_t>(track->width) * track->height > 16777216))
       throw std::runtime_error("Unsupported external file dimensions");
     return track;
+  }
+
+  /** Sets the app's output size before binding; HDR uses it to limit GPU readback. */
+  void ConfigureVideoOutput(int64_t maximumPixels, int fps) {
+    if (maximumPixels < 16 || maximumPixels > 16777216 || fps <= 0 || fps > 240)
+      throw std::runtime_error("Invalid external video output format");
+    fps_ = fps;
+    auto &track = *video_;
+    track.outputWidth = track.width;
+    track.outputHeight = track.height;
+    const double scale = std::min(1.0, std::sqrt(static_cast<double>(maximumPixels) /
+        (static_cast<int64_t>(track.width) * track.height)));
+    const int divisor = std::gcd(track.width, track.height);
+    const int aligned = static_cast<int>(divisor * scale / 4) * 4;
+    track.outputWidth = aligned >= 4 ? track.width / divisor * aligned :
+        std::max(2, static_cast<int>(track.width * scale / 4) * 4);
+    track.outputHeight = aligned >= 4 ? track.height / divisor * aligned :
+        std::max(2, static_cast<int>(track.height * scale / 4) * 4);
+    width = track.rotation % 180 ? track.outputHeight : track.outputWidth;
+    height = track.rotation % 180 ? track.outputWidth : track.outputHeight;
   }
 
   static void Error(OH_AVCodec *, int32_t code, void *data) {
@@ -191,7 +216,7 @@ private:
       OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
       if (track.hdrVivid) {
         OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_VIDEO_DECODER_OUTPUT_COLOR_SPACE, OH_COLORSPACE_BT709_LIMIT);
-        track.surface = std::make_unique<FileVideoSurface>(track.width, track.height, stopping_);
+        track.surface = std::make_unique<FileVideoSurface>(track.outputWidth, track.outputHeight, stopping_);
       }
       Check(OH_VideoDecoder_RegisterCallback(track.codec, callbacks, &track), "Observe external video");
       Check(OH_VideoDecoder_Configure(track.codec, format.get()), "Configure external video");
@@ -225,7 +250,7 @@ private:
 
   /** Copies upright NV12 from either mapped Surface planes or decoder byte buffers. */
   std::unique_ptr<Frame> CopyVideoFrame(Track &track, const uint8_t *yData, int yStride,
-      const uint8_t *uvData, int uvStride, int64_t pts) {
+      const uint8_t *uvData, int uvStride, int inputWidth, int inputHeight, int64_t pts) {
     auto frame = std::make_unique<Frame>();
     frame->video = true;
     frame->timestampUs = pts;
@@ -233,26 +258,56 @@ private:
       firstMediaUs_ = firstMediaUs_ < 0 ? pts : std::min(firstMediaUs_, pts);
     }
 
-    frame->width = track.rotation % 180 ? track.height : track.width;
-    frame->height = track.rotation % 180 ? track.width : track.height;
+    frame->width = track.rotation % 180 ? track.outputHeight : track.outputWidth;
+    frame->height = track.rotation % 180 ? track.outputWidth : track.outputHeight;
     const size_t ySize = static_cast<size_t>(frame->width) * frame->height;
     frame->data.resize(ySize * 3 / 2);
     for (int plane = 0; plane < 2; plane++) {
       const int step = plane == 0 ? 1 : 2;
-      const int w = track.width / step, h = track.height / step;
+      const int w = track.outputWidth / step, h = track.outputHeight / step;
       const int outW = frame->width / step;
       const uint8_t *data = plane ? uvData : yData;
       const int stride = plane ? uvStride : yStride;
-      for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
-        int ox = x, oy = y;
-        if (track.rotation == 90) { ox = h - y - 1; oy = x; }
-        else if (track.rotation == 180) { ox = w - x - 1; oy = h - y - 1; }
-        else if (track.rotation == 270) { ox = y; oy = w - x - 1; }
-        std::memcpy(frame->data.data() + (plane ? ySize : 0) + (oy * outW + ox) * step,
-            data + y * stride + x * step, step);
+      uint8_t *target = frame->data.data() + (plane ? ySize : 0);
+      if (track.rotation == 0 && inputWidth == track.outputWidth && inputHeight == track.outputHeight) {
+        for (int y = 0; y < h; y++) std::memcpy(target + y * outW * step, data + y * stride, w * step);
+        continue;
+      }
+
+      // Usually HDR is already scaled by the Surface; byte-buffer output uses one fused pass.
+      std::vector<int> sourceX(w), sourceY(h);
+      for (int x = 0; x < w; x++) sourceX[x] = static_cast<int>(static_cast<int64_t>(x) * (inputWidth / step) / w);
+      for (int y = 0; y < h; y++) sourceY[y] = static_cast<int>(static_cast<int64_t>(y) * (inputHeight / step) / h);
+
+      // Tile transposed writes so each small destination region stays in cache.
+      const int tile = plane ? 16 : 32;
+      for (int by = 0; by < h; by += tile) for (int bx = 0; bx < w; bx += tile) {
+        for (int y = by; y < std::min(by + tile, h); y++) for (int x = bx; x < std::min(bx + tile, w); x++) {
+          int ox = x, oy = y;
+          if (track.rotation == 90) { ox = h - y - 1; oy = x; }
+          else if (track.rotation == 180) { ox = w - x - 1; oy = h - y - 1; }
+          else if (track.rotation == 270) { ox = y; oy = w - x - 1; }
+          const int sourceOffset = sourceY[y] * stride + sourceX[x] * step, targetOffset = (oy * outW + ox) * step;
+          target[targetOffset] = data[sourceOffset];
+          if (plane) target[targetOffset + 1] = data[sourceOffset + 1];
+        }
       }
     }
     return frame;
+  }
+
+  /** Rejects excess decoded frames before Surface rendering, rotation, and ArkTS copies. */
+  bool ShouldOutputVideo(Track &track, int64_t pts) {
+    if (!track.hasVideoAnchor) {
+      track.videoAnchorPts = pts;
+      track.hasVideoAnchor = true;
+    }
+    if (pts < track.videoAnchorPts) return false;
+    // Account for integer-microsecond PTS (30 fps includes 33333 us intervals).
+    const int64_t bucket = ((pts - track.videoAnchorPts) * fps_ + fps_ - 1) / 1000000;
+    if (bucket <= track.videoBucket) return false;
+    track.videoBucket = bucket;
+    return true;
   }
 
   std::unique_ptr<Frame> CopyFrame(Track &track, OH_AVBuffer *buffer, OH_AVCodecBufferAttr attr) {
@@ -274,7 +329,8 @@ private:
       if (chroma + static_cast<size_t>(track.height / 2 - 1) * stride + track.width >
           static_cast<size_t>(OH_AVBuffer_GetCapacity(buffer) - attr.offset))
         throw std::runtime_error("Invalid external NV12 planes");
-      return CopyVideoFrame(track, data + attr.offset, stride, data + attr.offset + chroma, stride, attr.pts);
+      return CopyVideoFrame(track, data + attr.offset, stride, data + attr.offset + chroma, stride,
+          track.width, track.height, attr.pts);
     }
 
     int32_t sampleFormat = SAMPLE_S16LE;
@@ -296,13 +352,8 @@ private:
   void Drain(Track &track) {
     if (stopping_ || track.pending) return;
     if (track.surface) {
-      track.surface->CheckError();
-      if (track.surfacePending) {
-        if (track.surface->Read([&](const uint8_t *y, int yStride, const uint8_t *uv, int uvStride) {
-          track.pending = CopyVideoFrame(track, y, yStride, uv, uvStride, track.surfacePts);
-        })) track.surfacePending = false;
-        return;
-      }
+      DrainSurface(track);
+      return;
     }
 
     Buffer output{};
@@ -311,13 +362,9 @@ private:
         OH_AVCodecBufferAttr attr{};
         Check(OH_AVBuffer_GetBufferAttr(output.value, &attr), "Read external decoded attributes");
         track.ended = (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
-        if (track.surface && !track.ended) {
-          // Keep a single Surface frame in flight; consume it before reading the next frame or EOS.
-          track.surfacePts = attr.pts;
-          Check(OH_VideoDecoder_RenderOutputBuffer(track.codec, output.index), "Render external HDR frame");
-          track.surfacePending = true;
-          return;
-        } else if (!track.surface && attr.size > 0) {
+        const bool skip = track.video && !track.ended && attr.size > 0 &&
+            !ShouldOutputVideo(track, attr.pts);
+        if (!skip && attr.size > 0) {
           track.pending = CopyFrame(track, output.value, attr);
         }
       } catch (...) {
@@ -326,6 +373,40 @@ private:
       }
       Release(track, output.index);
     }
+  }
+
+  /** Pipelines two Surface frames while preserving presentation order and draining the tail before looping. */
+  void DrainSurface(Track &track) {
+    track.surface->CheckError();
+    if (!track.surfaceTimes.empty()) {
+      if (track.surface->Read([&](const uint8_t *y, int yStride, const uint8_t *uv, int uvStride, int width, int height) {
+        track.pending = CopyVideoFrame(track, y, yStride, uv, uvStride, width, height, track.surfaceTimes.front());
+      })) track.surfaceTimes.pop_front();
+    }
+
+    Buffer output{};
+    while (!stopping_ && !track.surfaceInputEnded && track.surfaceTimes.size() < 2 && Pop(track.outputs, output)) {
+      bool rendered = false;
+      try {
+        OH_AVCodecBufferAttr attr{};
+        Check(OH_AVBuffer_GetBufferAttr(output.value, &attr), "Read external HDR decoded attributes");
+        if ((attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0) {
+          track.surfaceInputEnded = true;
+        } else if (ShouldOutputVideo(track, attr.pts)) {
+          track.surfaceTimes.push_back(attr.pts);
+          const auto result = OH_VideoDecoder_RenderOutputBuffer(track.codec, output.index);
+          if (result != AV_ERR_OK) track.surfaceTimes.pop_back();
+          Check(result, "Render external HDR frame");
+          rendered = true;
+        }
+      } catch (...) {
+        Release(track, output.index);
+        throw;
+      }
+      if (!rendered) Release(track, output.index);
+    }
+
+    track.ended = track.surfaceInputEnded && track.surfaceTimes.empty();
   }
 
   /** Interleaves decoded tracks by presentation time without queuing a whole file in memory. */
@@ -363,7 +444,10 @@ private:
       track.codec = nullptr;
     }
     track.surface.reset();
-    track.surfacePending = false;
+    track.surfaceTimes.clear();
+    track.surfaceInputEnded = false;
+    track.hasVideoAnchor = false;
+    track.videoBucket = -1;
     std::lock_guard<std::mutex> lock(mutex_);
     track.inputs.clear();
     track.outputs.clear();
@@ -394,8 +478,6 @@ private:
   void Run() {
     try {
       while (!stopping_) {
-        anchorUs_ = std::max<int64_t>(lastOutputUs_ + 10000,
-            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count());
         firstMediaUs_ = -1;
         timelineStarted_ = false;
         if (!source_) OpenSource();
@@ -405,6 +487,10 @@ private:
         Prepare(*video_);
         if (audio_) Prepare(*audio_);
         Check(OH_AVDemuxer_SeekToTime(demuxer_, 0, SEEK_MODE_CLOSEST_SYNC), "Rewind external video");
+
+        // Start the playback clock after setup so cold codecs do not cause a catch-up burst.
+        anchorUs_ = std::max<int64_t>(lastOutputUs_ + 10000,
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count());
 
         while (!stopping_ && (!video_->ended || video_->pending ||
             (audio_ && (!audio_->ended || audio_->pending)))) {
@@ -474,6 +560,8 @@ struct Work {
   std::string error;
   int fd = -1;
   int64_t length = 0;
+  int64_t maximumPixels = 0;
+  int fps = 0;
   napi_async_work work = nullptr;
   napi_deferred deferred = nullptr;
   napi_threadsafe_function callback = nullptr;
@@ -500,7 +588,7 @@ napi_value Start(napi_env env, napi_callback_info info) {
 void Execute(napi_env, void *value) {
   auto &work = *static_cast<Work *>(value);
   try {
-    if (work.opening) work.source->Open(work.fd, work.length);
+    if (work.opening) work.source->Open(work.fd, work.length, work.maximumPixels, work.fps);
     else work.source->Stop();
   } catch (const std::exception &error) {
     work.error = error.what();
@@ -555,17 +643,19 @@ napi_value Release(napi_env env, napi_callback_info info) {
 }
 napi_value Create(napi_env env, napi_callback_info info) {
   try {
-    size_t count = 3;
-    napi_value args[3], name;
+    size_t count = 5;
+    napi_value args[5], name;
     Require(napi_get_cb_info(env, info, &count, args, nullptr, nullptr));
-    if (count != 3) throw std::runtime_error("External file source requires descriptor, length, and callback");
+    if (count != 5) throw std::runtime_error("External file source requires descriptor, length, pixel limit, FPS, and callback");
     auto work = std::make_unique<Work>();
     work->opening = true;
     Require(napi_get_value_int32(env, args[0], &work->fd));
     Require(napi_get_value_int64(env, args[1], &work->length));
+    Require(napi_get_value_int64(env, args[2], &work->maximumPixels));
+    Require(napi_get_value_int32(env, args[3], &work->fps));
     if (work->fd < 0 || work->length <= 0) throw std::runtime_error("Invalid external file descriptor");
     napi_create_string_utf8(env, "XLab decoded file frame", NAPI_AUTO_LENGTH, &name);
-    Require(napi_create_threadsafe_function(env, args[2], nullptr, name, 4, 1, nullptr, nullptr, nullptr,
+    Require(napi_create_threadsafe_function(env, args[4], nullptr, name, 4, 1, nullptr, nullptr, nullptr,
         Deliver, &work->callback));
     work->source = std::make_shared<FileSource>(work->callback);
     return Queue(env, std::move(work));

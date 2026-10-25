@@ -6,7 +6,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { loadEts } = require('./ets-loader.cjs');
 
-test('app-owned file source forwards public video/PCM frames, paces video, and detaches before async release', async () => {
+test('app-owned file source passes native size/FPS limits, forwards video/PCM, and detaches before async release', async () => {
   const sdk = loadEts();
   const { RealtimeVideoFormat } = sdk('service/realtime/RealtimeVideoFormat.ets');
   const { RealtimeVideoFrame } = sdk('service/realtime/RealtimeVideoFrame.ets');
@@ -20,19 +20,21 @@ test('app-owned file source forwards public video/PCM frames, paces video, and d
       VideoPixelFormat: { NV12: 'nv12' }, VideoRotation: { ROTATION_0: 0 } },
     '@kit.CoreFileKit': { fileIo: { OpenMode: { READ_ONLY: 0 }, async open() { return { fd: 7 }; },
       async stat() { return { size: 100 }; }, async close() { closed++; } } },
-    'libxlab_recorder.so': { async createFileSource(fd, size, callback) {
-      assert.equal(fd, 7); assert.equal(size, 100); onFrame = callback; return decoder;
+    'libxlab_recorder.so': { async createFileSource(fd, size, maximumPixels, fps, callback) {
+      assert.equal(fd, 7); assert.equal(size, 100);
+      assert.equal(maximumPixels, 1280000); assert.equal(fps, 24);
+      onFrame = callback; return decoder;
     } }
   });
   const { RealtimeFileVideoSource } = load(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/external/RealtimeFileVideoSource.ets'));
-  const source = await RealtimeFileVideoSource.create('file://media/video.mp4', 24);
+  const source = await RealtimeFileVideoSource.create('file://media/video.mp4', 24, 1280000);
   assert.equal(closed, 1);
   const videos = [], audio = [], errors = [];
   await source.start({ isRequestingFrames: true, pushVideo: value => videos.push(value),
     pushAudio: value => audio.push(value), reportError: value => errors.push(value) });
-  for (let i = 0; i < 30; i++) onFrame({ video: true, width: 4, height: 4,
-    timestampUs: 1000000 + i * 1000000 / 30, data: new ArrayBuffer(24) });
+  for (let i = 0; i < 24; i++) onFrame({ video: true, width: 4, height: 4,
+    timestampUs: 1000000 + i * 1000000 / 24, data: new ArrayBuffer(24) });
   assert.equal(starts, 1);
   assert.equal(videos.length, 24);
   onFrame({ video: false, sampleRate: 48000, channels: 2, timestampUs: 1025000, data: new ArrayBuffer(1920) });
@@ -54,6 +56,7 @@ test('app native decoded frames remove padding, apply file rotation, and reject 
   try {
     const harness = path.join(directory, 'frames.cpp'), executable = path.join(directory, 'frames');
     fs.writeFileSync(harness, `
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <cstdint>
@@ -88,8 +91,11 @@ struct Frame {
  bool video = false; int width = 0, height = 0, sampleRate = 0, channels = 0;
  int64_t timestampUs = 0; std::vector<uint8_t> data;
 };
-struct Track { bool video; int width = 4, height = 2, rotation = 90, sampleRate = 48000, channels = 2; void *codec = nullptr; };
-struct Harness { int64_t firstMediaUs_ = -1; bool timelineStarted_ = false; ${copy} };
+struct Track {
+ bool video; int width = 4, height = 2, outputWidth = 4, outputHeight = 2, rotation = 90, sampleRate = 48000, channels = 2;
+ bool hasVideoAnchor = false; int64_t videoAnchorPts = 0, videoBucket = -1; void *codec = nullptr;
+};
+struct Harness { int64_t firstMediaUs_ = -1; int fps_ = 24; bool timelineStarted_ = false; ${copy} };
 int main() {
  Harness h; Track video{true}, audio{false};
  OH_AVBuffer buffer{std::vector<uint8_t>(48, 253)};
@@ -105,6 +111,34 @@ int main() {
  pixels = 99; bool failed = false;
  try { h.CopyFrame(video, &buffer, {200, 0, 48}); } catch (const std::runtime_error &) { failed = true; }
  assert(failed);
+
+ // Cross tile boundaries with unequal Y/UV padding, optional downscaling, and all rotations.
+ const int inputWidth = 70, inputHeight = 38, yStride = 80, uvStride = 86;
+ std::vector<uint8_t> yData(yStride * inputHeight), uvData(uvStride * inputHeight / 2);
+ for (size_t i = 0; i < yData.size(); i++) yData[i] = (i * 13) % 251;
+ for (size_t i = 0; i < uvData.size(); i++) uvData[i] = (i * 7) % 241;
+ for (int rotation : {0, 90, 180, 270}) for (bool scaled : {false, true}) {
+   video.outputWidth = scaled ? 36 : inputWidth; video.outputHeight = scaled ? 20 : inputHeight;
+   video.rotation = rotation;
+   auto image = h.CopyVideoFrame(video, yData.data(), yStride, uvData.data(), uvStride, inputWidth, inputHeight, 999);
+   const int lumaLength = image->width * image->height;
+   for (int plane = 0; plane < 2; plane++) {
+     const int step = plane ? 2 : 1, preW = video.outputWidth / step, preH = video.outputHeight / step;
+     const int outW = image->width / step, outH = image->height / step;
+     const auto &data = plane ? uvData : yData;
+     const int stride = plane ? uvStride : yStride;
+     for (int oy = 0; oy < outH; oy++) for (int ox = 0; ox < outW; ox++) {
+       int px = ox, py = oy;
+       if (rotation == 90) { px = oy; py = preH - 1 - ox; }
+       else if (rotation == 180) { px = preW - 1 - ox; py = preH - 1 - oy; }
+       else if (rotation == 270) { px = preW - 1 - oy; py = ox; }
+       const int sx = px * (inputWidth / step) / preW, sy = py * (inputHeight / step) / preH;
+       for (int component = 0; component < step; component++)
+         assert(image->data[(plane ? lumaLength : 0) + (oy * outW + ox) * step + component] ==
+             data[sy * stride + sx * step + component]);
+     }
+   }
+ }
 }
 `);
     const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
@@ -136,6 +170,7 @@ test('app native file loops rebuild the source/demuxer pair and clean up on stop
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 using Clock = std::chrono::steady_clock;
@@ -216,11 +251,15 @@ struct Harness {
     std::deque<Buffer> inputs, outputs;
     std::unique_ptr<Frame> pending;
     std::unique_ptr<FileVideoSurface> surface;
-    bool surfacePending = false;
+    bool surfaceInputEnded = false;
+    std::deque<int64_t> surfaceTimes;
+    bool hasVideoAnchor = false;
+    int64_t videoBucket = -1;
     OH_AVBuffer buffers[2];
   };
   int fd_ = -1, callback_ = 0;
   int64_t length_ = 16, lastOutputUs_ = -1, firstMediaUs_ = -1, anchorUs_ = 0;
+  int64_t latestPrepareUs_ = 0;
   bool timelineStarted_ = false;
   std::atomic<bool> stopping_{false};
   std::mutex mutex_;
@@ -249,6 +288,8 @@ struct Harness {
     OH_AVDemuxer_SelectTrackByID(demuxer_, track.id);
     track.inputs.push_back({0, &track.buffers[0]});
     track.inputs.push_back({1, &track.buffers[1]});
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    latestPrepareUs_ = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count();
   }
   void Drain(Track &track) {
     if (!track.ended && track.inputEnded) {
@@ -257,6 +298,7 @@ struct Harness {
     }
   }
   void DeliverNext() {
+    assert(anchorUs_ >= latestPrepareUs_);
     for (Track *track : {video_.get(), audio_.get()}) {
       if (!track || !track->pending) continue;
       assert(anchorUs_ >= lastOutputUs_ + 10000);
@@ -320,6 +362,7 @@ test('app HDR Surface conversion preserves NV12 planes/PTS, drains before EOS, a
     .replace(/^#include "[^"\n]+"\n/gm, '');
   const copy = source.slice(source.indexOf('  std::unique_ptr<Frame> CopyVideoFrame('),
     source.indexOf('  std::unique_ptr<Frame> CopyFrame('));
+  const configure = source.slice(source.indexOf('  void ConfigureVideoOutput('), source.indexOf('  static void Error('));
   const drain = source.slice(source.indexOf('  void Drain('), source.indexOf('  /** Interleaves decoded tracks'));
   const template = fs.readFileSync(path.join(__dirname, 'native/xlab-file-video-surface.cpp'), 'utf8');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-hdr-'));
@@ -329,6 +372,7 @@ test('app HDR Surface conversion preserves NV12 planes/PTS, drains before EOS, a
       .replace('// FILE_VIDEO_SURFACE_HEADER', header)
       .replace('// FILE_VIDEO_SURFACE_IMPLEMENTATION', implementation)
       .replace('// FILE_VIDEO_COPY', copy)
+      .replace('// FILE_VIDEO_CONFIGURE', configure)
       .replace('// FILE_VIDEO_DRAIN', drain));
     const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
       { encoding: 'utf8', timeout: 30000 });

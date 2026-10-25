@@ -45,4 +45,5 @@ export interface FileSource {
   release(): Promise<void>;
 }
 
-export const createFileSource: (fd: number, length: number, onFrame: (frame: FileFrame) => void) => Promise<FileSource>;
+export const createFileSource: (fd: number, length: number, maximumPixels: number, fps: number,
+  onFrame: (frame: FileFrame) => void) => Promise<FileSource>;

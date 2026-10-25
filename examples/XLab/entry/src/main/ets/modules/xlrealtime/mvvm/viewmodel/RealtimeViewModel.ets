@@ -1091,7 +1091,10 @@ export class RealtimeViewModel {
     if (localVideoPath.length > 0) {
       if (this.usesExternalSource) {
         const source: RealtimeFileVideoSource = await RealtimeFileVideoSource.create(
-          localVideoPath, manager.options.model.defaultCameraVideoFormat.fps);
+          localVideoPath,
+          manager.options.model.defaultFrameRate,
+          manager.options.model.maximumInputPixels
+        );
         try {
           return await manager.createExternalVideoStream(source);
         } catch (error) {

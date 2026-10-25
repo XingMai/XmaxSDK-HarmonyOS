@@ -11,8 +11,8 @@ struct NativeWindow;
 /** App-owned Surface output for decoding HDR Vivid into SDR NV12. */
 class FileVideoSurface {
 public:
-  /** Receives mapped Y/UV pixels and byte strides, valid only during the callback. */
-  using PixelConsumer = std::function<void(const uint8_t *, int, const uint8_t *, int)>;
+  /** Receives mapped Y/UV pixels, byte strides, and actual dimensions, valid only during the callback. */
+  using PixelConsumer = std::function<void(const uint8_t *, int, const uint8_t *, int, int, int)>;
 
   FileVideoSurface(int width, int height, const std::atomic<bool> &stopping);
   ~FileVideoSurface();

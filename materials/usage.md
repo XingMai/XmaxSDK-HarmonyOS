@@ -101,6 +101,10 @@ binding and triggers normal SDK media-error cleanup.
 XLab's **External Capture** card uses app-owned native system decoders for video
 and PCM audio, including looping and upright pixels. HDR Vivid videos use Surface
 decoding with BT.709 limited-range SDR output before frames reach the sink.
+The example selects model-sized output before binding and filters the target
+frame rate in native decoding, before rotation and ArkTS copies. HDR Surface
+output is downscaled before CPU mapping, with two Surface frames in flight
+at most; remaining frames are delivered before a playback loop restarts.
 Byte-buffer output still requires NV12; arbitrary HDR/P010 producers must convert
 their pixels to supported SDR first.
 
