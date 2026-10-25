@@ -11,6 +11,7 @@
 import { RealtimeGenerationOptions } from '../../service/realtime/RealtimeGenerationOptions';
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeMediaFrameListener } from '../../service/realtime/RealtimeMediaFrame';
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
 import { RealtimeContext } from '../../service/realtime/RealtimeContext';
@@ -119,6 +120,27 @@ export interface XmaxRealtimeManaging {
    */
   setRemoteVideoFrameListener(
     listener: RealtimeVideoFrameListener | null
+  ): void;
+
+  /**
+   * Delivers copied PCM and processed video for the current result binding without changing audio
+   * subscriptions or playback volume. Null removes the receiver and queued unified output.
+   *
+   * Callbacks run in arrival order on the ArkTS event loop, not in cross-track timestamp order.
+   * At most 256 packets and 32 MiB are retained; overflow drops new packets and marks the next
+   * admitted event of that track as discontinuous. Buffers remain valid after callback return.
+   * Delivery stops immediately on disconnect or close; registration remains for later generation.
+   *
+   * Audio time advances by sample count from RTC audio time; video retains RTC video time. The
+   * provider's cross-track clock relationship is not guaranteed by this API. Validate it before
+   * using these timestamps for synchronized recording. Move expensive callback work to a Worker.
+   *
+   * @param listener The unified media receiver, or null to remove it.
+   *
+   * @throws An error if observation of an already-bound result cannot be enabled.
+   */
+  setRemoteMediaFrameListener(
+    listener: RealtimeMediaFrameListener | null
   ): void;
 
   /**

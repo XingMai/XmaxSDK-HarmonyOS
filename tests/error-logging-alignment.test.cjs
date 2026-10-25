@@ -12,7 +12,8 @@ function fixture(extra = {}, globals = {}) {
     '@kit.PerformanceAnalysisKit': { hilog },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     '@kit.BasicServicesKit': { deviceInfo: { distributionOSVersion: '5.1.0', productModel: 'Test model' } },
-    '@kit.ArkTS': { util: { TextEncoder: class { encodeInto(value) { return Buffer.from(value); } } } },
+    '@kit.ArkTS': { util: { generateRandomUUID: () => require('node:crypto').randomUUID(),
+      TextEncoder: class { encodeInto(value) { return Buffer.from(value); } } } },
     ...extra
   }, globals);
   const { XmaxLogger: Logger } = load('foundation/logging/XmaxLogger.ets');
@@ -326,6 +327,7 @@ test('remote surface bind failure reaches the runtime failure listener without e
   const { VideoRenderRegistry } = f.load('rendering/video/VideoRenderRegistry.ets');
   const render = new RenderController({
     setRemoteVideoFrameListener() {}, observeRemoteVideoFrames() {},
+    setRemoteAudioFrameListener() {}, observeRemoteAudioFrames() {},
     setRemoteVideoRenderedListener() {}, renderLibraryName() { return 'rtc'; },
     hasRenderedRemoteVideo() { return false; },
     bindRemoteVideo() { throw new f.XmaxError(f.Code.RTC_ERROR, 'bind failed'); },
@@ -368,6 +370,7 @@ test('stopping frame observation only logs failures and leaves no frame waiters'
   const { RemoteStream } = f.load('foundation/rtc/RemoteStream.ets');
   const render = new RenderController({
     setRemoteVideoFrameListener() {}, setRemoteVideoRenderedListener() {}, unbindRemoteVideo() {},
+    setRemoteAudioFrameListener() {}, observeRemoteAudioFrames() {},
     observeRemoteVideoFrames(_stream, enabled) { if (!enabled) throw new Error('stop observation failed'); }
   }, error => failures.push(error));
   render.setRemoteStream(new RemoteStream('room', 'bot'));

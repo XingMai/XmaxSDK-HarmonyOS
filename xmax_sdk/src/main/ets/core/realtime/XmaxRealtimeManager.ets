@@ -21,6 +21,7 @@ import {
   LocalVideoPlaybackStateListener
 } from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeMediaFrameListener } from '../../service/realtime/RealtimeMediaFrame';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
@@ -344,6 +345,17 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
+  /** Sets unified remote PCM and video delivery. */
+  setRemoteMediaFrameListener(
+    listener: RealtimeMediaFrameListener | null
+  ): void {
+    try {
+      this.renderController.setRemoteMediaFrameListener(listener);
+    } catch (error) {
+      throw this.reportError(XmaxError.from(error));
+    }
+  }
+
   /** Sets the uplink video statistics listener; null removes it. */
   setUplinkVideoStatisticsListener(
     listener: UplinkVideoStatisticsListener | null
@@ -541,7 +553,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
         if (wasGenerating) {
           token.setFailureScope(RealtimeTerminationScope.CONNECTION);
-          this.renderController.stopRemoteVideoFrameDelivery();
+          this.renderController.stopRemoteFrameDelivery();
           this.generationManager.stop(current.taskId ?? '');
           this.restoreLocalAudioPreview();
           this.coordinator.commit(
@@ -940,7 +952,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       null,
       async (token: RealtimeOperationToken): Promise<void> => {
         token.setFailureScope(RealtimeTerminationScope.CONNECTION);
-        this.renderController.stopRemoteVideoFrameDelivery();
+        this.renderController.stopRemoteFrameDelivery();
         this.generationManager.stop(this.currentState.taskId ?? '');
         this.restoreLocalAudioPreview();
         this.coordinator.commit(
@@ -1195,7 +1207,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return Promise.resolve();
     }
 
-    this.renderController.stopRemoteVideoFrameDelivery();
+    this.renderController.stopRemoteFrameDelivery();
     return this.coordinator.terminate(
       RealtimeTerminationScope.CONNECTION,
       reason
@@ -1207,7 +1219,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
    * resources.
    */
   close(): Promise<void> {
-    this.renderController.stopRemoteVideoFrameDelivery();
+    this.renderController.stopRemoteFrameDelivery();
     const wasClosing: boolean = this.coordinator.isClosing;
     const closing: Promise<void> = this.coordinator.terminate(
       RealtimeTerminationScope.ALL);
@@ -1493,7 +1505,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
     if (restart && current.connectionState === RealtimeConnectionState.GENERATING) {
       token.setFailureScope(RealtimeTerminationScope.CONNECTION);
-      this.renderController.stopRemoteVideoFrameDelivery();
+      this.renderController.stopRemoteFrameDelivery();
       this.generationManager.stop(current.taskId ?? '');
       this.coordinator.commit(
         new RealtimeState(
@@ -1842,7 +1854,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     scope: RealtimeTerminationScope,
     taskId: string
   ): Promise<string | undefined> {
-    this.renderController.stopRemoteVideoFrameDelivery();
+    this.renderController.stopRemoteFrameDelivery();
 
     try {
       this.mediaController.stopMicrophoneCapture();
@@ -1915,7 +1927,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       return Promise.resolve();
     }
 
-    this.renderController.stopRemoteVideoFrameDelivery();
+    this.renderController.stopRemoteFrameDelivery();
     return this.coordinator.terminateWithError(
       error,
       RealtimeTerminationScope.CONNECTION
@@ -1948,7 +1960,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     error: XmaxError,
     scope: RealtimeTerminationScope
   ): void {
-    this.renderController.stopRemoteVideoFrameDelivery();
+    this.renderController.stopRemoteFrameDelivery();
     this.renderController.failRemoteFrameWait(error);
 
     void this.coordinator.terminateWithError(

@@ -14,6 +14,8 @@ import { util } from '@kit.ArkTS';
 import {
   AudioChannel,
   AudioFrameType,
+  AudioFrameCallbackMethod,
+  IAudioFrame,
   AudioSampleRate,
   AudioSourceType,
   ExternalAudioFrame,
@@ -57,7 +59,9 @@ import {
   RtcEngineLease,
   RtcEngineManager
 } from './RtcEngineManager';
-import { RtcManaging, RtcRemoteVideoFrameListener, RtcRemoteVideoRenderedListener } from './RtcManaging';
+import { RtcManaging, RtcRemoteAudioFrameListener, RtcRemoteVideoFrameListener, RtcRemoteVideoRenderedListener } from './RtcManaging';
+import { RtcAudioConverter } from './RtcAudioConverter';
+import { RtcRemoteAudioFrame } from './RtcRemoteAudioFrame';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityConverter } from './RtcQualityConverter';
 import { RtcQualityListener } from './RtcQualityListener';
@@ -171,6 +175,18 @@ export class RtcManager implements RtcManaging {
 
   /** The remote streams whose processed frames are observed. */
   private readonly observedRemoteStreams: Set<string> = new Set();
+
+  /** The handler observing individual users' unmixed remote PCM. */
+  private remoteAudioFrameListener: RtcRemoteAudioFrameListener | null = null;
+
+  /** The remote streams whose PCM packets may be copied. */
+  private readonly observedRemoteAudioStreams: Set<string> = new Set();
+
+  /** The room/user bindings whose audio is currently subscribed by this manager. */
+  private readonly subscribedRemoteAudioStreams: Set<string> = new Set();
+
+  /** Whether this engine still owns a registered native audio frame observer. */
+  private audioFrameObserverRegistered: boolean = false;
 
   // Pending remote snapshot
 
@@ -334,6 +350,28 @@ export class RtcManager implements RtcManaging {
       }
     );
 
+    engine.on(
+      'onRemoteUserAudioFrame',
+      (key: RemoteStreamKey, frame: IAudioFrame): void => {
+        if (this.engine !== engine || key.room_id !== this.activeRoomId ||
+          key.stream_index !== StreamIndex.kStreamIndexMain) {
+          return;
+        }
+
+        const stream: RemoteStream = new RemoteStream(
+          key.room_id,
+          key.user_id
+        );
+        if (this.observedRemoteAudioStreams.has(stream.key()) &&
+          this.subscribedRemoteAudioStreams.has(stream.key())) {
+          this.remoteAudioFrameListener?.(
+            stream,
+            (): RtcRemoteAudioFrame => RtcAudioConverter.copyRemoteFrame(frame)
+          );
+        }
+      }
+    );
+
     this.engineLease = lease;
   }
 
@@ -344,10 +382,12 @@ export class RtcManager implements RtcManaging {
    */
   async destroy(): Promise<void> {
     const lease: RtcEngineLease | null = this.engineLease;
+    this.stopRemoteAudioObservation();
     this.engineLease = null;
     this.remoteStreamKeys.clear();
     this.renderedRemoteStreams.clear();
     this.observedRemoteStreams.clear();
+    this.subscribedRemoteAudioStreams.clear();
 
     try {
       await this.leaveRoom();
@@ -375,6 +415,12 @@ export class RtcManager implements RtcManaging {
           );
           this.offEngineEventSafely(
             (): void => {
+              engine.off('onRemoteUserAudioFrame');
+            },
+            'onRemoteUserAudioFrame'
+          );
+          this.offEngineEventSafely(
+            (): void => {
               engine.off('onTakeRemoteSnapshotResult');
             },
             'onTakeRemoteSnapshotResult'
@@ -386,7 +432,11 @@ export class RtcManager implements RtcManaging {
             'onPerformanceAlarms'
           );
         } finally {
-          await RtcEngineManager.release(lease);
+          try {
+            await RtcEngineManager.release(lease);
+          } finally {
+            this.audioFrameObserverRegistered = false;
+          }
         }
       }
     }
@@ -672,6 +722,7 @@ export class RtcManager implements RtcManaging {
    * The Promise fulfills after leaving the room.
    */
   async leaveRoom(): Promise<void> {
+    this.stopRemoteAudioObservation();
     this.snapshotRequests.forEach((request: RemoteSnapshotRequest): void => {
       clearTimeout(request.timer);
       request.reject(new XmaxError(
@@ -692,6 +743,7 @@ export class RtcManager implements RtcManaging {
     this.remoteStreamKeys.clear();
     this.renderedRemoteStreams.clear();
     this.observedRemoteStreams.clear();
+    this.subscribedRemoteAudioStreams.clear();
 
     cancelPendingJoin?.();
 
@@ -780,6 +832,14 @@ export class RtcManager implements RtcManaging {
     userId: string,
     subscribe: boolean
   ): void {
+    const streamId: string = new RemoteStream(
+      this.activeRoomId,
+      userId
+    ).key();
+    if (!subscribe) {
+      this.subscribedRemoteAudioStreams.delete(streamId);
+    }
+
     this.checkResult(
       this.requireRoom().subscribeStreamAudio(
         userId,
@@ -787,6 +847,9 @@ export class RtcManager implements RtcManaging {
       ),
       'subscribeStreamAudio'
     );
+    if (subscribe) {
+      this.subscribedRemoteAudioStreams.add(streamId);
+    }
   }
 
   /**
@@ -1069,6 +1132,99 @@ export class RtcManager implements RtcManaging {
     }
   }
 
+  /** Sets the receiver for copied individual-user PCM packets. */
+  setRemoteAudioFrameListener(
+    listener: RtcRemoteAudioFrameListener | null
+  ): void {
+    this.remoteAudioFrameListener = listener;
+  }
+
+  /** Updates PCM observation without changing audio subscriptions or playback volume. */
+  observeRemoteAudioFrames(
+    stream: RemoteStream,
+    enabled: boolean
+  ): void {
+    const streamId: string = stream.key();
+    if (!enabled) {
+      this.observedRemoteAudioStreams.delete(streamId);
+      if (this.observedRemoteAudioStreams.size === 0) {
+        this.disableRemoteAudioObservation();
+      }
+      return;
+    }
+
+    if (stream.roomId !== this.activeRoomId || this.engine === null) {
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'Remote audio stream is unavailable'
+      );
+    }
+    if (this.observedRemoteAudioStreams.has(streamId)) {
+      return;
+    }
+
+    if (this.observedRemoteAudioStreams.size === 0) {
+      const engine: RTCEngine = this.requireEngine();
+      this.checkResult(
+        engine.registerAudioFrameObserver(true),
+        'registerAudioFrameObserver'
+      );
+      this.audioFrameObserverRegistered = true;
+      try {
+        this.checkResult(
+          engine.enableAudioFrameCallback(
+            AudioFrameCallbackMethod.kRemoteUser,
+            {
+              sample_rate: AudioSampleRate.kAudioSampleRateAuto,
+              channel: AudioChannel.kAudioChannelAuto,
+              samples_per_call: 0
+            }
+          ),
+          'enableAudioFrameCallback'
+        );
+      } catch (error) {
+        this.stopRemoteAudioObservation();
+        throw XmaxError.from(error);
+      }
+    }
+
+    this.observedRemoteAudioStreams.add(streamId);
+  }
+
+  /** Disables native PCM delivery while still attempting observer removal after a failure. */
+  private disableRemoteAudioObservation(): void {
+    const engine: RTCEngine | null = this.engine;
+    if (engine === null || !this.audioFrameObserverRegistered) {
+      return;
+    }
+
+    try {
+      this.checkResult(
+        engine.disableAudioFrameCallback(AudioFrameCallbackMethod.kRemoteUser),
+        'disableAudioFrameCallback'
+      );
+    } finally {
+      this.checkResult(
+        engine.registerAudioFrameObserver(false),
+        'registerAudioFrameObserver'
+      );
+      this.audioFrameObserverRegistered = false;
+    }
+  }
+
+  /** Rejects queued PCM before best-effort native observation cleanup. */
+  private stopRemoteAudioObservation(): void {
+    this.observedRemoteAudioStreams.clear();
+    try {
+      this.disableRemoteAudioObservation();
+    } catch (error) {
+      XmaxLogger.error(
+        'Remote audio frame observation cleanup failed: ' + String(error),
+        'RTC'
+      );
+    }
+  }
+
   /**
    * Returns the RTC Surface rendering library name.
    *
@@ -1159,6 +1315,13 @@ export class RtcManager implements RtcManaging {
       (_roomId: string, userId: string, published: boolean): void => {
         if (this.room !== room) {
           return;
+        }
+
+        if (!published) {
+          this.subscribedRemoteAudioStreams.delete(new RemoteStream(
+            this.activeRoomId,
+            userId
+          ).key());
         }
 
         this.listener?.onRemoteAudioPublished(

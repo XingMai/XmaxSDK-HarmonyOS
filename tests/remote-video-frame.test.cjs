@@ -6,6 +6,7 @@ function fixture() {
   const timers = new Map(), logs = [], observations = [], received = [], failures = [];
   let timerId = 0, onFrame, sinkError = null;
   const load = loadEts({
+    '@kit.ArkTS': { util: { generateRandomUUID: () => require('node:crypto').randomUUID() } },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     '@bytertc/volcenginertc': { VideoPixelFormat: { kVideoPixelFormatI420: 1 } },
     XmaxLogger: { XmaxLogger: { error: message => logs.push(message) } }
@@ -18,6 +19,7 @@ function fixture() {
   const { RemoteStream } = load('foundation/rtc/RemoteStream.ets');
   const render = new RenderController({
     setRemoteVideoFrameListener(listener) { onFrame = listener; },
+    setRemoteAudioFrameListener() {}, observeRemoteAudioFrames() {},
     setRemoteVideoRenderedListener() {}, unbindRemoteVideo() {},
     observeRemoteVideoFrames(stream, enabled) {
       if (enabled && sinkError) throw sinkError;
@@ -216,7 +218,7 @@ for (const action of ['replace listener', 'remove listener', 'reset stream', 'st
         case 'replace listener': f.render.setRemoteVideoFrameListener(next); break;
         case 'remove listener': f.render.setRemoteVideoFrameListener(null); break;
         case 'reset stream': f.render.setRemoteStream(f.stream); break;
-        case 'stop delivery': f.render.stopRemoteVideoFrameDelivery(); break;
+        case 'stop delivery': f.render.stopRemoteFrameDelivery(); break;
         case 'reset track': f.render.resetRemoteTrack(null); break;
       }
       f.render.setRemoteVideoFrameListener(next);
@@ -253,7 +255,7 @@ test('replacement, stream reset and stop invalidate pending callbacks, including
   f.frame(new f.RemoteStream('room', 'other'));
   f.flush(); assert.deepEqual(f.received, []);
   f.frame();
-  f.render.stopRemoteVideoFrameDelivery();
+  f.render.stopRemoteFrameDelivery();
   f.flush(); f.frame(); f.flush();
   assert.deepEqual(f.received, []);
   f.render.setRemoteStream(f.stream);

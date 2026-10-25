@@ -10,6 +10,7 @@
 
 import { ImageSize } from '../service/media/ImageSize';
 import { RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
+import { RealtimeMediaFrameListener } from '../service/realtime/RealtimeMediaFrame';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { XmaxError } from '../foundation/errors/XmaxError';
 import { InteractionControlling } from '../media/interaction/InteractionControlling';
@@ -27,8 +28,13 @@ export interface RenderControlling {
     listener: RealtimeVideoFrameListener | null
   ): void;
 
-  /** Stops public frame delivery until a new remote stream is set. */
-  stopRemoteVideoFrameDelivery(): void;
+  /** Sets unified remote PCM and video delivery without changing playback or subscriptions. */
+  setRemoteMediaFrameListener(
+    listener: RealtimeMediaFrameListener | null
+  ): void;
+
+  /** Stops all public remote frame delivery until a new result stream is set. */
+  stopRemoteFrameDelivery(): void;
 
   /** Captures the next remote frame as a frozen result overlay. */
   freezeRemoteVideo(): Promise<void>;

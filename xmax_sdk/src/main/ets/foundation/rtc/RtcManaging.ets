@@ -19,6 +19,7 @@ import { RoomJoinConfiguration } from './RoomJoinConfiguration';
 import { RtcEventListener } from './RtcEventListener';
 import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
+import { RtcRemoteAudioFrame } from './RtcRemoteAudioFrame';
 
 /**
  * Receives the stream whose first remote frame has been rendered.
@@ -40,6 +41,17 @@ export type RtcRemoteVideoRenderedListener = (
 export type RtcRemoteVideoFrameListener = (
   stream: RemoteStream,
   copyFrame: () => RealtimeVideoFrame
+) => void;
+
+/**
+ * Observes one user's PCM and an on-demand copier valid only during the RTC callback.
+ *
+ * @param stream The room and user that produced the packet.
+ * @param copyFrame The copier producing owned PCM and preserving its native audio timestamp.
+ */
+export type RtcRemoteAudioFrameListener = (
+  stream: RemoteStream,
+  copyFrame: () => RtcRemoteAudioFrame
 ) => void;
 
 /** An interface for RTC engines, rooms, media transport, and rendering. */
@@ -270,6 +282,17 @@ export interface RtcManaging {
    * @param enabled Whether to enable this capability.
    */
   observeRemoteVideoFrames(
+    stream: RemoteStream,
+    enabled: boolean
+  ): void;
+
+  /** Sets single-user remote PCM delivery independently of playback volume and subscriptions. */
+  setRemoteAudioFrameListener(
+    listener: RtcRemoteAudioFrameListener | null
+  ): void;
+
+  /** Enables or disables observation for one remote user's unmixed PCM without subscribing it. */
+  observeRemoteAudioFrames(
     stream: RemoteStream,
     enabled: boolean
   ): void;

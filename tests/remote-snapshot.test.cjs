@@ -22,7 +22,7 @@ async function rtcFixture() {
   };
   const load = loadEts({
     '@bytertc/volcenginertc': { MirrorType: { kMirrorTypeNone: 0 }, StreamIndex: { kStreamIndexMain: 0 } },
-    '@kit.ArkTS': {},
+    '@kit.ArkTS': { util: { generateRandomUUID: () => require('node:crypto').randomUUID() } },
     RtcEngineManager: { RtcEngineManager: {
       async acquire() { return { engine }; }, async release() {}
     } },
@@ -93,6 +93,7 @@ test('leaving RTC cancels pending snapshots and ignores a stale engine callback'
 function renderFixture() {
   const requests = [], previews = [], logs = [];
   const load = loadEts({
+    '@kit.ArkTS': { util: { generateRandomUUID: () => require('node:crypto').randomUUID() } },
     '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
     XmaxLogger: { XmaxLogger: { error: message => logs.push(message) } }
   });
@@ -100,6 +101,7 @@ function renderFixture() {
   const { RemoteStream } = load('foundation/rtc/RemoteStream.ets');
   const render = new RenderController({
     setRemoteVideoFrameListener() {}, setRemoteVideoRenderedListener() {},
+    setRemoteAudioFrameListener() {}, observeRemoteAudioFrames() {},
     observeRemoteVideoFrames() {}, unbindRemoteVideo() {},
     takeRemoteSnapshot() { const request = deferred(); requests.push(request); return request.promise; }
   });

@@ -12,6 +12,7 @@ component and handle rejected promises.
 - [Reference Image Upload](#reference-image-upload)
 - [Render local preview and generated video](#render-local-preview-and-generated-video)
 - [Receive remote video frames](#receive-remote-video-frames)
+- [Receive remote audio and video frames](#receive-remote-audio-and-video-frames)
 - [Start generation in one call](#start-generation-in-one-call)
 - [Touch Interaction](#touch-interaction)
 - [Adjust playback volume](#adjust-playback-volume)
@@ -335,6 +336,70 @@ listener invalidates pending delivery. The listener remains configured across
 sessions until explicitly removed. Sink activation failures throw `XmaxError`
 from the setter; exceptions thrown by the listener are logged without stopping
 generation.
+
+## Receive remote audio and video frames
+
+Use one listener for copied remote PCM and post-processed video from the current
+generation result:
+
+```ts
+import { RealtimeAudioFrame, RealtimeMediaFrame } from '@xmax/sdk';
+
+realtime.setRemoteMediaFrameListener((frame: RealtimeMediaFrame): void => {
+  if (frame.content instanceof RealtimeAudioFrame) {
+    const audio = frame.content;
+    // Interleaved signed PCM16, little-endian. Use audio.sampleRate,
+    // audio.channels, audio.samplesPerChannel and audio.data for processing.
+  } else {
+    const video = frame.content;
+    // I420 pixels, dimensions and rotation follow RealtimeVideoFrame.
+  }
+
+  // frame.streamId identifies this result binding. frame.timestampUs is
+  // media time; frame.durationUs is supplied for audio only.
+  // Reset this track's continuity when frame.isDiscontinuous is true.
+});
+
+// Remove unified delivery and discard queued packets.
+realtime.setRemoteMediaFrameListener(null);
+```
+
+Register before or during generation. This listener does not start a session,
+subscribe to audio, change playback volume, or change whether remote sound plays.
+It receives the bound user's subscribed, unmixed PCM in its actual sample rate
+and channel layout. Video excludes view-level cropping, mirroring and overlays.
+Buffers are copied before the native RTC callback returns and remain valid
+after your callback. Treat all delivered data as read-only, including video
+frames shared with an independently registered `setRemoteVideoFrameListener`.
+
+Each result binding gets a new `streamId`, even when it reuses the same RTC user.
+The first event of each track, format changes, timestamp discontinuities and
+discarded packets mark `isDiscontinuous`. Stopping generation, disconnecting,
+closing or replacing the binding clears pending output. Replacing or removing
+the listener also clears it. Registration remains configured across sessions
+until explicitly removed.
+
+Callbacks are serialized in arrival order on the ArkTS event loop. An event
+contains audio **or** video, not an aligned pair, and events are not sorted by
+timestamp. The unified queue retains at most 256 packets or 32 MiB, including
+the callback in progress. Overflow discards incoming packets and marks the next
+admitted event of that track as discontinuous. Delivery yields after at most
+16 events per turn. Keep callbacks short and send expensive work to a Worker.
+Listener exceptions are logged without stopping generation. Native observation
+setup failures throw from the setter when a result is already bound; later
+binding failures follow the normal realtime operation error path.
+
+**Timestamp limitation:** audio time advances by sample count from its native RTC
+anchor; video keeps its native RTC timestamp. These are provider-defined clocks,
+not wall-clock or source-file timecodes. The current RTC integration has not been
+verified to expose a common audio/video render clock. A unified callback alone
+does not guarantee synchronized recording. Validate their cross-track offset on
+target devices before using them for that purpose; do not independently reset
+each track's first timestamp to zero.
+
+The existing video-only listener remains independently available with its
+existing delivery behavior; the unified queue limits apply only to this new
+listener.
 
 ## Start generation in one call
 

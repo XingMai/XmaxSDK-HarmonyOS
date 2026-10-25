@@ -20,6 +20,8 @@ function fixture(t, timingOptions = {}) {
       (this.encodings ??= []).push(format);
     }
     setRemoteVideoFrameListener(listener) { this.frameListener = listener; }
+    setRemoteAudioFrameListener(listener) { this.audioFrameListener = listener; }
+    observeRemoteAudioFrames(stream, enabled) { (this.audioObservations ??= []).push({ key: stream.key(), enabled }); }
     setRemoteVideoRenderedListener(listener) { this.renderedListener = listener; }
     observeRemoteVideoFrames(stream, enabled) { observations.push({ key: stream.key(), enabled }); }
     hasRenderedRemoteVideo() { return this.rendered ?? false; }
@@ -505,6 +507,41 @@ for (const action of ['disconnect', 'close']) {
     assert.deepEqual(delivered, [456]);
     f.manager.setRemoteVideoFrameListener(null);
     assert.equal(f.observations.at(-1).enabled, false);
+  });
+}
+
+for (const action of ['disconnect', 'close']) {
+  test(`unified media stops on ${action}, discards queued audio/video and resumes with a fresh stream identity`, async t => {
+    const f = fixture(t), delivered = [];
+    const { RealtimeVideoFrame } = f.load('service/realtime/RealtimeVideoFrame.ets');
+    const { RtcRemoteAudioFrame } = f.load('foundation/rtc/RtcRemoteAudioFrame.ets');
+    const makeVideo = () => new RealtimeVideoFrame(2, 2, 'i420', [], 990000, 0);
+    const makeAudio = () => new RtcRemoteAudioFrame(new Uint8Array(960), 48000, 1, 480, 1000000);
+    let copies = 0;
+    const audio = () => f.rtc.audioFrameListener(f.remote, () => { copies++; return makeAudio(); });
+    f.manager.setRemoteMediaFrameListener(frame => delivered.push(frame));
+
+    const first = await f.begin(); f.sei(first.task); f.frame(f.remote, makeVideo);
+    await settle(); assert.ok(!(await first.pending).error);
+    audio(); f.runTimer(0);
+    assert.deepEqual(delivered.map(frame => frame.timestampUs), [990000, 1000000]);
+    const oldId = delivered[0].streamId;
+    audio(); f.frame(f.remote, makeVideo);
+    const stopping = f.manager[action]();
+    assert.equal([...f.timers.values()].filter(timer => timer.ms === 0).length, 0);
+    const previousCopies = copies; audio(); assert.equal(copies, previousCopies);
+    await stopping;
+    assert.equal(delivered.length, 2);
+    assert.equal(f.rtc.audioObservations.at(-1).enabled, false);
+
+    const second = await f.begin(); f.sei(second.task); f.frame(f.remote, makeVideo);
+    await settle(); assert.ok(!(await second.pending).error);
+    audio(); f.runTimer(0);
+    assert.equal(delivered.length, 4);
+    assert.notEqual(delivered[2].streamId, oldId);
+    assert.ok(delivered.slice(2).every(frame => frame.isDiscontinuous));
+    f.manager.setRemoteMediaFrameListener(null);
+    assert.equal(f.rtc.audioObservations.at(-1).enabled, false);
   });
 }
 

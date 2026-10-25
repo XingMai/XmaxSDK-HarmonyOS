@@ -124,7 +124,8 @@ function managerFixture(modelName = 'x2.0-sla') {
     RealtimeSessionService: { RealtimeSessionService: FakeSessionService },
     RenderController: { RenderController: class {
       registerRemoteTrack() {} resetRemoteTrack() {} failRemoteFrameWait() {}
-      stopRemoteVideoFrameDelivery() {} setRemoteVideoFrameListener() {}
+      stopRemoteFrameDelivery() {} setRemoteVideoFrameListener() {}
+      setRemoteMediaFrameListener(listener) { calls.mediaListener = listener; }
       async waitUntilRemoteFrameReady() {}
       async freezeRemoteVideo() { calls.freezes = (calls.freezes ?? 0) + 1; }
     } }
@@ -155,6 +156,16 @@ function managerFixture(modelName = 'x2.0-sla') {
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
+
+test('manager delegates unified media registration and removal without starting a session', async () => {
+  const f = managerFixture(), listener = () => {};
+  f.manager.setRemoteMediaFrameListener(listener);
+  assert.equal(f.calls.mediaListener, listener);
+  assert.deepEqual(f.calls.sessions, []);
+  f.manager.setRemoteMediaFrameListener(null);
+  assert.equal(f.calls.mediaListener, null);
+  await f.manager.close();
+});
 
 for (const withStream of [false, true]) {
   test(`face restoration supports start, flag-only updates and default false (stream overload: ${withStream})`, async () => {
