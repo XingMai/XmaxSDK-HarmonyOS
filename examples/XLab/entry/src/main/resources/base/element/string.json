@@ -1,7 +1,7 @@
 {
   "string": [
     { "name": "external_capture", "value": "External Capture" },
-    { "name": "external_capture_description", "value": "Decode an SDR video and PCM in the app, then supply frames through Source + Sink" },
+    { "name": "external_capture_description", "value": "Decode SDR/HDR Vivid video and PCM in the app through Source + Sink" },
     { "name": "record_start", "value": "Record" },
     { "name": "record_stop", "value": "Stop" },
     { "name": "record_saving", "value": "Saving" },

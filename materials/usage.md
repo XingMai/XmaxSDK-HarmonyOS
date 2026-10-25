@@ -98,10 +98,11 @@ cancel pending source startup and detach producer callbacks, but the app decides
 when to release its devices or player. `reportError(error)` permanently ends the
 binding and triggers normal SDK media-error cleanup.
 
-XLab's **External Capture** card picks an SDR video and uses an app-owned native
-system decoder for video and PCM audio, including looping and upright pixels.
-The example deliberately rejects non-NV12 decoder output rather than treating
-HDR/P010 data as SDR; HDR producers must tone-map to supported SDR pixels first.
+XLab's **External Capture** card uses app-owned native system decoders for video
+and PCM audio, including looping and upright pixels. HDR Vivid videos use Surface
+decoding with BT.709 limited-range SDR output before frames reach the sink.
+Byte-buffer output still requires NV12; arbitrary HDR/P010 producers must convert
+their pixels to supported SDR first.
 
 <br>
 

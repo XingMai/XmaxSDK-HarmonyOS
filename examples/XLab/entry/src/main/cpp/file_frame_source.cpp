@@ -1,4 +1,5 @@
 #include "file_frame_source.h"
+#include "file_video_surface.h"
 
 #include <atomic>
 #include <chrono>
@@ -21,6 +22,7 @@
 #include "multimedia/player_framework/native_avdemuxer.h"
 #include "multimedia/player_framework/native_avformat.h"
 #include "multimedia/player_framework/native_avsource.h"
+#include "native_buffer/buffer_common.h"
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -50,6 +52,9 @@ public:
     std::deque<Buffer> inputs, outputs;
     std::unique_ptr<Frame> pending;
     bool inputEnded = false, ended = false;
+    bool hdrVivid = false, surfacePending = false;
+    int64_t surfacePts = 0;
+    std::unique_ptr<FileVideoSurface> surface;
     int width = 0, height = 0, rotation = 0, sampleRate = 0, channels = 0;
     Track(FileSource *owner, bool video, uint32_t id) : owner(owner), video(video), id(id) {}
   };
@@ -138,6 +143,9 @@ private:
     if (video && track->rotation % 90 != 0) throw std::runtime_error("Unsupported external file rotation");
     OH_AVFormat_GetIntValue(format, OH_MD_KEY_AUD_SAMPLE_RATE, &track->sampleRate);
     OH_AVFormat_GetIntValue(format, OH_MD_KEY_AUD_CHANNEL_COUNT, &track->channels);
+    int32_t hdrVivid = 0;
+    track->hdrVivid = video && OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_IS_HDR_VIVID, &hdrVivid) &&
+        hdrVivid == 1;
     if (video && (track->width < 2 || track->height < 2 || track->width % 2 || track->height % 2 ||
         static_cast<int64_t>(track->width) * track->height > 16777216))
       throw std::runtime_error("Unsupported external file dimensions");
@@ -181,10 +189,18 @@ private:
     const OH_AVCodecCallback callbacks{Error, FormatChanged, Input, Output};
     if (track.video) {
       OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
+      if (track.hdrVivid) {
+        OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_VIDEO_DECODER_OUTPUT_COLOR_SPACE, OH_COLORSPACE_BT709_LIMIT);
+        track.surface = std::make_unique<FileVideoSurface>(track.width, track.height, stopping_);
+      }
       Check(OH_VideoDecoder_RegisterCallback(track.codec, callbacks, &track), "Observe external video");
       Check(OH_VideoDecoder_Configure(track.codec, format.get()), "Configure external video");
+      if (track.surface) {
+        Check(OH_VideoDecoder_SetSurface(track.codec, track.surface->InputWindow()), "Bind external HDR Surface");
+      }
       Check(OH_VideoDecoder_Prepare(track.codec), "Prepare external video");
       Check(OH_VideoDecoder_Start(track.codec), "Start external video");
+      if (track.surface) track.surface->Start();
     } else {
       OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_AUDIO_SAMPLE_FORMAT, SAMPLE_S16LE);
       Check(OH_AudioCodec_RegisterCallback(track.codec, callbacks, &track), "Observe external audio");
@@ -207,13 +223,39 @@ private:
     }
   }
 
-  std::unique_ptr<Frame> CopyFrame(Track &track, OH_AVBuffer *buffer, OH_AVCodecBufferAttr attr) {
+  /** Copies upright NV12 from either mapped Surface planes or decoder byte buffers. */
+  std::unique_ptr<Frame> CopyVideoFrame(Track &track, const uint8_t *yData, int yStride,
+      const uint8_t *uvData, int uvStride, int64_t pts) {
     auto frame = std::make_unique<Frame>();
-    frame->video = track.video;
+    frame->video = true;
+    frame->timestampUs = pts;
     if (firstMediaUs_ < 0 || !timelineStarted_) {
-      firstMediaUs_ = firstMediaUs_ < 0 ? attr.pts : std::min(firstMediaUs_, attr.pts);
+      firstMediaUs_ = firstMediaUs_ < 0 ? pts : std::min(firstMediaUs_, pts);
     }
-    frame->timestampUs = attr.pts;
+
+    frame->width = track.rotation % 180 ? track.height : track.width;
+    frame->height = track.rotation % 180 ? track.width : track.height;
+    const size_t ySize = static_cast<size_t>(frame->width) * frame->height;
+    frame->data.resize(ySize * 3 / 2);
+    for (int plane = 0; plane < 2; plane++) {
+      const int step = plane == 0 ? 1 : 2;
+      const int w = track.width / step, h = track.height / step;
+      const int outW = frame->width / step;
+      const uint8_t *data = plane ? uvData : yData;
+      const int stride = plane ? uvStride : yStride;
+      for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+        int ox = x, oy = y;
+        if (track.rotation == 90) { ox = h - y - 1; oy = x; }
+        else if (track.rotation == 180) { ox = w - x - 1; oy = h - y - 1; }
+        else if (track.rotation == 270) { ox = y; oy = w - x - 1; }
+        std::memcpy(frame->data.data() + (plane ? ySize : 0) + (oy * outW + ox) * step,
+            data + y * stride + x * step, step);
+      }
+    }
+    return frame;
+  }
+
+  std::unique_ptr<Frame> CopyFrame(Track &track, OH_AVBuffer *buffer, OH_AVCodecBufferAttr attr) {
     const uint8_t *data = OH_AVBuffer_GetAddr(buffer);
     if (!data || attr.offset < 0 || attr.size < 0 ||
         static_cast<int64_t>(attr.offset) + attr.size > OH_AVBuffer_GetCapacity(buffer))
@@ -227,51 +269,55 @@ private:
           !OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_VIDEO_SLICE_HEIGHT, &slice) ||
           !OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_PIXEL_FORMAT, &pixelFormat) ||
           pixelFormat != AV_PIXEL_FORMAT_NV12 || stride < track.width || slice < track.height)
-        throw std::runtime_error("External file sample requires decoded SDR NV12; use an SDR video for this example");
+        throw std::runtime_error("External file decoder did not output SDR NV12");
       const size_t chroma = static_cast<size_t>(stride) * slice;
       if (chroma + static_cast<size_t>(track.height / 2 - 1) * stride + track.width >
           static_cast<size_t>(OH_AVBuffer_GetCapacity(buffer) - attr.offset))
         throw std::runtime_error("Invalid external NV12 planes");
-      data += attr.offset;
-
-      frame->width = track.rotation % 180 ? track.height : track.width;
-      frame->height = track.rotation % 180 ? track.width : track.height;
-      const size_t ySize = static_cast<size_t>(frame->width) * frame->height;
-      frame->data.resize(ySize * 3 / 2);
-      for (int plane = 0; plane < 2; plane++) {
-        const int step = plane == 0 ? 1 : 2;
-        const int w = track.width / step, h = track.height / step;
-        const int outW = frame->width / step;
-        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
-          int ox = x, oy = y;
-          if (track.rotation == 90) { ox = h - y - 1; oy = x; }
-          else if (track.rotation == 180) { ox = w - x - 1; oy = h - y - 1; }
-          else if (track.rotation == 270) { ox = y; oy = w - x - 1; }
-          std::memcpy(frame->data.data() + (plane ? ySize : 0) + (oy * outW + ox) * step,
-              data + (plane ? chroma : 0) + y * stride + x * step, step);
-        }
-      }
-    } else {
-      int32_t sampleFormat = SAMPLE_S16LE;
-      if (!format || (OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUDIO_SAMPLE_FORMAT, &sampleFormat) &&
-          sampleFormat != SAMPLE_S16LE)) throw std::runtime_error("External audio decoder did not output PCM16");
-      frame->sampleRate = track.sampleRate;
-      frame->channels = track.channels;
-      OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUD_SAMPLE_RATE, &frame->sampleRate);
-      OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUD_CHANNEL_COUNT, &frame->channels);
-      frame->data.assign(data + attr.offset, data + attr.offset + attr.size);
+      return CopyVideoFrame(track, data + attr.offset, stride, data + attr.offset + chroma, stride, attr.pts);
     }
+
+    int32_t sampleFormat = SAMPLE_S16LE;
+    if (!format || (OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUDIO_SAMPLE_FORMAT, &sampleFormat) &&
+        sampleFormat != SAMPLE_S16LE)) throw std::runtime_error("External audio decoder did not output PCM16");
+    auto frame = std::make_unique<Frame>();
+    frame->timestampUs = attr.pts;
+    if (firstMediaUs_ < 0 || !timelineStarted_) {
+      firstMediaUs_ = firstMediaUs_ < 0 ? attr.pts : std::min(firstMediaUs_, attr.pts);
+    }
+    frame->sampleRate = track.sampleRate;
+    frame->channels = track.channels;
+    OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUD_SAMPLE_RATE, &frame->sampleRate);
+    OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_AUD_CHANNEL_COUNT, &frame->channels);
+    frame->data.assign(data + attr.offset, data + attr.offset + attr.size);
     return frame;
   }
 
   void Drain(Track &track) {
+    if (stopping_ || track.pending) return;
+    if (track.surface) {
+      track.surface->CheckError();
+      if (track.surfacePending) {
+        if (track.surface->Read([&](const uint8_t *y, int yStride, const uint8_t *uv, int uvStride) {
+          track.pending = CopyVideoFrame(track, y, yStride, uv, uvStride, track.surfacePts);
+        })) track.surfacePending = false;
+        return;
+      }
+    }
+
     Buffer output{};
-    if (!stopping_ && !track.pending && Pop(track.outputs, output)) {
+    if (Pop(track.outputs, output)) {
       try {
         OH_AVCodecBufferAttr attr{};
         Check(OH_AVBuffer_GetBufferAttr(output.value, &attr), "Read external decoded attributes");
         track.ended = (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
-        if (attr.size > 0) {
+        if (track.surface && !track.ended) {
+          // Keep a single Surface frame in flight; consume it before reading the next frame or EOS.
+          track.surfacePts = attr.pts;
+          Check(OH_VideoDecoder_RenderOutputBuffer(track.codec, output.index), "Render external HDR frame");
+          track.surfacePending = true;
+          return;
+        } else if (!track.surface && attr.size > 0) {
           track.pending = CopyFrame(track, output.value, attr);
         }
       } catch (...) {
@@ -316,6 +362,8 @@ private:
       else { OH_AudioCodec_Stop(track.codec); OH_AudioCodec_Destroy(track.codec); }
       track.codec = nullptr;
     }
+    track.surface.reset();
+    track.surfacePending = false;
     std::lock_guard<std::mutex> lock(mutex_);
     track.inputs.clear();
     track.outputs.clear();

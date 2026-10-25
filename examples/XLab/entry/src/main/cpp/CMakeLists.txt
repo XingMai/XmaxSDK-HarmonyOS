@@ -3,7 +3,7 @@ project(xlab_recorder)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(xlab_recorder SHARED realtime_recorder.cpp recorder_module.cpp file_frame_source.cpp)
+add_library(xlab_recorder SHARED realtime_recorder.cpp recorder_module.cpp file_frame_source.cpp file_video_surface.cpp)
 target_compile_options(xlab_recorder PRIVATE -O3 -Wall -Wextra)
 target_link_libraries(xlab_recorder PUBLIC
     ace_napi.z
@@ -15,4 +15,8 @@ target_link_libraries(xlab_recorder PUBLIC
     libnative_media_avdemuxer.so
     libnative_media_avsource.so
     libnative_media_codecbase.so
-    libnative_media_core.so)
+    libnative_media_core.so
+    libnative_buffer.so
+    libnative_image.so
+    libnative_window.so
+    libvideo_processing.so)

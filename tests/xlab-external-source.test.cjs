@@ -46,10 +46,10 @@ test('app-owned file source forwards public video/PCM frames, paces video, and d
   assert.equal(errors.length, 1);
 });
 
-test('app native decoded frames remove padding, apply file rotation, and reject HDR rather than misreading P010', () => {
+test('app native decoded frames remove padding, apply file rotation, and reject unconverted P010', () => {
   const cpp = path.resolve(__dirname, '../examples/XLab/entry/src/main/cpp/file_frame_source.cpp');
   const source = fs.readFileSync(cpp, 'utf8');
-  const copy = source.slice(source.indexOf('  std::unique_ptr<Frame> CopyFrame('), source.indexOf('  void Drain('));
+  const copy = source.slice(source.indexOf('  std::unique_ptr<Frame> CopyVideoFrame('), source.indexOf('  void Drain('));
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-file-'));
   try {
     const harness = path.join(directory, 'frames.cpp'), executable = path.join(directory, 'frames');
@@ -118,7 +118,7 @@ int main() {
 test('app native file loops rebuild the source/demuxer pair and clean up on stop or failure', () => {
   const source = fs.readFileSync(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/cpp/file_frame_source.cpp'), 'utf8');
-  const feed = source.slice(source.indexOf('  void Feed('), source.indexOf('  std::unique_ptr<Frame> CopyFrame('));
+  const feed = source.slice(source.indexOf('  void Feed('), source.indexOf('  /** Copies upright NV12'));
   const lifecycle = source.slice(source.indexOf('  void CloseTrack('), source.indexOf('\n};\n\nvoid Require('));
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-loop-'));
   try {
@@ -207,6 +207,7 @@ int napi_call_threadsafe_function(int, Frame *frame, int) {
   return napi_ok;
 }
 struct Harness {
+  struct FileVideoSurface {};
   struct Buffer { int index; OH_AVBuffer *value; };
   struct Track {
     bool video = false, ended = false, inputEnded = false;
@@ -214,6 +215,8 @@ struct Harness {
     OH_AVCodec *codec = nullptr;
     std::deque<Buffer> inputs, outputs;
     std::unique_ptr<Frame> pending;
+    std::unique_ptr<FileVideoSurface> surface;
+    bool surfacePending = false;
     OH_AVBuffer buffers[2];
   };
   int fd_ = -1, callback_ = 0;
@@ -301,6 +304,32 @@ int main() {
   assert(errors.empty() && cycles == 0); Verify(stopped, stopFd);
 }
 `);
+    const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
+      { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.error?.message || compile.stderr);
+    const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 0, run.error?.message || run.stderr);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('app HDR Surface conversion preserves NV12 planes/PTS, drains before EOS, and releases partial resources', () => {
+  const cpp = path.resolve(__dirname, '../examples/XLab/entry/src/main/cpp');
+  const source = fs.readFileSync(path.join(cpp, 'file_frame_source.cpp'), 'utf8');
+  const header = fs.readFileSync(path.join(cpp, 'file_video_surface.h'), 'utf8');
+  const implementation = fs.readFileSync(path.join(cpp, 'file_video_surface.cpp'), 'utf8')
+    .replace(/^#include "[^"\n]+"\n/gm, '');
+  const copy = source.slice(source.indexOf('  std::unique_ptr<Frame> CopyVideoFrame('),
+    source.indexOf('  std::unique_ptr<Frame> CopyFrame('));
+  const drain = source.slice(source.indexOf('  void Drain('), source.indexOf('  /** Interleaves decoded tracks'));
+  const template = fs.readFileSync(path.join(__dirname, 'native/xlab-file-video-surface.cpp'), 'utf8');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-hdr-'));
+  try {
+    const harness = path.join(directory, 'surface.cpp'), executable = path.join(directory, 'surface');
+    fs.writeFileSync(harness, template
+      .replace('// FILE_VIDEO_SURFACE_HEADER', header)
+      .replace('// FILE_VIDEO_SURFACE_IMPLEMENTATION', implementation)
+      .replace('// FILE_VIDEO_COPY', copy)
+      .replace('// FILE_VIDEO_DRAIN', drain));
     const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
       { encoding: 'utf8', timeout: 30000 });
     assert.equal(compile.status, 0, compile.error?.message || compile.stderr);

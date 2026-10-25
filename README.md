@@ -391,7 +391,8 @@ the session; an active task remains in `GENERATING`.
 For app-owned capture or decoding, implement `RealtimeExternalVideoSource` and
 pass it to `createExternalVideoStream`. See [external video input](materials/usage.md#external-video-input)
 for the Source + Sink contract and optional PCM audio. XLab's External Capture card
-demonstrates app-owned SDR video and audio decoding through this API.
+demonstrates app-owned video and audio decoding, including HDR Vivid to SDR
+conversion, through this API.
 
 ### Listen for events
 
