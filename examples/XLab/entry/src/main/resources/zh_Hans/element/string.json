@@ -537,6 +537,14 @@
       "value": "网络质量"
     },
     {
+      "name": "stats_quality_level",
+      "value": "画质档位"
+    },
+    {
+      "name": "stats_quality_hint",
+      "value": "L1 画质最高，L5 带宽最低。仅生成中可调整，自动调档仍可能改变所选档位。"
+    },
+    {
       "name": "stats_delay",
       "value": "端到端延迟"
     },

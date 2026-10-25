@@ -1,4 +1,4 @@
-import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
+import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
 
@@ -58,6 +58,9 @@ export class RealtimeViewState {
   uplinkStatistics: UplinkVideoStatistics | undefined = undefined;
   downlinkStatistics: DownlinkVideoStatistics | undefined = undefined;
   networkQuality: RealtimeNetworkQuality | undefined = undefined;
+  uplinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
+  downlinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
+  isQualityChanging: boolean = false;
   isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;
@@ -84,6 +87,11 @@ export class RealtimeViewState {
   get canCancelGeneration(): boolean {
     return this.isGenerationStarting ||
       this.connectionState === RealtimeConnectionState.GENERATING;
+  }
+
+  get canAdjustQuality(): boolean {
+    return this.connectionState === RealtimeConnectionState.GENERATING &&
+      !this.isGenerationStarting && !this.isQualityChanging;
   }
 
   referenceList(categoryId: string): RealtimeReferenceListState {

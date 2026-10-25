@@ -1,4 +1,4 @@
-import { RealtimeNetworkQualityLevel } from '@xmax/sdk';
+import { RealtimeNetworkQualityLevel, RealtimeQualityLevel } from '@xmax/sdk';
 import { XLabLocalization } from '../../../../localization/XLabLocalization';
 import { RealtimeViewState } from '../model/RealtimeViewState';
 
@@ -56,10 +56,53 @@ struct RealtimeStatisticsRow {
 }
 
 @Component
+struct RealtimeQualitySelector {
+  @Prop level: RealtimeQualityLevel | undefined = undefined;
+  @Prop isEnabled: boolean = false;
+  @Prop label: string = '';
+  onSelect: (level: RealtimeQualityLevel) => void = (): void => {};
+  private readonly levels: RealtimeQualityLevel[] = [
+    RealtimeQualityLevel.L1,
+    RealtimeQualityLevel.L2,
+    RealtimeQualityLevel.L3,
+    RealtimeQualityLevel.L4,
+    RealtimeQualityLevel.L5
+  ];
+
+  build() {
+    Column({ space: 4 }) {
+      RealtimeStatisticsRow({ label: this.label, value: this.level === undefined ? '—' : `L${this.level}` })
+      Row({ space: 4 }) {
+        ForEach(this.levels, (level: RealtimeQualityLevel) => {
+          Button(`L${level}`, { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(32)
+            .padding(0)
+            .fontSize(11)
+            .fontColor(this.level === level ? '#FFFFFF' : '#CCFFFFFF')
+            .backgroundColor(this.level === level ? '#2563EB' : '#33FFFFFF')
+            .borderRadius(5)
+            .enabled(this.isEnabled && this.level !== level)
+            .accessibilityText(`${this.label} L${level}`)
+            .accessibilitySelected(this.level === level)
+            .onClick((): void => { this.onSelect(level); })
+        }, (level: RealtimeQualityLevel): string => level.toString())
+      }
+      .width('100%')
+      .opacity(this.isEnabled ? 1 : 0.5)
+    }
+    .width('100%')
+    .margin({ bottom: 6 })
+  }
+}
+
+@Component
 export struct RealtimeStatisticsPanel {
   @StorageLink(XLabLocalization.REVISION_KEY) private languageRevision: number = 0;
   @ObjectLink state: RealtimeViewState;
   @Prop maximumHeight: string = '100%';
+  onUplinkQualitySelect: (level: RealtimeQualityLevel) => void = (): void => {};
+  onDownlinkQualitySelect: (level: RealtimeQualityLevel) => void = (): void => {};
 
   private text(key: string): string {
     return XLabLocalization.text(key, this.languageRevision);
@@ -92,6 +135,12 @@ export struct RealtimeStatisticsPanel {
         Text(this.text('stats_uplink'))
           .fontSize(11).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
           .width('100%').margin({ bottom: 4 })
+        RealtimeQualitySelector({
+          label: this.text('stats_quality_level'),
+          level: this.state.uplinkQualityLevel,
+          isEnabled: this.state.canAdjustQuality,
+          onSelect: this.onUplinkQualitySelect
+        })
         RealtimeStatisticsRow({ label: this.text('stats_resolution'), value: this.resolution(
           this.state.uplinkStatistics?.width, this.state.uplinkStatistics?.height) })
         RealtimeStatisticsRow({ label: this.text('stats_capture_fps'), value: this.number(this.state.uplinkStatistics?.captureFrameRate, ' fps') })
@@ -103,6 +152,12 @@ export struct RealtimeStatisticsPanel {
         Text(this.text('stats_downlink'))
           .fontSize(11).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
           .width('100%').margin({ top: 12, bottom: 4 })
+        RealtimeQualitySelector({
+          label: this.text('stats_quality_level'),
+          level: this.state.downlinkQualityLevel,
+          isEnabled: this.state.canAdjustQuality,
+          onSelect: this.onDownlinkQualitySelect
+        })
         RealtimeStatisticsRow({ label: this.text('stats_resolution'), value: this.resolution(
           this.state.downlinkStatistics?.width, this.state.downlinkStatistics?.height) })
         RealtimeStatisticsRow({ label: this.text('stats_decode_fps'), value: this.number(this.state.downlinkStatistics?.decodeFrameRate, ' fps') })
@@ -111,6 +166,9 @@ export struct RealtimeStatisticsPanel {
         RealtimeStatisticsRow({ label: this.text('stats_loss'), value: this.number(this.state.downlinkStatistics?.packetLossPercent, '%') })
         RealtimeStatisticsRow({ label: this.text('stats_quality'), value: this.quality(this.state.networkQuality?.downlink) })
         RealtimeStatisticsRow({ label: this.text('stats_delay'), value: this.number(this.state.downlinkStatistics?.endToEndDelayMs, ' ms') })
+        Text(this.text('stats_quality_hint'))
+          .fontSize(10).fontColor('#CCFFFFFF')
+          .width('100%').margin({ top: 8 })
       }
       .width('100%')
       .padding(10)

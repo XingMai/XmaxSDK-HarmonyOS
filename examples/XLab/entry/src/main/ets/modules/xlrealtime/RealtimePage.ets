@@ -6,6 +6,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   DefaultTrajectoryEffectRenderer,
   LocalVideoPlaybackState,
+  RealtimeQualityLevel,
   TrajectoryEffectRendering,
   VideoContentMode,
   XmaxRealtimeVideoView
@@ -119,6 +120,13 @@ export struct RealtimePage {
 
   private dismissKeyboard(): void {
     this.promptInputController.stopEditing();
+  }
+
+  private toggleStatistics(): void {
+    this.isStatisticsVisible = !this.isStatisticsVisible;
+    if (this.isStatisticsVisible) {
+      this.viewModel.refreshQualityLevels();
+    }
   }
 
   private async switchCamera(): Promise<void> {
@@ -496,7 +504,7 @@ export struct RealtimePage {
             RealtimeStatisticsButton({
               isActive: this.isStatisticsVisible,
               buttonWidth: 44,
-              onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
+              onToggle: (): void => { this.toggleStatistics(); }
             })
             if (!this.hasLocalImage()) {
               RealtimeAudioControlsView({
@@ -548,7 +556,13 @@ export struct RealtimePage {
         if (this.isStatisticsVisible) {
           RealtimeStatisticsPanel({
             state: this.state,
-            maximumHeight: `calc(100% - ${STATISTICS_PANEL_TOP_INSET + 12}vp)`
+            maximumHeight: `calc(100% - ${STATISTICS_PANEL_TOP_INSET + 12}vp)`,
+            onUplinkQualitySelect: (level: RealtimeQualityLevel): void => {
+              void this.viewModel.setUplinkQualityLevel(level);
+            },
+            onDownlinkQualitySelect: (level: RealtimeQualityLevel): void => {
+              void this.viewModel.setDownlinkQualityLevel(level);
+            }
           })
             .width(this.isLandscape ? 216 : 228)
             .position({ left: 12, top: STATISTICS_PANEL_TOP_INSET })
@@ -556,7 +570,7 @@ export struct RealtimePage {
         if (!this.hasLocalFile()) {
           RealtimeStatisticsButton({
             isActive: this.isStatisticsVisible,
-            onToggle: (): void => { this.isStatisticsVisible = !this.isStatisticsVisible; }
+            onToggle: (): void => { this.toggleStatistics(); }
           })
             .position({ right: 8, top: 134 })
         }

@@ -6,6 +6,7 @@ import {
   UplinkVideoStatistics,
   DownlinkVideoStatistics,
   RealtimeNetworkQuality,
+  RealtimeQualityLevel,
   LocalVideoPlaybackState,
   RealtimeConfiguration,
   RealtimeConnectionState,
@@ -77,6 +78,53 @@ export class RealtimeViewModel {
 
   setReferenceUploader(uploader: ReferenceUploading): void {
     this.referenceUploader = uploader;
+  }
+
+  refreshQualityLevels(): void {
+    this.state.uplinkQualityLevel = this.realtimeManager?.uplinkQualityLevel;
+    this.state.downlinkQualityLevel = this.realtimeManager?.downlinkQualityLevel;
+  }
+
+  async setUplinkQualityLevel(level: RealtimeQualityLevel): Promise<void> {
+    await this.setQualityLevel(level, true);
+  }
+
+  async setDownlinkQualityLevel(level: RealtimeQualityLevel): Promise<void> {
+    await this.setQualityLevel(level, false);
+  }
+
+  private async setQualityLevel(level: RealtimeQualityLevel, uplink: boolean): Promise<void> {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    if (manager === null || !this.state.canAdjustQuality || this.connecting ||
+      this.switchingCamera || this.changingLocalMedia || this.changingVideoPlayback ||
+      this.generationUpdating) {
+      return;
+    }
+    const currentLevel: RealtimeQualityLevel | undefined = uplink ?
+      manager.uplinkQualityLevel : manager.downlinkQualityLevel;
+    if (currentLevel === level) {
+      return;
+    }
+
+    const revision: number = this.generationRevision;
+    this.state.isQualityChanging = true;
+    try {
+      if (uplink) {
+        await manager.setUplinkQualityLevel(level);
+      } else {
+        await manager.setDownlinkQualityLevel(level);
+      }
+    } catch (error) {
+      if (this.realtimeManager === manager && this.generationRevision === revision &&
+        manager.currentState.connectionState === RealtimeConnectionState.GENERATING) {
+        this.onMessage?.(this.errorMessage(error));
+      }
+    } finally {
+      if (this.realtimeManager === manager) {
+        this.state.isQualityChanging = false;
+        this.refreshQualityLevels();
+      }
+    }
   }
 
   /** 打开弹窗时读取实际音量；静音期间保留取消静音所需的音量。 */
@@ -204,10 +252,16 @@ export class RealtimeViewModel {
       connectingManager = manager;
       this.realtimeManager = manager;
       manager.setUplinkVideoStatisticsListener((statistics: UplinkVideoStatistics | undefined): void => {
-        if (this.realtimeManager === manager) { this.state.uplinkStatistics = statistics; }
+        if (this.realtimeManager === manager) {
+          this.state.uplinkStatistics = statistics;
+          this.refreshQualityLevels();
+        }
       });
       manager.setDownlinkVideoStatisticsListener((statistics: DownlinkVideoStatistics | undefined): void => {
-        if (this.realtimeManager === manager) { this.state.downlinkStatistics = statistics; }
+        if (this.realtimeManager === manager) {
+          this.state.downlinkStatistics = statistics;
+          this.refreshQualityLevels();
+        }
       });
       manager.setNetworkQualityListener((quality: RealtimeNetworkQuality): void => {
         if (this.realtimeManager === manager) { this.state.networkQuality = quality; }
@@ -255,6 +309,7 @@ export class RealtimeViewModel {
           this.state.remoteVideoTrack = this.remoteStream?.videoTrack ?? null;
         }
         this.state.connectionState = state.connectionState;
+        this.refreshQualityLevels();
         if (state.connectionState === RealtimeConnectionState.CONNECTING) {
           this.pendingGenerationRestart = false;
           this.state.isGenerationStarting = true;
@@ -414,6 +469,7 @@ export class RealtimeViewModel {
       closePromise = manager.close();
     }
     this.realtimeManager = null;
+    this.state.isQualityChanging = false;
     this.clearStatistics();
     this.localStream = null;
     this.remoteStream = null;
@@ -454,6 +510,8 @@ export class RealtimeViewModel {
     this.state.uplinkStatistics = undefined;
     this.state.downlinkStatistics = undefined;
     this.state.networkQuality = undefined;
+    this.state.uplinkQualityLevel = undefined;
+    this.state.downlinkQualityLevel = undefined;
   }
 
   selectCategory(categoryId: string): void {

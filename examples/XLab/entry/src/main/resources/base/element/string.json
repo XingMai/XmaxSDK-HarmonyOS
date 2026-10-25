@@ -537,6 +537,14 @@
       "value": "Network quality"
     },
     {
+      "name": "stats_quality_level",
+      "value": "Quality level"
+    },
+    {
+      "name": "stats_quality_hint",
+      "value": "L1: highest quality · L5: lowest bandwidth. Adjustable during generation. Automatic adaptation may change the selected level."
+    },
+    {
       "name": "stats_delay",
       "value": "End-to-end delay"
     },

@@ -1053,6 +1053,128 @@ function exampleVideoPlaybackFixture() {
   return { ...f, Playback };
 }
 
+test('XLab quality selectors require generation and track successful independent changes', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  assert.equal(vm.state.canAdjustQuality, false);
+  await vm.setUplinkQualityLevel(Level.L3);
+  await vm.connect({});
+  await vm.setDownlinkQualityLevel(Level.L4);
+  assert.equal(vm.state.uplinkQualityLevel, undefined);
+  assert.equal(vm.state.downlinkQualityLevel, undefined);
+  assert.deepEqual(f.calls.sessions, []);
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  assert.equal(vm.state.canAdjustQuality, true);
+  assert.equal(vm.state.uplinkQualityLevel, Level.L2);
+  assert.equal(vm.state.downlinkQualityLevel, Level.L2);
+  await vm.setUplinkQualityLevel(Level.L3);
+  assert.equal(vm.state.uplinkQualityLevel, Level.L3);
+  assert.equal(vm.state.downlinkQualityLevel, Level.L2);
+  await vm.setDownlinkQualityLevel(Level.L4);
+  assert.equal(vm.state.downlinkQualityLevel, Level.L4);
+  assert.equal(f.calls.starts.length, 1);
+  assert.equal(vm.state.isQualityChanging, false);
+  await f.manager.disconnect();
+  assert.equal(vm.state.canAdjustQuality, false);
+  assert.equal(vm.state.uplinkQualityLevel, undefined);
+  assert.equal(vm.state.downlinkQualityLevel, undefined);
+  await vm.disconnect();
+});
+
+test('XLab statistics refresh quality levels after automatic changes and ignore stale callbacks', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  const uplinkListener = f.stream.quality.uplinkStatisticsListener;
+  const downlinkListener = f.stream.quality.downlinkStatisticsListener;
+  f.stream.completeQuality(false, 4, true);
+  f.stream.completeQuality(true, 5, true);
+  uplinkListener({ width: 608, height: 1140 });
+  assert.equal(vm.state.uplinkQualityLevel, 4);
+  assert.equal(vm.state.downlinkQualityLevel, 5);
+  f.stream.completeQuality(true, 3, true);
+  downlinkListener({ width: 768, height: 1440 });
+  assert.equal(vm.state.downlinkQualityLevel, 3);
+  await vm.disconnect();
+  uplinkListener({ width: 1, height: 1 });
+  downlinkListener({ width: 1, height: 1 });
+  assert.equal(vm.state.uplinkStatistics, undefined);
+  assert.equal(vm.state.downlinkStatistics, undefined);
+  assert.equal(vm.state.uplinkQualityLevel, undefined);
+  assert.equal(vm.state.downlinkQualityLevel, undefined);
+});
+
+test('XLab serializes quality taps and reports failures without selecting an unapplied level', async () => {
+  const f = exampleFixture(), vm = f.viewModel, gate = deferred(), messages = [];
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  vm.onMessage = message => messages.push(message);
+  let requests = 0;
+  f.manager.setUplinkQualityLevel = async () => { requests++; await gate.promise; };
+  await vm.setUplinkQualityLevel(2);
+  assert.equal(requests, 0);
+  const pending = vm.setUplinkQualityLevel(3);
+  assert.equal(vm.state.canAdjustQuality, false);
+  await vm.setUplinkQualityLevel(4);
+  await vm.setDownlinkQualityLevel(5);
+  assert.equal(requests, 1);
+  assert.equal(vm.state.uplinkQualityLevel, 2);
+  assert.equal(vm.state.downlinkQualityLevel, 2);
+  gate.reject(new Error('quality change failed'));
+  await pending;
+  assert.deepEqual(messages, ['quality change failed']);
+  assert.equal(vm.state.errorMessage, '');
+  assert.equal(vm.state.canAdjustQuality, true);
+  assert.equal(vm.state.uplinkQualityLevel, 2);
+  await vm.disconnect();
+});
+
+test('XLab ignores quality changes during generation startup and other local operations', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  let requests = 0;
+  f.manager.setUplinkQualityLevel = async () => { requests++; };
+  vm.state.isGenerationStarting = true;
+  assert.equal(vm.state.canAdjustQuality, false);
+  await vm.setUplinkQualityLevel(3);
+  vm.state.isGenerationStarting = false;
+  for (const operation of ['connecting', 'switchingCamera', 'changingLocalMedia',
+    'changingVideoPlayback', 'generationUpdating']) {
+    vm[operation] = true;
+    await vm.setUplinkQualityLevel(3);
+    vm[operation] = false;
+  }
+  assert.equal(requests, 0);
+  await vm.disconnect();
+});
+
+test('XLab ignores obsolete quality completion after closing and reopening its manager', async () => {
+  const f = exampleFixture(), next = managerFixture(), vm = f.viewModel;
+  const oldGate = deferred(), nextGate = deferred(), messages = [];
+  vm.onMessage = message => messages.push(message);
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  f.manager.setUplinkQualityLevel = () => oldGate.promise;
+  const oldPending = vm.setUplinkQualityLevel(3);
+  await vm.disconnect();
+  assert.equal(vm.state.isQualityChanging, false);
+  f.useManager(next.manager);
+  await vm.connect({});
+  await next.manager.startGeneration(vm.localStream, new next.Context('prompt'));
+  next.manager.setDownlinkQualityLevel = () => nextGate.promise;
+  const nextPending = vm.setDownlinkQualityLevel(4);
+  oldGate.reject(new Error('obsolete request'));
+  await oldPending;
+  assert.equal(vm.state.isQualityChanging, true);
+  assert.deepEqual(messages, []);
+  nextGate.resolve();
+  await nextPending;
+  assert.equal(vm.state.isQualityChanging, false);
+  assert.equal(vm.state.downlinkQualityLevel, 2);
+  await vm.disconnect();
+});
+
 test('XLab loops selected videos by default and retains completion callback handling', async () => {
   const f = exampleVideoPlaybackFixture(), vm = f.viewModel, messages = [];
   vm.onMessage = message => messages.push(message);
