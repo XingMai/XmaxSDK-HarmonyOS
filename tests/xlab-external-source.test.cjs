@@ -114,3 +114,197 @@ int main() {
     assert.equal(run.status, 0, run.stderr);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('app native file loops rebuild the source/demuxer pair and clean up on stop or failure', () => {
+  const source = fs.readFileSync(path.resolve(__dirname,
+    '../examples/XLab/entry/src/main/cpp/file_frame_source.cpp'), 'utf8');
+  const feed = source.slice(source.indexOf('  void Feed('), source.indexOf('  std::unique_ptr<Frame> CopyFrame('));
+  const lifecycle = source.slice(source.indexOf('  void CloseTrack('), source.indexOf('\n};\n\nvoid Require('));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-loop-'));
+  try {
+    const harness = path.join(directory, 'loops.cpp'), executable = path.join(directory, 'loops');
+    fs.writeFileSync(harness, `
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <deque>
+#include <fcntl.h>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <unistd.h>
+#include <vector>
+using Clock = std::chrono::steady_clock;
+using OH_AVErrCode = int;
+constexpr int AV_ERR_OK = 0, AVCODEC_BUFFER_FLAGS_EOS = 1, SEEK_MODE_CLOSEST_SYNC = 0;
+constexpr int napi_ok = 0, napi_tsfn_blocking = 0;
+struct OH_AVCodecBufferAttr { int64_t pts = 0; int size = 0, flags = 0; };
+struct OH_AVBuffer { OH_AVCodecBufferAttr attr; };
+struct OH_AVSource { bool alive = true; int codecs = 0; };
+struct OH_AVDemuxer { OH_AVSource *source; int selected = 0; int reads[2] = {}; };
+struct OH_AVCodec { OH_AVSource *source; };
+int created = 0, destroyed = 0, demuxers = 0, cycles = 0, failRead = 0, failOpen = 0;
+int frames = 0, callbacks = 0;
+std::vector<std::string> errors;
+OH_AVSource *OH_AVSource_CreateWithFD(int fd, int64_t offset, int64_t length) {
+  assert(fcntl(fd, F_GETFD) != -1 && offset == 0 && length == 16);
+  if (failOpen && created == failOpen) return nullptr;
+  created++;
+  return new OH_AVSource;
+}
+OH_AVDemuxer *OH_AVDemuxer_CreateWithSource(OH_AVSource *source) {
+  demuxers++;
+  return new OH_AVDemuxer{source};
+}
+int OH_AVDemuxer_Destroy(OH_AVDemuxer *demuxer) {
+  assert(demuxer->source->codecs == 0);
+  demuxer->source->alive = false;
+  demuxers--;
+  delete demuxer;
+  return 0;
+}
+int OH_AVSource_Destroy(OH_AVSource *source) {
+  assert(source->codecs == 0 && demuxers == 0);
+  destroyed++;
+  delete source;
+  return 0;
+}
+int OH_AVDemuxer_SelectTrackByID(OH_AVDemuxer *demuxer, int id) {
+  demuxer->selected |= 1 << id;
+  return 0;
+}
+int OH_AVDemuxer_SeekToTime(OH_AVDemuxer *demuxer, int, int) {
+  assert(demuxer->selected & 1);
+  return 0;
+}
+int OH_AVDemuxer_ReadSampleBuffer(OH_AVDemuxer *demuxer, int id, OH_AVBuffer *buffer) {
+  if (!demuxer->source->alive || !(demuxer->selected & (1 << id))) return 2;
+  if (failRead && created == failRead) return 4;
+  buffer->attr = {0, demuxer->reads[id] == 0 ? 1 : 0,
+      demuxer->reads[id] == 0 ? 0 : AVCODEC_BUFFER_FLAGS_EOS};
+  demuxer->reads[id]++;
+  assert(demuxer->reads[id] <= 2);
+  return 0;
+}
+int OH_AVBuffer_GetBufferAttr(OH_AVBuffer *buffer, OH_AVCodecBufferAttr *attr) { *attr = buffer->attr; return 0; }
+int OH_VideoDecoder_PushInputBuffer(OH_AVCodec *, int) { return 0; }
+int OH_AudioCodec_PushInputBuffer(OH_AVCodec *, int) { return 0; }
+int OH_VideoDecoder_Stop(OH_AVCodec *) { return 0; }
+int OH_AudioCodec_Stop(OH_AVCodec *) { return 0; }
+int OH_VideoDecoder_Destroy(OH_AVCodec *codec) { codec->source->codecs--; delete codec; return 0; }
+int OH_AudioCodec_Destroy(OH_AVCodec *codec) { return OH_VideoDecoder_Destroy(codec); }
+void Check(int code, const char *message) {
+  if (code) throw std::runtime_error(std::string(message) + ": " + std::to_string(code));
+}
+struct Frame { int64_t timestampUs = 0; std::string error; };
+int napi_call_threadsafe_function(int, Frame *frame, int) {
+  errors.push_back(frame->error);
+  delete frame;
+  return napi_ok;
+}
+struct Harness {
+  struct Buffer { int index; OH_AVBuffer *value; };
+  struct Track {
+    bool video = false, ended = false, inputEnded = false;
+    int id = 0;
+    OH_AVCodec *codec = nullptr;
+    std::deque<Buffer> inputs, outputs;
+    std::unique_ptr<Frame> pending;
+    OH_AVBuffer buffers[2];
+  };
+  int fd_ = -1, callback_ = 0;
+  int64_t length_ = 16, lastOutputUs_ = -1, firstMediaUs_ = -1, anchorUs_ = 0;
+  bool timelineStarted_ = false;
+  std::atomic<bool> stopping_{false};
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  std::string error_;
+  OH_AVSource *source_ = nullptr;
+  OH_AVDemuxer *demuxer_ = nullptr;
+  std::unique_ptr<Track> video_ = std::make_unique<Track>(), audio_;
+  explicit Harness(bool audio) {
+    FILE *file = tmpfile();
+    assert(file);
+    fd_ = dup(fileno(file));
+    fclose(file);
+    source_ = OH_AVSource_CreateWithFD(fd_, 0, length_);
+    video_->video = true;
+    if (audio) { audio_ = std::make_unique<Track>(); audio_->id = 1; }
+  }
+  bool Pop(std::deque<Buffer> &queue, Buffer &buffer) {
+    if (queue.empty()) return false;
+    buffer = queue.front(); queue.pop_front(); return true;
+  }
+  void Prepare(Track &track) {
+    if (track.video) cycles++;
+    track.codec = new OH_AVCodec{source_};
+    source_->codecs++;
+    OH_AVDemuxer_SelectTrackByID(demuxer_, track.id);
+    track.inputs.push_back({0, &track.buffers[0]});
+    track.inputs.push_back({1, &track.buffers[1]});
+  }
+  void Drain(Track &track) {
+    if (!track.ended && track.inputEnded) {
+      track.ended = true;
+      track.pending = std::make_unique<Frame>();
+    }
+  }
+  void DeliverNext() {
+    for (Track *track : {video_.get(), audio_.get()}) {
+      if (!track || !track->pending) continue;
+      assert(anchorUs_ >= lastOutputUs_ + 10000);
+      track->pending.reset();
+      frames++;
+    }
+    lastOutputUs_ = anchorUs_;
+    if (cycles == 5) stopping_ = true;
+  }
+  void FinishCallback() { callbacks++; }
+  ${feed}
+  ${lifecycle}
+};
+void Reset() {
+  created = destroyed = demuxers = cycles = failRead = failOpen = frames = callbacks = 0;
+  errors.clear();
+}
+void Verify(Harness &source, int fd) {
+  assert(created == destroyed && demuxers == 0 && callbacks == 1);
+  assert(source.source_ == nullptr && source.demuxer_ == nullptr && source.fd_ == -1);
+  assert(fcntl(fd, F_GETFD) == -1);
+  source.Close();
+  assert(created == destroyed);
+}
+int main() {
+  for (bool audio : {false, true}) {
+    Reset(); Harness source(audio); int fd = source.fd_;
+    source.Run();
+    if (!errors.empty()) throw std::runtime_error(errors.front());
+    assert(errors.empty() && cycles == 5 && created == 5 && frames == 5 * (audio ? 2 : 1));
+    Verify(source, fd);
+  }
+  Reset(); Harness readFailure(true); int readFd = readFailure.fd_; failRead = 2;
+  readFailure.Run();
+  assert(errors == std::vector<std::string>{"Read external sample: 4"});
+  assert(cycles == 2); Verify(readFailure, readFd);
+
+  Reset(); Harness openFailure(false); int openFd = openFailure.fd_; failOpen = 1;
+  openFailure.Run();
+  assert(errors == std::vector<std::string>{"Cannot read external video"});
+  Verify(openFailure, openFd);
+
+  Reset(); Harness stopped(true); int stopFd = stopped.fd_; stopped.stopping_ = true;
+  stopped.Run();
+  assert(errors.empty() && cycles == 0); Verify(stopped, stopFd);
+}
+`);
+    const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
+      { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.error?.message || compile.stderr);
+    const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 0, run.error?.message || run.stderr);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

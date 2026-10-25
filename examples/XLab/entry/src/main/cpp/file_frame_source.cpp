@@ -61,8 +61,9 @@ public:
     fd_ = dup(inputFd);
     struct stat info{};
     if (fd_ < 0 || fstat(fd_, &info) != 0 || info.st_size <= 0) throw std::runtime_error("Cannot open external video");
-    source_ = OH_AVSource_CreateWithFD(fd_, 0, std::min<int64_t>(length, info.st_size));
-    if (!source_) throw std::runtime_error("Cannot read external video");
+    length_ = std::min<int64_t>(length, info.st_size);
+    OpenSource();
+
     Format format(OH_AVSource_GetSourceFormat(source_), OH_AVFormat_Destroy);
     int32_t count = 0;
     if (!format || !OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_TRACK_COUNT, &count))
@@ -107,6 +108,7 @@ public:
 
 private:
   int fd_ = -1;
+  int64_t length_ = 0;
   OH_AVSource *source_ = nullptr;
   OH_AVDemuxer *demuxer_ = nullptr;
   std::unique_ptr<Track> video_, audio_;
@@ -322,11 +324,22 @@ private:
     track.inputEnded = false;
   }
 
-  void Close() {
+  /** Creates a fresh media source; destroying its demuxer also releases the shared parsing state. */
+  void OpenSource() {
+    source_ = OH_AVSource_CreateWithFD(fd_, 0, length_);
+    if (!source_) throw std::runtime_error("Cannot read external video");
+  }
+
+  /** Releases one playback cycle while retaining the owned file descriptor for the next cycle. */
+  void CloseCycle() {
     if (video_) CloseTrack(*video_);
     if (audio_) CloseTrack(*audio_);
     if (demuxer_) { OH_AVDemuxer_Destroy(demuxer_); demuxer_ = nullptr; }
     if (source_) { OH_AVSource_Destroy(source_); source_ = nullptr; }
+  }
+
+  void Close() {
+    CloseCycle();
     if (fd_ >= 0) { close(fd_); fd_ = -1; }
   }
 
@@ -337,6 +350,8 @@ private:
             std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count());
         firstMediaUs_ = -1;
         timelineStarted_ = false;
+        if (!source_) OpenSource();
+
         demuxer_ = OH_AVDemuxer_CreateWithSource(source_);
         if (!demuxer_) throw std::runtime_error("Cannot create external file demuxer");
         Prepare(*video_);
@@ -356,10 +371,7 @@ private:
           if (audio_) Drain(*audio_);
           DeliverNext();
         }
-        CloseTrack(*video_);
-        if (audio_) CloseTrack(*audio_);
-        OH_AVDemuxer_Destroy(demuxer_);
-        demuxer_ = nullptr;
+        CloseCycle();
       }
     } catch (const std::exception &error) {
       auto *event = new Frame;
