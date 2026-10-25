@@ -19,6 +19,9 @@ export class QualityDirection {
   /** The fixed media format preserving aspect ratio and encoder settings. */
   readonly baseline: RealtimeVideoFormat;
 
+  /** The minimum uplink pixel area; ignored for downlink. */
+  readonly minimumInputPixels: number;
+
   /** The downlink quality level or recommendation. */
   private readonly downlink: boolean;
 
@@ -49,14 +52,17 @@ export class QualityDirection {
    * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
    * @param level The quality level, from 1 to 5; lower values mean higher quality.
    * @param downlink Whether this is downlink; false selects uplink.
+   * @param minimumInputPixels The minimum uplink pixel area; defaults to zero.
    */
   constructor(
     baseline: RealtimeVideoFormat,
     level: number,
-    downlink: boolean
+    downlink: boolean,
+    minimumInputPixels: number = 0
   ) {
     this.baseline = baseline;
     this.downlink = downlink;
+    this.minimumInputPixels = minimumInputPixels;
     this.currentLevel = Math.min(5, Math.max(1, Math.round(level)));
     while (this.currentLevel > 1 && !this.supports(this.currentLevel)) { this.currentLevel--; }
   }
@@ -84,7 +90,8 @@ export class QualityDirection {
     return QualityVideoFormat.resolve(
       this.baseline,
       level,
-      this.downlink
+      this.downlink,
+      this.minimumInputPixels
     );
   }
 

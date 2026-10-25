@@ -35,15 +35,20 @@ export class QualityConfiguration {
   /** The downlink quality level, from 1 to 5 with lower values indicating higher quality. */
   readonly downlinkLevel: number;
 
+  /** The minimum uplink pixel area; downlink is not constrained by this value. */
+  readonly minimumInputPixels: number;
+
   /** Creates a transmission quality configuration. */
   constructor(
     baseline: RealtimeVideoFormat,
     uplinkLevel: number,
-    downlinkLevel: number
+    downlinkLevel: number,
+    minimumInputPixels: number = 0
   ) {
     this.baseline = baseline;
     this.uplinkLevel = uplinkLevel;
     this.downlinkLevel = downlinkLevel;
+    this.minimumInputPixels = minimumInputPixels;
   }
 
   /** The current uplink format, preserving explicit bitrate and encoder preferences. */
@@ -51,7 +56,8 @@ export class QualityConfiguration {
     return QualityVideoFormat.resolve(
       this.baseline,
       this.uplinkLevel,
-      false
+      false,
+      this.minimumInputPixels
     );
   }
 

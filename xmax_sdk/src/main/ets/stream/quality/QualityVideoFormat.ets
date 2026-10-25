@@ -18,7 +18,7 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 export class QualityVideoFormat {
 
   /** The dimension scaling factors for each quality level. */
-  private static readonly scales: number[] = [1, 0.8, 0.65, 0.5, 0.5];
+  private static readonly scales: number[] = [1, 0.9, 0.75, 0.6, 0.5];
 
   /** The frame-rate limits for each quality level. */
   private static readonly frameRates: number[] = [30, 24, 24, 20, 16];
@@ -69,13 +69,16 @@ export class QualityVideoFormat {
    * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
    * @param level The quality level, from 1 to 5; lower values mean higher quality.
    * @param downlink Whether this is downlink; false selects uplink.
+   * @param minimumInputPixels The minimum uplink pixel area; defaults to zero and is ignored for
+   * downlink.
    *
    * @returns The transmission format for the direction and level.
    */
   static resolve(
     baseline: RealtimeVideoFormat,
     level: number,
-    downlink: boolean
+    downlink: boolean,
+    minimumInputPixels: number = 0
   ): RealtimeVideoFormat {
     baseline.validate();
     const index: number = QualityVideoFormat.index(level);
@@ -88,7 +91,9 @@ export class QualityVideoFormat {
         baseline.width,
         baseline.height
       ),
-      scale
+      scale,
+      downlink ? 2 : 4,
+      downlink ? 0 : minimumInputPixels
     );
     return new RealtimeVideoFormat(
       size.width,
@@ -131,16 +136,21 @@ export class QualityVideoFormat {
   }
 
   /**
-   * Downscales to even dimensions, preserving exact aspect ratio where possible.
+   * Downscales within alignment and minimum-area limits, preserving exact aspect ratio when
+   * possible.
    *
    * @param size The unscaled local media dimensions, in pixels.
    * @param scale The scale applied to width and height.
+   * @param alignment The required multiple for output dimensions.
+   * @param minimumPixels The minimum output area, capped at the source area to prevent upscaling.
    *
-   * @returns The even dimensions suitable for video encoding.
+   * @returns Aligned dimensions satisfying the minimum area without upscaling.
    */
   private static scaledSize(
     size: ImageSize,
-    scale: number
+    scale: number,
+    alignment: number,
+    minimumPixels: number
   ): ImageSize {
     let divisor: number = size.width;
     let remainder: number = size.height;
@@ -149,16 +159,26 @@ export class QualityVideoFormat {
       divisor = remainder;
       remainder = next;
     }
-    const units: number = Math.floor(Math.floor(divisor * scale + 0.0000001) / 2) * 2;
-    if (units >= 2) {
+    const pixels: number = size.width * size.height;
+    const minimumScale: number = Math.sqrt(Math.min(Math.max(0, minimumPixels), pixels) / pixels);
+    const minimumUnits: number = Math.ceil(divisor * minimumScale / alignment) * alignment;
+    const units: number = Math.floor(Math.floor(divisor * scale + 0.0000001) / alignment) * alignment;
+    const resolvedUnits: number = Math.max(units, minimumUnits);
+    if (units >= alignment && resolvedUnits <= divisor) {
       return new ImageSize(
-        size.width / divisor * units,
-        size.height / divisor * units
+        size.width / divisor * resolvedUnits,
+        size.height / divisor * resolvedUnits
       );
     }
     return new ImageSize(
-      Math.max(2, Math.floor(size.width * scale / 2) * 2),
-      Math.max(2, Math.floor(size.height * scale / 2) * 2)
+      Math.max(alignment, Math.max(
+        Math.floor(size.width * scale / alignment) * alignment,
+        Math.ceil(size.width * minimumScale / alignment) * alignment
+      )),
+      Math.max(alignment, Math.max(
+        Math.floor(size.height * scale / alignment) * alignment,
+        Math.ceil(size.height * minimumScale / alignment) * alignment
+      ))
     );
   }
 }

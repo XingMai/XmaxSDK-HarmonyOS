@@ -399,6 +399,11 @@ input stream or starting generation.
 | `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
 | `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
 
+Use `setUplinkQualityLevel` and `setDownlinkQualityLevel` to select transmission
+levels during generation. Automatic adaptation is enabled by default and can be
+disabled when creating the manager. See the
+[quality control guide](materials/usage.md#adaptive-transmission-quality).
+
 Camera preview enters `READY` after a valid frame and view binding. Disconnect
 returns to `READY` when local media remains available; closing returns to `IDLE`.
 Normal termination, orientation changes and failures are carried in `state.reason`.

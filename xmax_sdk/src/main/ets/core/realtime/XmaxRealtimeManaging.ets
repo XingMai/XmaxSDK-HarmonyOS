@@ -28,6 +28,7 @@ import {
   LocalVideoPlaybackStateListener
 } from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
+import { RealtimeQualityLevel } from '../../stream/quality/RealtimeQualityLevel';
 
 /** An interface for local media, realtime connections, and video generation. */
 export interface XmaxRealtimeManaging {
@@ -37,6 +38,41 @@ export interface XmaxRealtimeManaging {
 
   /** The current realtime connection state. */
   readonly currentState: RealtimeState;
+
+  /** The applied uplink level, or undefined before connection completes or after cleanup begins. */
+  readonly uplinkQualityLevel: RealtimeQualityLevel | undefined;
+
+  /**
+   * The submitted downlink level, or undefined before connection completes or after cleanup begins.
+   * The server may start returning the new dimensions after this value changes.
+   */
+  readonly downlinkQualityLevel: RealtimeQualityLevel | undefined;
+
+  /**
+   * Changes uplink encoding during generation without changing capture or generation dimensions.
+   * Automatic adaptation may subsequently change the level; manual selection does not lock it.
+   *
+   * The Promise rejects for an invalid level or state, a conflicting or cancelled operation, or
+   * encoder configuration failure. It fulfills after local encoder configuration is submitted.
+   *
+   * @param level The requested uplink quality level.
+   */
+  setUplinkQualityLevel(
+    level: RealtimeQualityLevel
+  ): Promise<void>;
+
+  /**
+   * Changes returned dimensions and bitrate during generation without restarting the task.
+   * Automatic adaptation may subsequently change the level; manual selection does not lock it.
+   *
+   * The Promise rejects for an invalid level or state, a conflicting or cancelled operation, or
+   * signaling failure. It fulfills after signal submission, not after the server applies it.
+   *
+   * @param level The requested downlink quality level.
+   */
+  setDownlinkQualityLevel(
+    level: RealtimeQualityLevel
+  ): Promise<void>;
 
   /**
    * The configured local file preview volume in 0 to 1, default 0.45, independent of automatic

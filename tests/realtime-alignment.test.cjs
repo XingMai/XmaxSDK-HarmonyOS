@@ -602,7 +602,7 @@ test('camera specifications require disconnect, stop and create; old streams bec
   const remote = await f.manager.startGeneration(newLocal, new f.Context('new specs'));
   assert.notEqual(remote.videoTrack, firstRemote.videoTrack);
   assert.equal(newLocal.videoTrack.videoFormat, format);
-  assert.deepEqual(remote.videoTrack.videoFormat, new f.Format(624, 1104, 24));
+  assert.deepEqual(remote.videoTrack.videoFormat, new f.Format(728, 1288, 24));
   assert.equal(f.calls.sessions.length, 2);
 });
 

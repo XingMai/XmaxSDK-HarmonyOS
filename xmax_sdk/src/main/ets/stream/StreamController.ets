@@ -227,11 +227,15 @@ export class StreamController implements StreamControlling, RtcEventListener {
   /** Initializes stream quality from the local media baseline and stored history. */
   prepareQuality(
     baseline: RealtimeVideoFormat,
-    model: string
+    model: string,
+    minimumInputPixels: number = 0,
+    isAdaptiveQualityEnabled: boolean = true
   ): QualityConfiguration {
     return this.qualityController.prepareQuality(
       baseline,
-      model
+      model,
+      minimumInputPixels,
+      isAdaptiveQualityEnabled
     );
   }
 

@@ -36,12 +36,16 @@ export interface QualityControlling {
    *
    * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
    * @param model The model name separating quality history by model.
+   * @param minimumInputPixels The minimum uplink pixel area; defaults to zero.
+   * @param isAdaptiveQualityEnabled Whether to restore quality history; false starts both at L1.
    *
    * @returns The initialized uplink/downlink quality configuration.
    */
   prepareQuality(
     baseline: RealtimeVideoFormat,
-    model: string
+    model: string,
+    minimumInputPixels?: number,
+    isAdaptiveQualityEnabled?: boolean
   ): QualityConfiguration;
 
   /**

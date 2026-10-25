@@ -15,6 +15,7 @@ component and handle rejected promises.
 - [Start generation in one call](#start-generation-in-one-call)
 - [Touch Interaction](#touch-interaction)
 - [Adjust playback volume](#adjust-playback-volume)
+- [Adaptive transmission quality](#adaptive-transmission-quality)
 - [Switch cameras or change capture specifications](#switch-cameras-or-change-capture-specifications)
 - [Stop and release resources](#stop-and-release-resources)
 - [Observe lifecycle and failures](#observe-lifecycle-and-failures)
@@ -503,15 +504,17 @@ History uses SDK-private Preferences with a `volcengine` namespace.
 | Tier | Dimension scale | Uplink FPS cap | Downlink bitrate calculation FPS |
 | --- | --- | --- | --- |
 | L1 | 1.0 | 30 | 24 |
-| L2 | 0.8 | 24 | 24 |
-| L3 | 0.65 | 24 | 24 |
-| L4 | 0.5 | 20 | 24 |
+| L2 | 0.9 | 24 | 24 |
+| L3 | 0.75 | 24 | 24 |
+| L4 | 0.6 | 20 | 24 |
 | L5 | 0.5 | 16 | 24 |
 
 Scales apply to the processed local media baseline. The short side is bounded
 below by `min(originalShortSide, 240)` without upscaling. Upload dimensions use
-ratio-preserving even alignment; return dimensions use the media service's
-four-pixel alignment. Uplink FPS never exceeds the source FPS. Explicit uplink
+four-pixel alignment and retain the model's minimum input area, capped at the
+source area so smaller media is not enlarged. Return dimensions use the media
+service's four-pixel alignment without the uplink minimum-area constraint.
+Exact aspect ratio is preserved when possible. Uplink FPS never exceeds the source FPS. Explicit uplink
 bitrates and encoder preferences survive tier changes; tiers whose merged bitrate
 bounds are invalid are skipped.
 
@@ -536,6 +539,47 @@ keeps that direction's previous tier and does not interrupt generation. Successf
 RTC configuration/enqueue results are recorded in history; persistence failures
 are logged without interrupting streaming. Camera orientation updates rebase the
 same tiers onto the new processed media dimensions.
+
+### Manual quality levels
+
+After `await realtime.startGeneration(...)` succeeds, select either direction
+using `RealtimeQualityLevel.L1` through `L5`. L1 is the highest quality; these
+levels are not network quality ratings.
+
+```ts
+import { RealtimeQualityLevel } from '@xmax/sdk';
+
+await realtime.setUplinkQualityLevel(RealtimeQualityLevel.L2);
+await realtime.setDownlinkQualityLevel(RealtimeQualityLevel.L3);
+
+console.info(`Uplink: ${realtime.uplinkQualityLevel}`);
+console.info(`Downlink: ${realtime.downlinkQualityLevel}`);
+```
+
+The getters return `undefined` before connection completes and after cleanup
+begins. Manual setters require `GENERATING` and reject during conflicting
+operations. Await each change before submitting another. A failed change rejects
+without committing its level or history or ending generation. A successful
+downlink change means its signal was submitted, not that the server has already
+started returning the new dimensions. Neither setter recreates the task, changes
+local capture or generation dimensions, or locks out later automatic adaptation.
+
+### Disable automatic adaptation
+
+Pass `false` as the second `RealtimeConfiguration` argument when creating a new
+manager. The default is `true`.
+
+```ts
+const realtime = client.createRealtimeManager(new RealtimeConfiguration(
+  RealtimeModels.realtime(RealtimeModel.X2_0_SLA),
+  false
+));
+```
+
+With adaptation disabled, each connection starts at L1 without reading or writing
+quality history. Manual setters remain available during generation, and network
+quality, performance, and video statistics listeners continue to work. To change
+this configuration, close the old manager and create another one.
 
 ## Switch cameras or change capture specifications
 

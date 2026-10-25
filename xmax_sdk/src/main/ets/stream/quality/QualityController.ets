@@ -212,7 +212,8 @@ export class QualityController implements QualityControlling, RtcQualityListener
       new QualityConfiguration(
         this.uplinkQuality.baseline,
         this.uplinkQuality.level,
-        this.downlinkQuality.level
+        this.downlinkQuality.level,
+        this.uplinkQuality.minimumInputPixels
       );
   }
 
@@ -221,32 +222,39 @@ export class QualityController implements QualityControlling, RtcQualityListener
    *
    * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
    * @param model The model name separating quality history by model.
+   * @param minimumInputPixels The minimum uplink pixel area; defaults to zero.
+   * @param isAdaptiveQualityEnabled Whether to restore quality history; false starts both at L1.
    *
    * @returns The initialized uplink/downlink quality configuration.
    */
   prepareQuality(
     baseline: RealtimeVideoFormat,
-    model: string
+    model: string,
+    minimumInputPixels: number = 0,
+    isAdaptiveQualityEnabled: boolean = true
   ): QualityConfiguration {
     baseline.validate();
-    this.history = new QualityHistory(
+    this.history = isAdaptiveQualityEnabled ? new QualityHistory(
       model,
       this.historyStore
-    );
+    ) : undefined;
     this.uplinkQuality = new QualityDirection(
       baseline,
-      this.history.read(false),
-      false
+      this.history?.read(false) ?? 1,
+      false,
+      minimumInputPixels
     );
     this.downlinkQuality = new QualityDirection(
       baseline,
-      this.history.read(true),
-      true
+      this.history?.read(true) ?? 1,
+      true,
+      minimumInputPixels
     );
     return new QualityConfiguration(
       baseline,
       this.uplinkQuality.level,
-      this.downlinkQuality.level
+      this.downlinkQuality.level,
+      minimumInputPixels
     );
   }
 
@@ -265,12 +273,14 @@ export class QualityController implements QualityControlling, RtcQualityListener
     this.uplinkQuality = new QualityDirection(
       baseline,
       configuration.uplinkLevel,
-      false
+      false,
+      configuration.minimumInputPixels
     );
     this.downlinkQuality = new QualityDirection(
       baseline,
       configuration.downlinkLevel,
-      true
+      true,
+      configuration.minimumInputPixels
     );
     return this.qualityConfiguration;
   }

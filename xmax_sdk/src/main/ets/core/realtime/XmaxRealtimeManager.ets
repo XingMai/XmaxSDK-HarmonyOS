@@ -47,6 +47,7 @@ import {
   RealtimeStateListener
 } from '../../service/realtime/RealtimeState';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
+import { RealtimeQualityLevel } from '../../stream/quality/RealtimeQualityLevel';
 import { StreamController } from '../../stream/StreamController';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { MediaService } from '../../service/media/MediaService';
@@ -226,6 +227,77 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /** The most recently committed realtime state. */
   get currentState(): RealtimeState {
     return this.coordinator.currentState;
+  }
+
+  /** The applied uplink level, or undefined outside an established connection. */
+  get uplinkQualityLevel(): RealtimeQualityLevel | undefined {
+    const state: RealtimeConnectionState = this.currentState.connectionState;
+    if (state !== RealtimeConnectionState.CONNECTED && state !== RealtimeConnectionState.GENERATING) {
+      return undefined;
+    }
+    return this.streamController.qualityConfiguration?.uplinkLevel as RealtimeQualityLevel | undefined;
+  }
+
+  /** The submitted downlink level, or undefined outside an established connection. */
+  get downlinkQualityLevel(): RealtimeQualityLevel | undefined {
+    const state: RealtimeConnectionState = this.currentState.connectionState;
+    if (state !== RealtimeConnectionState.CONNECTED && state !== RealtimeConnectionState.GENERATING) {
+      return undefined;
+    }
+    return this.streamController.qualityConfiguration?.downlinkLevel as RealtimeQualityLevel | undefined;
+  }
+
+  /** Changes uplink encoding while allowing later automatic adjustments. */
+  setUplinkQualityLevel(
+    level: RealtimeQualityLevel
+  ): Promise<void> {
+    return this.setQualityLevel(
+      level,
+      false
+    );
+  }
+
+  /** Changes returned dimensions while allowing later automatic adjustments. */
+  setDownlinkQualityLevel(
+    level: RealtimeQualityLevel
+  ): Promise<void> {
+    return this.setQualityLevel(
+      level,
+      true
+    );
+  }
+
+  /** Applies one manual quality change under lifecycle operation ownership. */
+  private setQualityLevel(
+    level: RealtimeQualityLevel,
+    downlink: boolean
+  ): Promise<void> {
+    return this.coordinator.run(
+      RealtimeOperationKind.CONFIGURATION,
+      null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        const state: RealtimeState = this.currentState;
+        if (!Number.isInteger(level) || level < RealtimeQualityLevel.L1 || level > RealtimeQualityLevel.L5) {
+          throw new XmaxError(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            'Quality level must be one of L1 through L5'
+          );
+        }
+        if (state.connectionState !== RealtimeConnectionState.GENERATING ||
+          state.taskId === undefined || this.streamController.qualityConfiguration === undefined) {
+          throw new XmaxError(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            'Quality levels can only be changed while generating'
+          );
+        }
+        this.applyQualityLevel(
+          level,
+          downlink,
+          state.taskId,
+          token
+        );
+      }
+    );
   }
 
   /** Sets the realtime lifecycle state listener. */
@@ -732,7 +804,9 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     );
     const quality: QualityConfiguration = this.streamController.prepareQuality(
       videoFormat,
-      this.options.model.name
+      this.options.model.name,
+      this.options.model.minimumInputPixels,
+      this.options.isAdaptiveQualityEnabled
     );
     this.streamController.setVideoEncoderConfig(quality.uplink);
     token.ensureCurrent();
@@ -1437,13 +1511,18 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           true
         );
       }
-      this.streamController.setAdaptiveQualityListener((sample: RealtimeNetworkQuality, sampledAt: number): void => {
-        this.scheduleAdaptiveQuality(
-          sample,
-          sampledAt,
-          taskId
-        );
-      });
+      this.streamController.setAdaptiveQualityListener(
+        this.options.isAdaptiveQualityEnabled === false ? null : (
+          sample: RealtimeNetworkQuality,
+          sampledAt: number
+        ): void => {
+          this.scheduleAdaptiveQuality(
+            sample,
+            sampledAt,
+            taskId
+          );
+        }
+      );
       this.timing.finish(
         taskId,
         !waitsForFrame
@@ -1489,7 +1568,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     sampledAt: number,
     taskId: string
   ): void {
-    if (this.qualityPending) { return; }
+    if (this.options.isAdaptiveQualityEnabled === false || this.qualityPending) { return; }
     this.qualityPending = true;
     // Notify the synchronous user listener first; a user operation may cause this background sample to be skipped.
     void Promise.resolve().then((): void => {
@@ -1500,28 +1579,28 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           sample,
           sampledAt
         );
-        if (change.uplink !== undefined) {
-          this.applyQualityLevel(
-            change.uplink,
-            false,
-            taskId,
-            token
-          );
-        }
-        token.ensureCurrent();
-        if (change.downlink !== undefined) {
-          this.applyQualityLevel(
-            change.downlink,
-            true,
-            taskId,
-            token
-          );
+        for (const downlink of [false, true]) {
+          const level: number | undefined = downlink ? change.downlink : change.uplink;
+          if (level === undefined) { continue; }
+          token.ensureCurrent();
+          try {
+            this.applyQualityLevel(
+              level,
+              downlink,
+              taskId,
+              token
+            );
+          } catch (error) {
+            // A failed direction keeps its old level; still try the other direction unless cancelled.
+            if (!token.isCurrent) { throw XmaxError.from(error); }
+          }
         }
       });
       if (!accepted) { this.streamController.resetQualitySamples(); }
     }).catch((error: Object): void => {
+      if (this.currentState.taskId !== taskId) { return; }
       this.streamController.resetQualitySamples();
-      if (this.currentState.taskId === taskId && XmaxError.from(error).code !== XmaxErrorCode.CANCELLED) {
+      if (XmaxError.from(error).code !== XmaxErrorCode.CANCELLED) {
         XmaxLogger.warn(
           'Adaptive quality skipped: ' + String(error),
           'Quality'
@@ -1553,7 +1632,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         const candidate: QualityConfiguration = new QualityConfiguration(
           configuration.baseline,
           configuration.uplinkLevel,
-          level
+          level,
+          configuration.minimumInputPixels
         );
         const target: ImageSize = this.resolveQualityTarget(candidate);
         const previous: ImageSize | undefined = this.connectionManager.currentTargetSize;
@@ -1572,7 +1652,8 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         this.streamController.setVideoEncoderConfig(QualityVideoFormat.resolve(
           configuration.baseline,
           level,
-          false
+          false,
+          configuration.minimumInputPixels
         ));
       }
       token.ensureCurrent();
@@ -1582,7 +1663,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         true
       );
       XmaxLogger.debug(
-        `Adaptive quality: ${downlink ? 'downlink' : 'uplink'} L${level}`,
+        `Quality adjustment: ${downlink ? 'downlink' : 'uplink'} L${level}`,
         'Quality'
       );
     } catch (error) {
@@ -1593,9 +1674,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         false
       );
       XmaxLogger.warn(
-        'Adaptive quality failed: ' + String(error),
+        'Quality adjustment failed: ' + String(error),
         'Quality'
       );
+      throw XmaxError.from(error);
     }
   }
 

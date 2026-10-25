@@ -27,16 +27,18 @@ function fixture(extra = {}) {
 test('five transmission tiers preserve media baseline, explicit encoding settings and a minimum short side', () => {
   const f = fixture();
   const baseline = new f.Format(1920, 1080, 30, 500, 3000, f.Preference.MAINTAIN_QUALITY);
-  for (const [level, width, height, fps] of [[1, 1920, 1080, 30], [2, 1536, 864, 24],
-    [3, 1248, 702, 24], [4, 960, 540, 20], [5, 960, 540, 16]]) {
+  for (const [level, width, height, fps] of [[1, 1920, 1080, 30], [2, 1728, 972, 24],
+    [3, 1408, 792, 24], [4, 1152, 648, 20], [5, 960, 540, 16]]) {
     assert.deepEqual(f.QualityVideoFormat.resolve(baseline, level, false),
       new f.Format(width, height, fps, 500, 3000, f.Preference.MAINTAIN_QUALITY));
     const down = f.QualityVideoFormat.resolve(baseline, level, true);
     assert.equal(down.fps, 24);
     assert.equal(down.minimumBitrate, undefined);
     assert.equal(down.maximumBitrate, undefined);
-    assert.equal(down.width, width);
-    assert.equal(down.height, height);
+    assert.equal(down.width, level === 3 ? 1440 : width);
+    assert.equal(down.height, level === 3 ? 810 : height);
+    assert.equal(width % 4, 0);
+    assert.equal(height % 4, 0);
   }
   const small = new f.Format(320, 180, 15);
   for (const level of [1, 2, 3, 4, 5]) assert.deepEqual(f.QualityVideoFormat.resolve(small, level, false), small);
@@ -89,10 +91,64 @@ test('unknown, moderate, stale, duplicate and out-of-order samples cannot accumu
 test('unsupported explicit bitrate ranges and identical terminal downlink formats are skipped', () => {
   const f = fixture();
   const up = new f.QualityDirection(new f.Format(1920, 1080, 30, 2000), 5, false);
-  assert.equal(up.level, 2);
+  assert.equal(up.level, 3);
   for (const time of [100, 102, 104]) assert.equal(up.observe(f.Level.BAD, time, time), undefined);
-  const down = new f.QualityDirection(new f.Format(1920, 1080, 30), 4, true);
+  const down = new f.QualityDirection(new f.Format(320, 180, 30), 4, true);
   for (const time of [100, 102, 104]) assert.equal(down.observe(f.Level.BAD, time, time), undefined);
+});
+
+test('public quality levels and adaptive configuration retain compatible defaults', () => {
+  const f = fixture();
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  const { RealtimeConfiguration } = f.load('core/realtime/RealtimeConfiguration.ets');
+  const { RealtimeModels, RealtimeModel } = f.load('core/realtime/RealtimeModel.ets');
+  const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
+  assert.deepEqual([Level.L1, Level.L2, Level.L3, Level.L4, Level.L5], [1, 2, 3, 4, 5]);
+  assert.equal(new RealtimeConfiguration(model).isAdaptiveQualityEnabled, true);
+  assert.equal(new RealtimeConfiguration(model, false).isAdaptiveQualityEnabled, false);
+  assert.equal(new RealtimeConfiguration(model, false).model, model);
+});
+
+test('disabled adaptation starts at L1 and manual changes neither read nor overwrite history', () => {
+  const f = fixture(), baseline = new f.Format(1024, 1920, 30);
+  const history = new f.QualityHistory('x2.0-sla', f.store);
+  history.write(4, false); history.write(5, true);
+  const restored = f.controller.prepareQuality(baseline, 'x2.0-sla', 600000);
+  assert.equal(restored.uplinkLevel, 4);
+  assert.equal(restored.downlinkLevel, 5);
+  const disabled = f.controller.prepareQuality(baseline, 'x2.0-sla', 600000, false);
+  assert.equal(disabled.uplinkLevel, 1);
+  assert.equal(disabled.downlinkLevel, 1);
+  f.controller.completeQuality(false, 3, true);
+  f.controller.completeQuality(true, 2, true);
+  assert.equal(f.controller.qualityConfiguration.uplinkLevel, 3);
+  assert.equal(f.controller.qualityConfiguration.downlinkLevel, 2);
+  assert.equal(history.read(false), 4);
+  assert.equal(history.read(true), 5);
+  const rebased = f.controller.rebaseQuality(new f.Format(1920, 1024, 30));
+  assert.equal(rebased.minimumInputPixels, 600000);
+  assert.equal(rebased.uplinkLevel, 3);
+  assert.equal(rebased.downlinkLevel, 2);
+  assert.equal(f.controller.prepareQuality(baseline, 'x2.0-sla', 600000, false).uplinkLevel, 1);
+});
+
+test('uplink honors model minimum area without upscaling; downlink ignores the uplink floor', () => {
+  const f = fixture();
+  for (const [width, height, minimum] of [[1024, 1920, 600000], [1920, 1080, 600000],
+    [832, 1472, 600000], [320, 180, 600000], [1000, 1500, 600000], [1004, 1500, 600000]]) {
+    const baseline = new f.Format(width, height, 30);
+    for (const level of [1, 2, 3, 4, 5]) {
+      const up = f.QualityVideoFormat.resolve(baseline, level, false, minimum);
+      assert.ok(up.width * up.height >= Math.min(minimum, width * height));
+      assert.ok(up.width <= width && up.height <= height);
+      assert.equal(up.width % 4, 0);
+      assert.equal(up.height % 4, 0);
+      assert.deepEqual(f.QualityVideoFormat.resolve(baseline, level, true, minimum),
+        f.QualityVideoFormat.resolve(baseline, level, true));
+    }
+  }
+  const small = new f.Format(320, 180, 30);
+  assert.deepEqual(f.QualityVideoFormat.resolve(small, 5, false, 600000), new f.Format(320, 180, 16));
 });
 
 test('history separates models and directions, expires after one hour and rejects clock rollback', () => {

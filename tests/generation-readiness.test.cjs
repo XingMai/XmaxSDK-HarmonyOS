@@ -109,7 +109,9 @@ function fixture(t, timingOptions = {}) {
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
   const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
-  const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime('x2.0-sla') }, {});
+  const { RealtimeConfiguration } = load('core/realtime/RealtimeConfiguration.ets');
+  const manager = new XmaxRealtimeManager({}, new RealtimeConfiguration(
+    RealtimeModels.realtime('x2.0-sla'), timingOptions.isAdaptiveQualityEnabled ?? true), {});
   manager.setStateListener(state => { events.push(`state:${state.connectionState}`); if (state.reason?.error) errors.push(state.reason.error); });
   const remote = new RemoteStream('room', 'bot');
   t.after(async () => { await manager.close(); assert.equal(timers.size, 0); });
@@ -514,7 +516,7 @@ test('SLA image generation separates media, canvas and return sizes through the 
   await settle();
   const message = f.messages.find(m => m.event === 'start');
   assert.deepEqual(message.params.size, [1024, 1920]);
-  assert.deepEqual(message.params.target_size, [864, 1536]);
+  assert.deepEqual(message.params.target_size, [972, 1728]);
   assert.equal(message.params.padding, 'contain');
   assert.equal(message.params.face_replace, true);
   assert.equal(local.videoTrack.videoFormat.width, 1080);
@@ -522,8 +524,8 @@ test('SLA image generation separates media, canvas and return sizes through the 
   f.frame();
   const result = await pending;
   assert.equal(result.error, undefined);
-  assert.equal(result.value.videoTrack.videoFormat.width, 864);
-  assert.equal(result.value.videoTrack.videoFormat.height, 1536);
+  assert.equal(result.value.videoTrack.videoFormat.width, 972);
+  assert.equal(result.value.videoTrack.videoFormat.height, 1728);
   await f.manager.startGeneration(new RealtimeContext('second'), false);
   const changed = f.messages.at(-1);
   assert.equal(changed.event, 'change_condition');
@@ -566,6 +568,176 @@ async function qualitySamples(f, uplink, downlink, count = 4) {
   }
 }
 
+test('quality getters expose only established connections and setters require active generation', async t => {
+  const f = fixture(t);
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  const { RealtimeVideoFormat: Format } = f.load('service/realtime/RealtimeVideoFormat.ets');
+  assert.equal(f.manager.uplinkQualityLevel, undefined);
+  assert.equal(f.manager.downlinkQualityLevel, undefined);
+  await assert.rejects(f.manager.setUplinkQualityLevel(Level.L1), error => error.code === f.Code.INVALID_CONFIGURATION);
+  const local = await f.manager.createLocalCameraStream(new Format(1024, 1920, 30));
+  assert.equal(f.manager.uplinkQualityLevel, undefined);
+  await f.manager.connect(local);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L2);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L2);
+  await assert.rejects(f.manager.setDownlinkQualityLevel(Level.L1), error => error.code === f.Code.INVALID_CONFIGURATION);
+  await generated(f);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L2);
+  const disconnecting = f.manager.disconnect();
+  assert.equal(f.manager.uplinkQualityLevel, undefined);
+  assert.equal(f.manager.downlinkQualityLevel, undefined);
+  await disconnecting;
+  assert.equal(f.manager.downlinkQualityLevel, undefined);
+});
+
+test('manual uplink and downlink levels preserve the task, capture baseline and interaction coordinates', async t => {
+  const f = fixture(t), { task, remote } = await generated(f);
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  const capture = f.media.currentTrack.videoFormat;
+  const previousRemote = remote.videoTrack.videoFormat;
+  const count = f.rtc.encodings.length;
+  await f.manager.setUplinkQualityLevel(Level.L5);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L5);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L2);
+  assert.equal(f.rtc.encodings.length, count + 1);
+  const encoding = f.rtc.encodings.at(-1);
+  assert.deepEqual([encoding.width, encoding.height, encoding.frameRate], [576, 1080, 16]);
+  assert.equal(remote.videoTrack.videoFormat, previousRemote);
+  assert.equal(f.messages.filter(m => m.event === 'change_target_size').length, 0);
+  await f.manager.setDownlinkQualityLevel(Level.L3);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L3);
+  assert.equal(f.rtc.encodings.length, count + 1);
+  assert.deepEqual(f.messages.at(-1).params.target_size, [768, 1440]);
+  assert.equal(f.media.currentTrack.videoFormat, capture);
+  assert.equal(f.manager.currentState.taskId, task);
+  assert.equal(f.messages.filter(m => m.event === 'start').length, 1);
+  const { TrajectoryRegistry } = f.load('rendering/trajectory/TrajectoryRegistry.ets');
+  assert.deepEqual({ ...TrajectoryRegistry.binding(remote.videoTrack).resolvedMediaSize }, { width: 1024, height: 1920 });
+});
+
+test('disabling adaptation retains network notifications and manual control, and reconnect starts at L1', async t => {
+  const f = fixture(t, { isAdaptiveQualityEnabled: false });
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  await generated(f);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L1);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L1);
+  const notifications = [];
+  f.manager.setNetworkQualityListener(q => notifications.push(q));
+  const encoded = f.rtc.encodings.length;
+  await qualitySamples(f, 'VERY_BAD', 'VERY_BAD', 10);
+  assert.equal(notifications.length, 10);
+  assert.equal(f.rtc.encodings.length, encoded);
+  assert.equal(f.messages.filter(m => m.event === 'change_target_size').length, 0);
+  await f.manager.setUplinkQualityLevel(Level.L4);
+  await f.manager.setDownlinkQualityLevel(Level.L5);
+  await qualitySamples(f, 'GOOD', 'VERY_BAD', 10);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L4);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L5);
+  await f.manager.disconnect();
+  await generated(f);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L1);
+  assert.equal(f.manager.downlinkQualityLevel, Level.L1);
+});
+
+test('automatic adaptation can change a manually selected level and successful selections restore from history', async t => {
+  const f = fixture(t);
+  const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+  await generated(f);
+  await f.manager.setUplinkQualityLevel(Level.L4);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L4);
+  await f.manager.disconnect();
+  await generated(f);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L4);
+  await qualitySamples(f, 'GOOD', 'UNKNOWN', 6);
+  assert.equal(f.manager.uplinkQualityLevel, Level.L3);
+});
+
+for (const downlink of [false, true]) {
+  test(`manual ${downlink ? 'downlink' : 'uplink'} failure rejects without committing history or ending generation`, async t => {
+    const f = fixture(t), { task, remote } = await generated(f);
+    const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
+    const operation = level => downlink ? f.manager.setDownlinkQualityLevel(level) : f.manager.setUplinkQualityLevel(level);
+    const field = downlink ? 'failTarget' : 'failEncoding';
+    const previous = remote.videoTrack.videoFormat;
+    const error = new f.XmaxError(f.Code.RTC_ERROR, 'manual configuration failed');
+    f.rtc[field] = error;
+    await assert.rejects(operation(Level.L3), failure => failure === error);
+    assert.equal(f.manager.uplinkQualityLevel, Level.L2);
+    assert.equal(f.manager.downlinkQualityLevel, Level.L2);
+    assert.equal(remote.videoTrack.videoFormat, previous);
+    assert.equal(f.manager.currentState.taskId, task);
+    assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+    assert.deepEqual(f.errors, []);
+    const history = f.manager.streamController.qualityController.history;
+    assert.equal(history.read(downlink), Level.L2);
+    f.rtc[field] = undefined;
+    await operation(Level.L3);
+    assert.equal(history.read(downlink), Level.L3);
+  });
+}
+
+test('manual levels reject invalid inputs and concurrent startup without changing the pending generation', async t => {
+  const f = fixture(t), start = await f.begin();
+  await assert.rejects(f.manager.setUplinkQualityLevel(3), error => error.code === f.Code.INVALID_CONFIGURATION);
+  f.sei(start.task); await settle(); f.frame();
+  assert.equal((await start.pending).error, undefined);
+  for (const level of [0, 6, 1.5, NaN, Infinity]) {
+    await assert.rejects(f.manager.setUplinkQualityLevel(level), error => error.code === f.Code.INVALID_CONFIGURATION);
+    await assert.rejects(f.manager.setDownlinkQualityLevel(level), error => error.code === f.Code.INVALID_CONFIGURATION);
+  }
+  assert.equal(f.manager.currentState.taskId, start.task);
+  assert.equal(f.manager.uplinkQualityLevel, 2);
+  assert.equal(f.manager.downlinkQualityLevel, 2);
+});
+
+test('disconnect cancels a manual adjustment before committing its level or history', async t => {
+  const f = fixture(t); await generated(f);
+  const previous = f.manager.streamController.qualityController.history;
+  const configure = f.rtc.configureVideoEncoding.bind(f.rtc);
+  let closing;
+  f.rtc.configureVideoEncoding = format => {
+    configure(format);
+    closing = f.manager.disconnect();
+  };
+  await assert.rejects(f.manager.setUplinkQualityLevel(3), error => error.code === f.Code.CANCELLED);
+  await closing;
+  assert.equal(previous.read(false), 2);
+  assert.equal(f.manager.uplinkQualityLevel, undefined);
+  assert.equal(f.manager.downlinkQualityLevel, undefined);
+});
+
+test('automatic downlink adjustment can succeed when the same sample fails to change uplink encoding', async t => {
+  const f = fixture(t); await generated(f);
+  f.rtc.failEncoding = new f.XmaxError(f.Code.RTC_ERROR, 'encoder unavailable');
+  await qualitySamples(f, 'BAD', 'BAD');
+  assert.equal(f.manager.uplinkQualityLevel, 2);
+  assert.equal(f.manager.downlinkQualityLevel, 3);
+  assert.deepEqual(f.messages.at(-1).params.target_size, [768, 1440]);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+});
+
+test('overlapping manual adjustments reject instead of silently replacing an admitted change', async t => {
+  const f = fixture(t); await generated(f);
+  const changing = f.manager.setUplinkQualityLevel(3);
+  await assert.rejects(f.manager.setDownlinkQualityLevel(4), error => error.code === f.Code.INVALID_CONFIGURATION);
+  await changing;
+  assert.equal(f.manager.uplinkQualityLevel, 3);
+  assert.equal(f.manager.downlinkQualityLevel, 2);
+  await f.manager.setDownlinkQualityLevel(4);
+  assert.equal(f.manager.downlinkQualityLevel, 4);
+});
+
+test('a manual selection from a network listener takes precedence over queued automatic work', async t => {
+  const f = fixture(t); await generated(f);
+  let adjustment;
+  f.manager.setNetworkQualityListener(() => { adjustment ??= f.manager.setUplinkQualityLevel(4); });
+  await qualitySamples(f, 'BAD', 'BAD', 1);
+  await adjustment;
+  assert.equal(f.manager.uplinkQualityLevel, 4);
+  assert.equal(f.manager.downlinkQualityLevel, 2);
+  assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
+});
+
 test('poor uplink independently changes real RTC encoding, persists across reconnect and preserves generation and media', async t => {
   const f = fixture(t), { task } = await generated(f);
   const media = f.media.currentTrack.videoFormat;
@@ -573,7 +745,7 @@ test('poor uplink independently changes real RTC encoding, persists across recon
   await qualitySamples(f, 'BAD', 'UNKNOWN');
   const last = f.rtc.encodings.at(-1);
   assert.equal(f.rtc.encodings.length, before + 1);
-  assert.deepEqual([last.width, last.height, last.frameRate, last.minimumBitrate], [656, 1230, 24, 100]);
+  assert.deepEqual([last.width, last.height, last.frameRate, last.minimumBitrate], [768, 1440, 24, 100]);
   assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 3);
   assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, 2);
   assert.equal(f.media.currentTrack.videoFormat, media);
@@ -583,7 +755,7 @@ test('poor uplink independently changes real RTC encoding, persists across recon
   await f.manager.disconnect();
   await generated(f);
   assert.equal(f.manager.streamController.qualityConfiguration.uplinkLevel, 3);
-  assert.equal(f.rtc.encodings.at(-1).width, 656);
+  assert.equal(f.rtc.encodings.at(-1).width, 768);
 });
 
 test('poor downlink updates return signaling and remote metadata without touching capture or normalized trajectories', async t => {
@@ -594,13 +766,13 @@ test('poor downlink updates return signaling and remote metadata without touchin
   const event = f.messages.at(-1);
   assert.equal(event.event, 'change_target_size');
   assert.equal(event.uid, task);
-  assert.deepEqual(event.params.target_size, [640, 1200]);
+  assert.deepEqual(event.params.target_size, [768, 1440]);
   assert.equal(event.params.min_bitrate, 100);
   assert.ok(event.params.max_bitrate >= 100 && event.params.max_bitrate <= 10000);
   assert.deepEqual(Object.keys(event.params).sort(), ['max_bitrate', 'min_bitrate', 'target_size']);
   assert.equal(f.rtc.encodings.length, encoded);
   assert.equal(f.media.currentTrack.videoFormat, media);
-  assert.deepEqual([remote.videoTrack.videoFormat.width, remote.videoTrack.videoFormat.height], [640, 1200]);
+  assert.deepEqual([remote.videoTrack.videoFormat.width, remote.videoTrack.videoFormat.height], [768, 1440]);
   const { TrajectoryRegistry } = f.load('rendering/trajectory/TrajectoryRegistry.ets');
   const { VideoContentMode } = f.load('foundation/media/video/VideoContentMode.ets');
   const binding = TrajectoryRegistry.binding(remote.videoTrack);
@@ -636,7 +808,7 @@ test('return signal failure preserves expected dimensions and retries without di
   f.rtc.failTarget = undefined;
   await qualitySamples(f, 'UNKNOWN', 'BAD');
   assert.equal(f.manager.streamController.qualityConfiguration.downlinkLevel, 3);
-  assert.equal(remote.videoTrack.videoFormat.width, 640);
+  assert.equal(remote.videoTrack.videoFormat.width, 768);
 });
 
 test('application network listeners can disconnect before adaptation and old-task samples cannot affect reconnect', async t => {

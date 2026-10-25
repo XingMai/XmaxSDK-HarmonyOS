@@ -50,6 +50,7 @@ export {
   RealtimeVideoFormat,
   RealtimeVideoEncoderPreference
 } from './src/main/ets/service/realtime/RealtimeVideoFormat';
+export { RealtimeQualityLevel } from './src/main/ets/stream/quality/RealtimeQualityLevel';
 export {
   RealtimeVideoTrack
 } from './src/main/ets/service/realtime/RealtimeVideoTrack';
