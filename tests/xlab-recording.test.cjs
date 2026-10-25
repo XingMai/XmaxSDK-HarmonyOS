@@ -92,6 +92,26 @@ test('XLab closes both file descriptors and the photo helper after save failure'
   assert.deepEqual(f.calls.slice(-3), [['close', 2], ['close', 1], ['releaseHelper']]);
 });
 
+test('camera recording and statistics buttons are vertically separated and horizontally centered', () => {
+  const root = path.resolve(__dirname, '../examples/XLab/entry/src/main/ets/modules/xlrealtime');
+  const page = fs.readFileSync(path.join(root, 'RealtimePage.ets'), 'utf8');
+  const recording = page.slice(page.indexOf('RealtimeRecordingButton({'));
+  const statistics = page.slice(page.lastIndexOf('RealtimeStatisticsButton({'));
+  const position = source => {
+    const match = source.match(/\.position\(\{ right: (\d+), top: (\d+) \}\)/);
+    assert.ok(match);
+    return { right: Number(match[1]), top: Number(match[2]) };
+  };
+  const buttonHeight = component => {
+    const source = fs.readFileSync(path.join(root, 'mvvm/view', component + '.ets'), 'utf8');
+    return Number(source.match(/^    \.height\((\d+)\)$/m)[1]);
+  };
+  const record = position(recording), stats = position(statistics);
+  assert.ok(stats.top >= record.top + buttonHeight('RealtimeRecordingButton'));
+  assert.equal(record.right + 44 / 2, stats.right + 58 / 2);
+  assert.equal(buttonHeight('RealtimeStatisticsPanel'), 58);
+});
+
 test('public video-only callback and its unbounded dispatcher have been removed', () => {
   const root = path.resolve(__dirname, '../xmax_sdk');
   for (const file of ['Index.ets', 'src/main/ets/core/realtime/XmaxRealtimeManaging.ets',

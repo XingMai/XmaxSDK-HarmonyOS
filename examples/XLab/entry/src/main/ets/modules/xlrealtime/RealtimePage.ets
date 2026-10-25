@@ -588,7 +588,7 @@ export struct RealtimePage {
             isActive: this.isStatisticsVisible,
             onToggle: (): void => { this.toggleStatistics(); }
           })
-            .position({ right: 8, top: 134 })
+            .position({ right: 8, top: 192 })
         }
       }
       .width('100%')
