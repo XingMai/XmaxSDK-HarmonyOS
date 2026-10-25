@@ -9,8 +9,8 @@
 //
 
 import { XmaxError, XmaxErrorCode } from '../../foundation/errors/XmaxError';
-import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { ImageSize } from '../../service/media/ImageSize';
+import { RealtimeVideoFormat } from './RealtimeVideoFormat';
+import { ImageSize } from '../media/ImageSize';
 
 /** A realtime generation model supported by XmaxSDK. */
 export enum RealtimeModel {

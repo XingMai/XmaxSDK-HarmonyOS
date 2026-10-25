@@ -110,7 +110,7 @@ function fixture(t, timingOptions = {}) {
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
   const { RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
-  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const { RealtimeModels } = load('service/realtime/RealtimeModel.ets');
   const { RealtimeConfiguration } = load('core/realtime/RealtimeConfiguration.ets');
   const manager = new XmaxRealtimeManager({}, new RealtimeConfiguration(
     RealtimeModels.realtime('x2.0-sla'), timingOptions.isAdaptiveQualityEnabled ?? true), {});
@@ -483,7 +483,7 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
 for (const action of ['disconnect', 'close']) {
   test(`unified media stops on ${action}, discards queued audio/video and resumes with a fresh stream identity`, async t => {
     const f = fixture(t), delivered = [];
-    const { RealtimeVideoFrame } = f.load('service/realtime/RealtimeVideoFrame.ets');
+    const { RealtimeVideoFrame } = f.load('foundation/media/video/RealtimeVideoFrame.ets');
     const { RtcRemoteAudioFrame } = f.load('foundation/rtc/RtcRemoteAudioFrame.ets');
     const makeVideo = () => new RealtimeVideoFrame(2, 2, 'i420', [], 990000, 0);
     const makeAudio = () => new RtcRemoteAudioFrame(new Uint8Array(960), 48000, 1, 480, 1000000);

@@ -12,7 +12,7 @@ import { util } from '@kit.ArkTS';
 import { RtcRemoteAudioFrame } from '../../foundation/rtc/RtcRemoteAudioFrame';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 import { RealtimeAudioFrame, RealtimeMediaFrame, RealtimeMediaFrameListener } from '../../service/realtime/RealtimeMediaFrame';
-import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../../foundation/media/video/RealtimeVideoFrame';
 import { RemoteAudioTimeline, ResolvedRemoteAudioFrame } from './RemoteAudioTimeline';
 
 /** Delivers bounded remote media in arrival order on the ArkTS event loop. */

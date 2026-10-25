@@ -16,7 +16,7 @@ function fixture() {
     XmaxLogger: { XmaxLogger: { error: message => events.push(message) } }
   });
   const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
-  const { RealtimeVideoFrame: Video } = load('service/realtime/RealtimeVideoFrame.ets');
+  const { RealtimeVideoFrame: Video } = load('foundation/media/video/RealtimeVideoFrame.ets');
   const { RealtimeAudioFrame: Audio } = load('service/realtime/RealtimeMediaFrame.ets');
   const { VideoFramePlane: Plane } = load('foundation/media/video/VideoFramePlane.ets');
   const { ExternalVideoFrameSink: Sink } = load('media/external/ExternalVideoFrameSink.ets');

@@ -15,7 +15,7 @@ import { QualityHistoryStore, MemoryQualityHistoryStore } from './quality/Qualit
 import { RealtimeNetworkQuality } from '../service/realtime/RealtimeNetworkQuality';
 import { ImageSize } from '../service/media/ImageSize';
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
-import { RealtimeTiming } from '../core/realtime/RealtimeTiming';
+import { RealtimeTiming } from '../service/realtime/RealtimeTiming';
 import { util } from '@kit.ArkTS';
 import {
   XmaxError,

@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeMediaSource } from '../service/realtime/RealtimeMediaSource';
+import { RealtimeMediaSource } from '../service/media/RealtimeMediaSource';
 import { fileIo } from '@kit.CoreFileKit';
 import { media } from '@kit.MediaKit';
 import { AudioFrame } from '../foundation/media/audio/AudioFrame';

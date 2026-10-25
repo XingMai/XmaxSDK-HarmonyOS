@@ -589,7 +589,7 @@ export class MediaController implements MediaControlling {
       return stream;
     } catch (error) {
       if (source.stopPromise === null) {
-        // The coordinator waits for creation before cleanup. If closure wins the race,
+        // The lifecycle manager waits for creation before cleanup. If closure wins the race,
         // release newly created media before clearing ownership and destroying RTC.
         try {
           await this.stopController(source.controller);

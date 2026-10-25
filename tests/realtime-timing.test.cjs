@@ -18,7 +18,7 @@ function fixture() {
   const { XmaxLogger: Logger } = load('foundation/logging/XmaxLogger.ets');
   const { XmaxLoggerOption: Option } = load('foundation/logging/XmaxLoggerOption.ets');
   const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
-  const { RealtimeTiming } = load('core/realtime/RealtimeTiming.ets');
+  const { RealtimeTiming } = load('service/realtime/RealtimeTiming.ets');
   const timing = new RealtimeTiming();
   Logger.configure(Option.PERFORMANCE);
   return { logs, clockCalls, Logger, Option, XmaxError, Code, RealtimeTiming, timing,

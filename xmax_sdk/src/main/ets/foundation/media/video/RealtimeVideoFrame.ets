@@ -8,9 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
-import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
-import { VideoRotation } from '../../foundation/media/video/VideoRotation';
+import { VideoFramePlane } from './VideoFramePlane';
+import { VideoPixelFormat } from './VideoPixelFormat';
+import { VideoRotation } from './VideoRotation';
 
 /** Raw video pixels for remote output or external input, without view cropping or UI overlays. */
 export class RealtimeVideoFrame {

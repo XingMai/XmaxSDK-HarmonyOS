@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { XmaxLogger } from '../foundation/logging/XmaxLogger';
+import { XmaxLogger, XmaxLogLanguage } from '../foundation/logging/XmaxLogger';
 import { common } from '@kit.AbilityKit';
 import {
   XmaxError,
@@ -19,9 +19,9 @@ import { MediaServicing } from '../service/media/MediaServicing';
 import { ApiService } from '../service/network/ApiService';
 import { ApiServicing } from '../service/network/ApiServicing';
 import { XmaxConfiguration } from './XmaxConfiguration';
-import { apiBaseURL } from './XmaxEnvironment';
+import { apiBaseURL, XmaxEnvironment } from './XmaxEnvironment';
 import { RealtimeConfiguration } from './realtime/RealtimeConfiguration';
-import { RealtimeModel, RealtimeModels } from './realtime/RealtimeModel';
+import { RealtimeModel, RealtimeModels } from '../service/realtime/RealtimeModel';
 import { XmaxRealtimeManaging } from './realtime/XmaxRealtimeManaging';
 import { XmaxRealtimeManager } from './realtime/XmaxRealtimeManager';
 import { XmaxStorageManaging } from './storage/XmaxStorageManaging';
@@ -53,7 +53,7 @@ export class XmaxClient {
     this.configuration = configuration;
     XmaxLogger.configure(
       configuration.loggerOptions,
-      configuration.environment
+      configuration.environment === XmaxEnvironment.CHINA ? XmaxLogLanguage.CHINESE : XmaxLogLanguage.ENGLISH
     );
 
     this.context = context;

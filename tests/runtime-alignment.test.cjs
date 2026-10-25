@@ -167,7 +167,7 @@ test('task IDs encode all 16 UUID bytes using unpadded Base64URL and the runtime
   const manager = new XmaxRealtimeGenerationManager({ start: task => mediaStarts.push(task) }, {
     async beginGeneration(task) { starts.push(task); }
   }, new (f.load('service/media/MediaService.ets').MediaService)(
-    f.load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    f.load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   for (const uuid of uuids) {
     const id = await manager.start(f.format, new f.Context('prompt'), () => {});
     const bytes = Buffer.from(uuid.replaceAll('-', ''), 'hex');
@@ -206,7 +206,7 @@ test('signaling uses the task ID while outgoing frame SEI appends a consecutive 
   const manager = new XmaxRealtimeGenerationManager({
     start: (id, format) => { mediaStarts.push(id); mediaFormats.push(format); }, stop() {}
   }, stream, new (f.load('service/media/MediaService.ets').MediaService)(
-    f.load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    f.load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   await stream.connect({ roomId: 'room', userId: 'user', token: 'test', botName: 'bot' }, false, () => {});
   const frame = { id: 'frame' };
   stream.pushLocalVideoFrame(frame);

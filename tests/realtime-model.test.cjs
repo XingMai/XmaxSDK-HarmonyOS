@@ -10,7 +10,7 @@ function fixture(stubs = {}, globals = {}) {
     XmaxLogger: { XmaxLogger: { configure() {}, debug() {}, error() {} } },
     ...stubs
   }, globals);
-  const { RealtimeModel: Model, RealtimeModels: Models } = load('core/realtime/RealtimeModel.ets');
+  const { RealtimeModel: Model, RealtimeModels: Models } = load('service/realtime/RealtimeModel.ets');
   const { MediaService } = load('service/media/MediaService.ets');
   const { ImageSize: Size } = load('service/media/ImageSize.ets');
   const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');

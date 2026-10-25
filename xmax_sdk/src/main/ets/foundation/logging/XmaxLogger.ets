@@ -10,7 +10,6 @@
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { XmaxLoggerOption } from './XmaxLoggerOption';
-import { XmaxEnvironment } from '../../core/XmaxEnvironment';
 
 const LOG_DOMAIN: number = 0x584D;
 const LOG_TAG: string = 'XmaxSDK';
@@ -19,42 +18,52 @@ const LOG_PREFIX: string = '[Xmax]';
 /** Log text or a lazy text provider, evaluated only for enabled categories. */
 type LogMessage = string | (() => string);
 
+/** The language used for log details, independent of service environments. */
+export enum XmaxLogLanguage {
+
+  /** Chinese log details. */
+  CHINESE = 'chinese',
+
+  /** English log details. */
+  ENGLISH = 'english'
+}
+
 /** The SDK logging entry point. Callers must not supply credentials or complete sensitive responses. */
 export class XmaxLogger {
 
-  /** The realtime model and business configuration. */
+  /** The enabled log categories. */
   private static options: XmaxLoggerOption = XmaxLoggerOption.NONE;
 
-  /** The environment selecting localized log details. */
-  private static environment: XmaxEnvironment = XmaxEnvironment.CHINA;
+  /** The language used for log details. */
+  private static language: XmaxLogLanguage = XmaxLogLanguage.CHINESE;
 
   /**
    * Configures global SDK logs; the newest client replaces prior settings.
    *
-   * @param options The component initialization options.
-   * @param environment The service environment.
+   * @param options The enabled log categories.
+   * @param language The language used for log details.
    */
   static configure(
     options: XmaxLoggerOption,
-    environment: XmaxEnvironment = XmaxEnvironment.CHINA
+    language: XmaxLogLanguage = XmaxLogLanguage.CHINESE
   ): void {
     XmaxLogger.options = options;
-    XmaxLogger.environment = environment;
+    XmaxLogger.language = language;
   }
 
   /**
-   * Keep bilingual titles; details use the latest client's environment language.
+   * Selects log details for the configured language without changing bilingual titles.
    *
-   * @param chinese The text for the China environment.
-   * @param english The text for other environments.
+   * @param chinese The Chinese text.
+   * @param english The English text.
    *
-   * @returns Chinese text for China; English text otherwise.
+   * @returns The text for the configured language.
    */
   static localized(
     chinese: string,
     english: string
   ): string {
-    return XmaxLogger.environment === XmaxEnvironment.CHINA ? chinese : english;
+    return XmaxLogger.language === XmaxLogLanguage.CHINESE ? chinese : english;
   }
 
   /**

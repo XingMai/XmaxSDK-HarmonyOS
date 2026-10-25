@@ -19,7 +19,7 @@ export {
   RealtimeModel,
   ModelDefinition,
   RealtimeModels
-} from './src/main/ets/core/realtime/RealtimeModel';
+} from './src/main/ets/service/realtime/RealtimeModel';
 export {
   RealtimeConfiguration
 } from './src/main/ets/core/realtime/RealtimeConfiguration';
@@ -84,14 +84,14 @@ export {
   XmaxStorageProgressListener,
   XmaxUploadedFile
 } from './src/main/ets/core/storage/XmaxStorageModel';
-export { RealtimeMediaSource } from './src/main/ets/service/realtime/RealtimeMediaSource';
+export { RealtimeMediaSource } from './src/main/ets/service/media/RealtimeMediaSource';
 export { ImageSize } from './src/main/ets/service/media/ImageSize';
 export { MediaServicing } from './src/main/ets/service/media/MediaServicing';
 export { XmaxClient } from './src/main/ets/core/XmaxClient';
 
 export { XMAX_SDK_VERSION } from './src/main/ets/foundation/runtime/SDKVersion';
 
-export { RealtimeVideoFrame } from './src/main/ets/service/realtime/RealtimeVideoFrame';
+export { RealtimeVideoFrame } from './src/main/ets/foundation/media/video/RealtimeVideoFrame';
 export { RealtimeAudioFrame, RealtimeMediaFrame, RealtimeMediaFrameListener } from './src/main/ets/service/realtime/RealtimeMediaFrame';
 export { VideoFramePlane } from './src/main/ets/foundation/media/video/VideoFramePlane';
 export { VideoPixelFormat } from './src/main/ets/foundation/media/video/VideoPixelFormat';

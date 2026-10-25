@@ -10,7 +10,7 @@
 
 import { ImageSize } from '../../service/media/ImageSize';
 import { TrajectoryRegistry } from '../../rendering/trajectory/TrajectoryRegistry';
-import { RealtimeTiming } from './RealtimeTiming';
+import { RealtimeTiming } from '../../service/realtime/RealtimeTiming';
 import {
   XmaxError,
   XmaxErrorCode

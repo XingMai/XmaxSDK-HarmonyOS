@@ -123,15 +123,15 @@ function loggingFixture() {
   });
   const { XmaxLogger: Logger } = load('foundation/logging/XmaxLogger.ets');
   const { XmaxLoggerOption: Option } = load('foundation/logging/XmaxLoggerOption.ets');
-  const { XmaxEnvironment: Environment } = load('core/XmaxEnvironment.ets');
+  const { XmaxLogLanguage: Language } = load('foundation/logging/XmaxLogger.ets');
   const { RtcStatsLogger: Common } = load('foundation/rtc/RtcStatsLogger.ets');
   const { RtcQualityConverter: Converter } = load('foundation/rtc/RtcQualityConverter.ets');
   const { RtcManager } = load('foundation/rtc/RtcManager.ets');
   const handlers = new Map(), rtc = new RtcManager({});
   const room = { on(name, handler) { handlers.set(name, handler); } };
   rtc.room = room; rtc.bindRoomEvents(room);
-  Logger.configure(Option.PERFORMANCE, Environment.GLOBAL);
-  return { load, logs, Logger, Option, Environment, Common, Converter, rtc, handlers };
+  Logger.configure(Option.PERFORMANCE, Language.ENGLISH);
+  return { load, logs, Logger, Option, Language, Common, Converter, rtc, handlers };
 }
 
 function nativeVideoSamples() {
@@ -215,7 +215,7 @@ test('screen stream statistics emit neither main-stream video logs nor callbacks
 test('public video log fields follow localization while missing values remain placeholders', () => {
   const f = loggingFixture();
   const { UplinkVideoStatistics: Up, DownlinkVideoStatistics: Down } = f.load('foundation/rtc/VideoStatistics.ets');
-  f.Logger.configure(f.Option.PERFORMANCE, f.Environment.CHINA);
+  f.Logger.configure(f.Option.PERFORMANCE, f.Language.CHINESE);
   f.Common.logUplinkVideoStatistics(new Up());
   f.Common.logDownlinkVideoStatistics(new Down('bot'));
   assert.match(f.logs[0], /视频上行统计 \(Video Uplink Statistics\)/);

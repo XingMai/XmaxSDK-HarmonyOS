@@ -9,7 +9,7 @@
 //
 
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
-import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../../foundation/media/video/RealtimeVideoFrame';
 import { RealtimeAudioFrame } from '../../service/realtime/RealtimeMediaFrame';
 
 /**

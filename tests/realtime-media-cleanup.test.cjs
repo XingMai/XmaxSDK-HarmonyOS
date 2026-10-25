@@ -46,24 +46,24 @@ for (const source of ['Camera', 'Image', 'Video']) {
       XmaxLogger: { XmaxLogger: { error() {} } }
     });
     const { MediaController } = load('media/MediaController.ets');
-    const { RealtimeCoordinator, RealtimeOperationKind: Kind, RealtimeTerminationScope: Scope } =
-      load('core/realtime/RealtimeCoordinator.ets');
+    const { XmaxRealtimeLifecycleManager, RealtimeOperationKind: Kind, RealtimeTerminationScope: Scope } =
+      load('core/realtime/XmaxRealtimeLifecycleManager.ets');
     const { XmaxRealtimeErrorManager } = load('core/realtime/XmaxRealtimeErrorManager.ets');
     const media = new MediaController({}, {
       async initialize() { events.push('initialize'); },
       async destroy() { assert.equal(nativeRunning, false); events.push('destroy'); }
     }, {}, () => {});
-    const coordinator = new RealtimeCoordinator(new XmaxRealtimeErrorManager(), async () => {
+    const lifecycleManager = new XmaxRealtimeLifecycleManager(new XmaxRealtimeErrorManager(), async () => {
       await media.stopLocalStream();
     });
-    const running = coordinator.run(Kind.MEDIA, null, async token => {
+    const running = lifecycleManager.run(Kind.MEDIA, null, async token => {
       const stream = await media[`createLocal${source}Stream`]('test');
       token.ensureCurrent();
       token.setFailureScope(Scope.ALL);
       return stream;
     }).then(() => null, error => error);
     await settle();
-    const closing = coordinator.terminate(Scope.ALL);
+    const closing = lifecycleManager.terminate(Scope.ALL);
     media.prepareForClose();
     let closed = false;
     closing.then(() => { closed = true; });
@@ -115,27 +115,27 @@ for (const source of ['Camera', 'Image', 'Video']) {
     const { XmaxError, XmaxErrorCode: Code } = load('foundation/errors/XmaxError.ets');
     original = new XmaxError(Code.MEDIA_ERROR, 'partial creation failed', 123, 503);
     const { MediaController } = load('media/MediaController.ets');
-    const { RealtimeCoordinator, RealtimeOperationKind: Kind } = load('core/realtime/RealtimeCoordinator.ets');
+    const { XmaxRealtimeLifecycleManager, RealtimeOperationKind: Kind } = load('core/realtime/XmaxRealtimeLifecycleManager.ets');
     const { RealtimeState, RealtimeConnectionState: State } = load('service/realtime/RealtimeState.ets');
     const { XmaxRealtimeErrorManager } = load('core/realtime/XmaxRealtimeErrorManager.ets');
     const media = new MediaController({}, {
       async initialize() {},
       async destroy() { assert.equal(nativeRunning, false); events.push('destroy'); }
     }, {}, () => {});
-    const coordinator = new RealtimeCoordinator(new XmaxRealtimeErrorManager(), async () => {
+    const lifecycleManager = new XmaxRealtimeLifecycleManager(new XmaxRealtimeErrorManager(), async () => {
       assert.fail('Creation owns its rollback; no lifecycle cleanup should be requested');
     });
-    coordinator.setStateListener(state => {
+    lifecycleManager.setStateListener(state => {
       states.push(state);
       if (state.connectionState === State.IDLE) assert.equal(nativeRunning, false);
     });
-    const running = coordinator.run(Kind.MEDIA, null, async token => {
-      coordinator.commit(new RealtimeState(State.PREPARING), token);
+    const running = lifecycleManager.run(Kind.MEDIA, null, async token => {
+      lifecycleManager.commit(new RealtimeState(State.PREPARING), token);
       return await media[`createLocal${source}Stream`]('input');
     }).then(() => null, error => error);
     await settle();
     assert.equal(nativeRunning, true);
-    assert.equal(coordinator.currentState.connectionState, State.PREPARING);
+    assert.equal(lifecycleManager.currentState.connectionState, State.PREPARING);
     release.resolve();
     assert.equal(await running, original);
     assert.equal(media.currentTrack, null);

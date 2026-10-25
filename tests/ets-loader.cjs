@@ -7,9 +7,10 @@ const ts = require(process.env.TYPESCRIPT_PATH ||
 const root = path.resolve(__dirname, '../xmax_sdk/src/main/ets');
 
 function loadEts(stubs = {}, globals = {}) {
-  // Existing silent logger doubles use the SDK's default Chinese environment.
+  // Existing silent logger doubles use the SDK's default Chinese log language.
   if (stubs.XmaxLogger?.XmaxLogger) {
-    stubs = { ...stubs, XmaxLogger: { XmaxLogger: {
+    stubs = { ...stubs, XmaxLogger: { ...stubs.XmaxLogger,
+      XmaxLogLanguage: { CHINESE: 'chinese', ENGLISH: 'english' }, XmaxLogger: {
       localized: chinese => chinese, ...stubs.XmaxLogger.XmaxLogger
     } } };
   }

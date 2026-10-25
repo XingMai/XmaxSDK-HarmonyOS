@@ -10,7 +10,7 @@
 
 import { RealtimeGenerationParameters } from '../../service/realtime/RealtimeGenerationOptions';
 import { ImageSize } from '../../service/media/ImageSize';
-import { RealtimeTiming } from '../../core/realtime/RealtimeTiming';
+import { RealtimeTiming } from '../../service/realtime/RealtimeTiming';
 import {
   XmaxError,
   XmaxErrorCode

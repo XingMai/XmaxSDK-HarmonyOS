@@ -1,5 +1,5 @@
 //
-//  RealtimeCoordinator.ets
+//  XmaxRealtimeLifecycleManager.ets
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -295,8 +295,8 @@ class RealtimeTermination {
   }
 }
 
-/** Coordinates operation admission, state commitment, and scoped cleanup on the ArkTS event loop. */
-export class RealtimeCoordinator {
+/** Owns operation admission, lifecycle state, and scoped cleanup on the ArkTS event loop. */
+export class XmaxRealtimeLifecycleManager {
 
   // Error handling and cleanup dependencies
 
@@ -329,7 +329,7 @@ export class RealtimeCoordinator {
   /** The shared resource termination task, if active. */
   private termination: RealtimeTermination | null = null;
 
-  /** Creates a realtime lifecycle coordinator. */
+  /** Creates a realtime lifecycle manager. */
   constructor(
     errorManager: XmaxRealtimeErrorManager,
     cleanup: CleanupHandler,

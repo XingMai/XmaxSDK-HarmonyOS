@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { ModelDefinition } from './RealtimeModel';
+import { ModelDefinition } from '../../service/realtime/RealtimeModel';
 
 /** The model and adaptive quality settings for a realtime manager. */
 export class RealtimeConfiguration {

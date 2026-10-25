@@ -150,7 +150,7 @@ function managerFixture(modelName = 'x2.0-sla') {
   const { RealtimeContext: Context } = load('service/realtime/RealtimeContext.ets');
   const { RealtimeConnectionState: State, RealtimeReason: Reason, RealtimeReasonKind: ReasonKind } = load('service/realtime/RealtimeState.ets');
   const { XmaxRealtimeManager } = load('core/realtime/XmaxRealtimeManager.ets');
-  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const { RealtimeModels } = load('service/realtime/RealtimeModel.ets');
   const manager = new XmaxRealtimeManager({}, { model: RealtimeModels.realtime(modelName) }, {});
   return { load, manager, media, stream, api, calls, timers, State, Reason, ReasonKind, Context, Format, Track, MediaStream, XmaxError, Code,
     rotateCamera(format) {
@@ -790,7 +790,7 @@ test('camera controller uses CameraKit external frames and preserves its track w
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame(frame) { pushedFrames.push(frame); }
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   let readyCount = 0;
   camera.setPreviewReadyListener(() => readyCount++);
   const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
@@ -847,7 +847,7 @@ test('camera capture falls back to the largest compatible 4:3 profile when 16:9 
   }, {
     setVideoEncoderConfig() {}, pushLocalVideoFrame() {}
   }, new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
 
   await camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30),
@@ -916,7 +916,7 @@ function cameraFailureFixture(options = {}, rtcError) {
     bindLocalVideo() {}, unbindLocalVideo() {}
   }, { setVideoEncoderConfig() {}, pushLocalVideoFrame() {} },
   new (load('service/media/MediaService.ets').MediaService)(
-    load('core/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
+    load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   return { camera, calls, start: () => camera.createLocalCameraStream(
     new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
 }
@@ -2125,7 +2125,7 @@ test('camera applies oriented output before connect and rejects queued frames fr
   const { CameraController } = load('media/camera/CameraController.ets');
   const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
   const { MediaService } = load('service/media/MediaService.ets');
-  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const { RealtimeModels } = load('service/realtime/RealtimeModel.ets');
   const { VideoRenderRegistry: Registry } = load('rendering/video/VideoRenderRegistry.ets');
   const camera = new CameraController({}, {
     useExternalVideoSource() {}, configureLocalVideoMirror() {}, renderLibraryName: () => 'rtc',

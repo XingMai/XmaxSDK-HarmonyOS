@@ -9,7 +9,7 @@
 //
 
 import { ImageSize } from '../service/media/ImageSize';
-import { RealtimeVideoFrame } from '../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../foundation/media/video/RealtimeVideoFrame';
 import { RealtimeMediaFrameListener } from '../service/realtime/RealtimeMediaFrame';
 import { image } from '@kit.ImageKit';
 import { RealtimeMediaFrameDispatcher } from './video/RealtimeMediaFrameDispatcher';

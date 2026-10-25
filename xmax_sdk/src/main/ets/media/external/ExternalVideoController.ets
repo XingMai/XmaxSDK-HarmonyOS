@@ -15,7 +15,7 @@ import { VideoContentMode } from '../../foundation/media/video/VideoContentMode'
 import { VideoRenderBinding, VideoRenderRegistry } from '../../rendering/video/VideoRenderRegistry';
 import { MediaServicing } from '../../service/media/MediaServicing';
 import { ImageSize } from '../../service/media/ImageSize';
-import { RealtimeMediaSource } from '../../service/realtime/RealtimeMediaSource';
+import { RealtimeMediaSource } from '../../service/media/RealtimeMediaSource';
 import { RealtimeMediaStream } from '../../service/realtime/RealtimeMediaStream';
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';

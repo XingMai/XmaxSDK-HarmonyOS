@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeVideoFrame } from './RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../../foundation/media/video/RealtimeVideoFrame';
 
 /** Signed little-endian interleaved PCM16 for remote output or external input. */
 export class RealtimeAudioFrame {

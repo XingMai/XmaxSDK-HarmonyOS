@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../media/video/RealtimeVideoFrame';
 import {
   IVideoFrame,
   MirrorType,

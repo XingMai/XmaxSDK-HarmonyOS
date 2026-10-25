@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeMediaSource } from '../../service/realtime/RealtimeMediaSource';
+import { RealtimeMediaSource } from '../../service/media/RealtimeMediaSource';
 import { common } from '@kit.AbilityKit';
 import { camera } from '@kit.CameraKit';
 import { BusinessError } from '@kit.BasicServicesKit';

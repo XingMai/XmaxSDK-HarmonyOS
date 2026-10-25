@@ -8,10 +8,10 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import { RealtimeMediaSource } from '../realtime/RealtimeMediaSource';
+import { RealtimeMediaSource } from './RealtimeMediaSource';
 import { ImageSize } from './ImageSize';
 import { MediaServicing } from './MediaServicing';
-import { ModelDefinition, RealtimeModel, RealtimeModels } from '../../core/realtime/RealtimeModel';
+import { ModelDefinition, RealtimeModel, RealtimeModels } from '../realtime/RealtimeModel';
 import { XmaxError, XmaxErrorCode } from '../../foundation/errors/XmaxError';
 
 /** The sizing rules for local media, generation canvases, and returned media. */

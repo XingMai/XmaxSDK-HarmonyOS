@@ -8,7 +8,7 @@ function fixture(name = 'x2.0-sla') {
     XmaxLogger: { XmaxLogger: { error() {} } }
   });
   const { MediaService } = load('service/media/MediaService.ets');
-  const { RealtimeModels } = load('core/realtime/RealtimeModel.ets');
+  const { RealtimeModels } = load('service/realtime/RealtimeModel.ets');
   const { ImageSize: Size } = load('service/media/ImageSize.ets');
   const { RealtimeVideoFormat: Format } = load('service/realtime/RealtimeVideoFormat.ets');
   return { load, Size, Format, service: new MediaService(RealtimeModels.realtime(name)) };

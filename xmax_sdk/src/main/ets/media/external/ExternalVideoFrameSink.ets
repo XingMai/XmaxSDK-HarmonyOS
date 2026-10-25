@@ -18,7 +18,7 @@ import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { RealtimeAudioFrame } from '../../service/realtime/RealtimeMediaFrame';
-import { RealtimeVideoFrame } from '../../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../../foundation/media/video/RealtimeVideoFrame';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { ExternalAudioFrameConverter } from './ExternalAudioFrameConverter';
 import { RealtimeExternalFrameSink } from './RealtimeExternalVideoSource';

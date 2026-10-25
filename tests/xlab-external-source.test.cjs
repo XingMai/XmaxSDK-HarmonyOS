@@ -9,7 +9,7 @@ const { loadEts } = require('./ets-loader.cjs');
 test('app-owned file source passes native size/FPS limits, forwards video/PCM, and detaches before async release', async () => {
   const sdk = loadEts();
   const { RealtimeVideoFormat } = sdk('service/realtime/RealtimeVideoFormat.ets');
-  const { RealtimeVideoFrame } = sdk('service/realtime/RealtimeVideoFrame.ets');
+  const { RealtimeVideoFrame } = sdk('foundation/media/video/RealtimeVideoFrame.ets');
   const { RealtimeAudioFrame } = sdk('service/realtime/RealtimeMediaFrame.ets');
   const { VideoFramePlane } = sdk('foundation/media/video/VideoFramePlane.ets');
   let onFrame, releases = 0, starts = 0, closed = 0;

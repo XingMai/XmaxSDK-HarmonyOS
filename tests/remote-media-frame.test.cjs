@@ -25,7 +25,7 @@ function fixture() {
   const { RealtimeMediaFrameDispatcher: Dispatcher } = load('rendering/video/RealtimeMediaFrameDispatcher.ets');
   const { RtcAudioConverter: Converter } = load('foundation/rtc/RtcAudioConverter.ets');
   const { RealtimeAudioFrame: Audio } = load('service/realtime/RealtimeMediaFrame.ets');
-  const { RealtimeVideoFrame: Video } = load('service/realtime/RealtimeVideoFrame.ets');
+  const { RealtimeVideoFrame: Video } = load('foundation/media/video/RealtimeVideoFrame.ets');
   const { VideoFramePlane: Plane } = load('foundation/media/video/VideoFramePlane.ets');
   function video(timestampUs = 1000000, rotation = 0, width = 2) {
     return new Video(width, 2, 'i420', [new Plane(new ArrayBuffer(6), 2)], timestampUs, rotation);

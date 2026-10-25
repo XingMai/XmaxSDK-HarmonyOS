@@ -382,10 +382,10 @@ test('stopping frame observation only logs failures and leaves no frame waiters'
 
 test('global log details are English while raw payloads, error codes and redaction are preserved', () => {
   const f = fixture();
-  const { XmaxEnvironment: Environment } = f.load('core/XmaxEnvironment.ets');
+  const { XmaxLogLanguage: Language } = f.load('foundation/logging/XmaxLogger.ets');
   const { ApiLogger } = f.load('service/network/ApiLogger.ets');
   const { ErrorMessageFormatter } = f.load('foundation/errors/ErrorMessageFormatter.ets');
-  f.Logger.configure(f.Option.ALL, Environment.GLOBAL);
+  f.Logger.configure(f.Option.ALL, Language.ENGLISH);
   assert.equal(f.Logger.localized('中文', 'English'), 'English');
   const error = new f.XmaxError(f.Code.API_ERROR, '原始错误', 1003, 503);
   const detail = ErrorMessageFormatter.format(error);
@@ -396,7 +396,7 @@ test('global log details are English while raw payloads, error codes and redacti
   const log = f.logs.at(-1).message;
   assert.match(log, /Status: 503/); assert.match(log, /Duration: 12 ms/);
   assert.match(log, /原始数据/); assert.doesNotMatch(log, /secret-value/);
-  f.Logger.configure(f.Option.NONE, Environment.GLOBAL);
+  f.Logger.configure(f.Option.NONE, Language.ENGLISH);
   ApiLogger.logFailure('POST', '/session', error, 10);
   assert.equal(f.logs.length, 1);
   f.Logger.configure(f.Option.ALL);
@@ -405,9 +405,9 @@ test('global log details are English while raw payloads, error codes and redacti
 
 test('RTC performance details follow the global log language and retain bilingual headings', () => {
   const f = fixture({ '@bytertc/volcenginertc': { PerformanceAlarmReason: {}, NetworkQuality: { kNetworkQualityGood: 1 } } });
-  const { XmaxEnvironment: Environment } = f.load('core/XmaxEnvironment.ets');
+  const { XmaxLogLanguage: Language } = f.load('foundation/logging/XmaxLogger.ets');
   const { VolcRtcStatsLogger } = f.load('foundation/rtc/VolcRtcStatsLogger.ets');
-  f.Logger.configure(f.Option.PERFORMANCE, Environment.GLOBAL);
+  f.Logger.configure(f.Option.PERFORMANCE, Language.ENGLISH);
   VolcRtcStatsLogger.logNetworkQuality({ tx_quality: 1, fraction_lost: 0, total_bandwidth: 1000, rtt: 20 }, []);
   const log = f.logs.at(-1).message;
   assert.ok(log.split('\n').slice(0, -1).every(line => line.startsWith('[Xmax][RTC] ')));
