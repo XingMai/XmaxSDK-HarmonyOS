@@ -225,6 +225,100 @@ int main() {
   }
 });
 
+test('AVC muxing receives standalone SPS/PPS before media without counting configuration as a video frame', () => {
+  const source = fs.readFileSync(path.join(directory, 'realtime_recorder.cpp'), 'utf8');
+  const method = source.slice(source.indexOf('  void Drain('), source.indexOf('  void ReleaseOutput('));
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-recorder-codec-data-'));
+  try {
+    const harness = path.join(temporary, 'codec-data.cpp'), executable = path.join(temporary, 'codec-data');
+    fs.writeFileSync(harness, `
+#include <cassert>
+#include <cstdint>
+#include <deque>
+#include <stdexcept>
+#include <vector>
+constexpr uint32_t AVCODEC_BUFFER_FLAGS_EOS = 1, AVCODEC_BUFFER_FLAGS_SYNC_FRAME = 2,
+    AVCODEC_BUFFER_FLAGS_CODEC_DATA = 8;
+struct OH_AVCodecBufferAttr { int64_t pts = 0; int32_t size = 0, offset = 0; uint32_t flags = 0; };
+struct OH_AVBuffer { OH_AVCodecBufferAttr attr; std::vector<uint8_t> bytes; };
+struct OH_AVMuxer { std::vector<std::vector<uint8_t>> samples; std::vector<uint32_t> flags; bool fail = false; };
+int OH_AVBuffer_GetBufferAttr(OH_AVBuffer *buffer, OH_AVCodecBufferAttr *attr) { *attr = buffer->attr; return 0; }
+int OH_AVMuxer_WriteSampleBuffer(OH_AVMuxer *muxer, int32_t, OH_AVBuffer *buffer) {
+  if (muxer->fail) return -1;
+  muxer->samples.emplace_back(buffer->bytes.begin() + buffer->attr.offset,
+      buffer->bytes.begin() + buffer->attr.offset + buffer->attr.size);
+  muxer->flags.push_back(buffer->attr.flags); return 0;
+}
+void Check(int value, const char *reason) { if (value) throw std::runtime_error(reason); }
+struct Harness {
+  struct Buffer { uint32_t index; OH_AVBuffer *value; };
+  struct Track {
+    bool video = true, outputEnded = false;
+    OH_AVMuxer *muxer = nullptr; int32_t muxerTrack = 0; size_t written = 0;
+    std::deque<Buffer> outputs;
+  };
+  OH_AVMuxer muxer;
+  OH_AVBuffer *initialConfig = nullptr;
+  std::vector<uint32_t> released;
+  bool Pop(std::deque<Buffer> &queue, Buffer &buffer) {
+    if (queue.empty()) return false; buffer = queue.front(); queue.pop_front(); return true;
+  }
+  void OpenTrackMuxer(Track &track, OH_AVBuffer *config) { track.muxer = &muxer; initialConfig = config; }
+  void ReleaseOutput(Track &, uint32_t index) { released.push_back(index); }
+  ${method}
+};
+int main() {
+  // Separate Annex-B SPS/PPS is required even when also supplied to AddTrack as codec metadata.
+  OH_AVBuffer config{{0, 13, 2, AVCODEC_BUFFER_FLAGS_CODEC_DATA},
+      {99, 98, 0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 1, 0x68, 0xce, 0x06}};
+  OH_AVBuffer keyframe{{0, 6, 0, AVCODEC_BUFFER_FLAGS_SYNC_FRAME}, {0, 0, 0, 1, 0x65, 0x88}};
+  OH_AVBuffer picture{{33333, 6, 0, 0}, {0, 0, 0, 1, 0x41, 0x9a}};
+  OH_AVBuffer eos{{66666, 0, 0, AVCODEC_BUFFER_FLAGS_EOS}, {}};
+  Harness h; Harness::Track track;
+  track.outputs = {{0, &config}};
+  h.Drain(track);
+  assert(h.initialConfig == &config && h.muxer.samples.size() == 1 && track.written == 0);
+  assert(h.muxer.samples[0] == std::vector<uint8_t>(config.bytes.begin() + 2, config.bytes.end()));
+  assert(h.muxer.flags[0] == AVCODEC_BUFFER_FLAGS_CODEC_DATA);
+  track.outputs = {{1, &keyframe}, {2, &picture}, {3, &eos}};
+  h.Drain(track);
+  assert(h.muxer.samples.size() == 3 && track.written == 2 && track.outputEnded);
+  assert(h.released == std::vector<uint32_t>({0, 1, 2, 3}));
+
+  // A combined codec-data/keyframe buffer is both forwarded and counted as media.
+  Harness combined; Harness::Track combinedTrack;
+  OH_AVBuffer combinedFrame = keyframe;
+  combinedFrame.attr.flags |= AVCODEC_BUFFER_FLAGS_CODEC_DATA;
+  combinedTrack.outputs = {{4, &combinedFrame}};
+  combined.Drain(combinedTrack);
+  assert(combined.muxer.samples.size() == 1 && combinedTrack.written == 1);
+
+  // AAC configuration remains metadata-only; it must not become an invalid AAC audio sample.
+  Harness audio; Harness::Track audioTrack; audioTrack.video = false;
+  audioTrack.outputs = {{5, &config}, {6, &picture}, {7, &eos}};
+  audio.Drain(audioTrack);
+  assert(audio.initialConfig == &config && audio.muxer.samples.size() == 1 && audioTrack.written == 1);
+  assert(audioTrack.outputEnded && audio.released == std::vector<uint32_t>({5, 6, 7}));
+
+  // A write failure still releases the borrowed encoder output exactly once and propagates.
+  Harness failure; Harness::Track failedTrack;
+  failedTrack.muxer = &failure.muxer; failure.muxer.fail = true;
+  failedTrack.outputs = {{8, &config}};
+  bool threw = false;
+  try { failure.Drain(failedTrack); } catch (const std::runtime_error &) { threw = true; }
+  assert(threw && failure.released == std::vector<uint32_t>({8}) && failedTrack.written == 0);
+}
+`);
+    const compile = spawnSync(process.env.CXX || 'clang++', ['-std=c++17', '-fsanitize=address,undefined',
+      harness, '-o', executable], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.stderr);
+    const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 0, run.error?.message || run.stderr);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test('native finalization is queued off the ArkTS caller and MP4 remuxing preserves cross-track offsets', () => {
   const module = fs.readFileSync(path.join(directory, 'recorder_module.cpp'), 'utf8');
   const source = fs.readFileSync(path.join(directory, 'realtime_recorder.cpp'), 'utf8');

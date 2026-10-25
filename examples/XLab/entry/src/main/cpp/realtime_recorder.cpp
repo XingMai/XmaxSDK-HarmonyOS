@@ -465,9 +465,10 @@ private:
         const bool config = (attr.flags & AVCODEC_BUFFER_FLAGS_CODEC_DATA) != 0;
         if (attr.size > 0) {
           if (!track.muxer) OpenTrackMuxer(track, config ? output.value : nullptr);
-          if (!config || (attr.flags & AVCODEC_BUFFER_FLAGS_SYNC_FRAME) != 0) {
+          // The AVC muxer reads Annex-B SPS/PPS from codec-data buffers, not just track metadata.
+          if (track.video || !config || (attr.flags & AVCODEC_BUFFER_FLAGS_SYNC_FRAME) != 0) {
             Check(OH_AVMuxer_WriteSampleBuffer(track.muxer, track.muxerTrack, output.value), "Write encoded track");
-            track.written++;
+            if (!config || (attr.flags & AVCODEC_BUFFER_FLAGS_SYNC_FRAME) != 0) track.written++;
           }
         }
         if ((attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0) track.outputEnded = true;
