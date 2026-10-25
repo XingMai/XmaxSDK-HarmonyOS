@@ -38,9 +38,17 @@ struct Frame {
   bool video = false;
   int width = 0, height = 0, sampleRate = 0, channels = 0;
   int64_t timestampUs = 0;
+  /** The latest monotonic delivery time, in microseconds; error notifications do not expire. */
+  int64_t expiresUs = 0;
   std::vector<uint8_t> data;
   std::string error;
 };
+
+/** Uses the same deadline before native dispatch and after waiting in the ArkTS callback queue. */
+bool IsFrameExpired(const Frame &frame) {
+  return frame.error.empty() &&
+      std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count() > frame.expiresUs;
+}
 
 /** Owns the system demuxer and decoders; all blocking operations run off the ArkTS thread. */
 class FileSource : public std::enable_shared_from_this<FileSource> {
@@ -420,12 +428,15 @@ private:
     timelineStarted_ = true;
     auto frame = std::move(next->pending);
     frame->timestampUs += anchorUs_ - firstMediaUs_;
+    frame->expiresUs = frame->timestampUs + (frame->video ? 1000000 / fps_ : 100000);
+    if (IsFrameExpired(*frame)) return;
+
     const auto due = Clock::time_point(std::chrono::microseconds(frame->timestampUs));
     std::unique_lock<std::mutex> lock(mutex_);
     changed_.wait_until(lock, due, [this] { return stopping_.load() || !error_.empty(); });
     if (!error_.empty()) throw std::runtime_error(error_);
     lock.unlock();
-    if (!stopping_) {
+    if (!stopping_ && !IsFrameExpired(*frame)) {
       lastOutputUs_ = std::max(lastOutputUs_, frame->timestampUs);
       Frame *event = frame.release();
       if (napi_call_threadsafe_function(callback_, event, napi_tsfn_blocking) != napi_ok) delete event;
@@ -530,7 +541,7 @@ void Set(napi_env env, napi_value object, const char *key, napi_value value) {
 }
 void Deliver(napi_env env, napi_value callback, void *, void *value) {
   std::unique_ptr<Frame> frame(static_cast<Frame *>(value));
-  if (!env || !callback) return;
+  if (!env || !callback || IsFrameExpired(*frame)) return;
   napi_value result, ignored, receiver;
   napi_create_object(env, &result);
   if (!frame->error.empty()) {

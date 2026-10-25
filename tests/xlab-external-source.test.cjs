@@ -381,3 +381,25 @@ test('app HDR Surface conversion preserves NV12 planes/PTS, drains before EOS, a
     assert.equal(run.status, 0, run.error?.message || run.stderr);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('app external playback drops late frames at iOS thresholds without retiming or hiding errors', () => {
+  const source = fs.readFileSync(path.resolve(__dirname,
+    '../examples/XLab/entry/src/main/cpp/file_frame_source.cpp'), 'utf8');
+  const frame = source.slice(source.indexOf('struct Frame {'), source.indexOf('/** Owns the system demuxer'));
+  const deliver = source.slice(source.indexOf('  void DeliverNext('), source.indexOf('  void Release('));
+  const callback = source.slice(source.indexOf('void Deliver(napi_env'), source.indexOf('using Source ='));
+  const template = fs.readFileSync(path.join(__dirname, 'native/xlab-file-frame-expiry.cpp'), 'utf8');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-external-expiry-'));
+  try {
+    const harness = path.join(directory, 'expiry.cpp'), executable = path.join(directory, 'expiry');
+    fs.writeFileSync(harness, template
+      .replace('// FILE_FRAME_AND_EXPIRY', frame)
+      .replace('// FILE_DELIVER_NEXT', deliver)
+      .replace('// FILE_DELIVER_CALLBACK', callback));
+    const compile = spawnSync('clang++', ['-std=c++17', '-fsanitize=address,undefined', harness, '-o', executable],
+      { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.error?.message || compile.stderr);
+    const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 0, run.error?.message || run.stderr);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

@@ -104,7 +104,11 @@ decoding with BT.709 limited-range SDR output before frames reach the sink.
 The example selects model-sized output before binding and filters the target
 frame rate in native decoding, before rotation and ArkTS copies. HDR Surface
 output is downscaled before CPU mapping, with two Surface frames in flight
-at most; remaining frames are delivered before a playback loop restarts.
+at most; remaining nonexpired frames are delivered before a playback loop restarts.
+Late video frames exceeding one target frame interval and audio buffers exceeding
+100 ms are dropped without reporting a source failure. Deadlines are also checked
+after waiting in the ArkTS callback queue. Dropped frames do not reset the shared
+audio/video timeline or shift the timestamps of subsequent frames.
 Byte-buffer output still requires NV12; arbitrary HDR/P010 producers must convert
 their pixels to supported SDR first.
 
