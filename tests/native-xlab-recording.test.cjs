@@ -9,7 +9,7 @@ const directory = path.resolve(__dirname, '../examples/XLab/entry/src/main/cpp')
 
 test('recorder PCM packing and padded NV12 conversion execute the production native methods', () => {
   const source = fs.readFileSync(path.join(directory, 'realtime_recorder.cpp'), 'utf8');
-  const methods = source.slice(source.indexOf('  void Enqueue('), source.indexOf('  void OpenTrackMuxer('));
+  const methods = source.slice(source.indexOf('  void Enqueue('), source.indexOf('  /** Creates container metadata'));
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-recorder-packing-'));
   try {
     const harness = path.join(temporary, 'packing.cpp'), executable = path.join(temporary, 'packing');
@@ -132,6 +132,80 @@ int main() {
     const compiled = spawnSync(process.env.CXX || 'clang++', ['-std=c++17', '-pthread',
       '-fsanitize=address,undefined', harness, '-o', executable], { encoding: 'utf8', timeout: 30000 });
     assert.equal(compiled.status, 0, compiled.stderr);
+    const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 0, run.error?.message || run.stderr);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('MP4 track metadata always contains MIME and geometry or PCM format even when encoder descriptions omit them', () => {
+  const source = fs.readFileSync(path.join(directory, 'realtime_recorder.cpp'), 'utf8');
+  const method = source.slice(source.indexOf('  Format MuxerFormat('), source.indexOf('  void OpenTrackMuxer('));
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'xlab-muxer-format-'));
+  try {
+    const harness = path.join(temporary, 'format.cpp'), executable = path.join(temporary, 'format');
+    fs.writeFileSync(harness, `
+#include <cassert>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+struct OH_AVFormat { std::map<std::string, int> ints; std::string mime; std::vector<uint8_t> config; };
+struct OH_AVCodec {};
+struct OH_AVCodecBufferAttr { int offset = 0, size = 0; };
+struct OH_AVBuffer { std::vector<uint8_t> data; OH_AVCodecBufferAttr attr; };
+const char *OH_AVCODEC_MIMETYPE_VIDEO_AVC = "video/avc", *OH_AVCODEC_MIMETYPE_AUDIO_AAC = "audio/mp4a-latm";
+const char *OH_MD_KEY_PROFILE = "profile", *OH_MD_KEY_AAC_IS_ADTS = "adts", *OH_MD_KEY_CODEC_CONFIG = "config";
+constexpr int AAC_PROFILE_LC = 0;
+void OH_AVFormat_Destroy(OH_AVFormat *format) { delete format; }
+using Format = std::unique_ptr<OH_AVFormat, decltype(&OH_AVFormat_Destroy)>;
+OH_AVFormat *OH_AVFormat_CreateVideoFormat(const char *mime, int w, int h) {
+  auto *format = new OH_AVFormat; format->mime = mime; format->ints = {{"width", w}, {"height", h}}; return format;
+}
+OH_AVFormat *OH_AVFormat_CreateAudioFormat(const char *mime, int rate, int channels) {
+  auto *format = new OH_AVFormat; format->mime = mime; format->ints = {{"sampleRate", rate}, {"channels", channels}}; return format;
+}
+OH_AVFormat *OH_VideoEncoder_GetOutputDescription(OH_AVCodec *) {
+  auto *format = new OH_AVFormat; format->ints["stride"] = 672; format->config = {1, 2, 3}; return format;
+}
+OH_AVFormat *OH_AudioCodec_GetOutputDescription(OH_AVCodec *codec) { return OH_VideoEncoder_GetOutputDescription(codec); }
+bool OH_AVFormat_SetIntValue(OH_AVFormat *format, const char *key, int value) { format->ints[key] = value; return true; }
+bool OH_AVFormat_GetBuffer(OH_AVFormat *format, const char *, uint8_t **data, size_t *size) {
+  *data = format->config.data(); *size = format->config.size(); return true;
+}
+bool OH_AVFormat_SetBuffer(OH_AVFormat *format, const char *, uint8_t *data, size_t size) {
+  format->config.assign(data, data + size); return true;
+}
+int OH_AVBuffer_GetBufferAttr(OH_AVBuffer *buffer, OH_AVCodecBufferAttr *attr) { *attr = buffer->attr; return 0; }
+uint8_t *OH_AVBuffer_GetAddr(OH_AVBuffer *buffer) { return buffer->data.data(); }
+int OH_AVBuffer_GetCapacity(OH_AVBuffer *buffer) { return buffer->data.size(); }
+void Check(int code, const char *reason) { if (code) throw std::runtime_error(reason); }
+struct Track { bool video; int width = 640, height = 480, sampleRate = 48000, channels = 2; OH_AVCodec *codec = nullptr; };
+struct Harness { ${method} };
+int main() {
+  Harness h;
+  Track video{true}, audio{false};
+  auto v = h.MuxerFormat(video, nullptr), a = h.MuxerFormat(audio, nullptr);
+  assert(v->mime == "video/avc" && v->ints.at("width") == 640 && v->ints.at("height") == 480);
+  assert(a->mime == "audio/mp4a-latm" && a->ints.at("sampleRate") == 48000 && a->ints.at("channels") == 2);
+  assert(a->ints.at("profile") == AAC_PROFILE_LC && a->ints.at("adts") == 0);
+  assert(v->ints.count("stride") == 0 && a->ints.count("stride") == 0);
+  assert(v->config == std::vector<uint8_t>({1, 2, 3}));
+  OH_AVBuffer config{{99, 98, 7, 6}, {2, 2}};
+  auto overridden = h.MuxerFormat(video, &config);
+  assert(overridden->config == std::vector<uint8_t>({7, 6}));
+  config.attr.size = 3;
+  bool failed = false;
+  try { h.MuxerFormat(video, &config); } catch (const std::runtime_error &) { failed = true; }
+  assert(failed);
+}
+`);
+    const compile = spawnSync(process.env.CXX || 'clang++', ['-std=c++17', '-fsanitize=address,undefined',
+      harness, '-o', executable], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(compile.status, 0, compile.stderr);
     const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
     assert.equal(run.status, 0, run.error?.message || run.stderr);
   } finally {

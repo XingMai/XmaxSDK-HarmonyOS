@@ -122,6 +122,7 @@ export class RealtimeViewModel {
     if (this.recorder !== recorder) {
       return;
     }
+    hilog.error(LOG_DOMAIN, LOG_TAG, 'Realtime recording failed: %{public}s', message);
     this.recorder = null;
     this.realtimeManager?.setRemoteMediaFrameListener(null);
     this.recordingRevision++;

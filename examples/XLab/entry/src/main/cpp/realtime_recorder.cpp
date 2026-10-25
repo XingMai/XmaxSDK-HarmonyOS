@@ -366,10 +366,26 @@ private:
     track.packetOffset = 0;
   }
 
-  void OpenTrackMuxer(Track &track, OH_AVBuffer *config) {
-    Format format(track.video ? OH_VideoEncoder_GetOutputDescription(track.codec) :
+  /** Creates container metadata explicitly instead of reusing an encoder's private output format. */
+  Format MuxerFormat(Track &track, OH_AVBuffer *config) {
+    Format format(track.video ?
+        OH_AVFormat_CreateVideoFormat(OH_AVCODEC_MIMETYPE_VIDEO_AVC, track.width, track.height) :
+        OH_AVFormat_CreateAudioFormat(OH_AVCODEC_MIMETYPE_AUDIO_AAC, track.sampleRate, track.channels),
+        OH_AVFormat_Destroy);
+    if (!format) throw std::runtime_error("Cannot create MP4 track format");
+    if (!track.video) {
+      OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_PROFILE, AAC_PROFILE_LC);
+      OH_AVFormat_SetIntValue(format.get(), OH_MD_KEY_AAC_IS_ADTS, 0);
+    }
+
+    Format description(track.video ? OH_VideoEncoder_GetOutputDescription(track.codec) :
         OH_AudioCodec_GetOutputDescription(track.codec), OH_AVFormat_Destroy);
-    if (!format) throw std::runtime_error("Cannot read encoded format");
+    uint8_t *codecData = nullptr;
+    size_t codecSize = 0;
+    if (description && OH_AVFormat_GetBuffer(description.get(), OH_MD_KEY_CODEC_CONFIG, &codecData, &codecSize) &&
+        codecData && codecSize > 0) {
+      OH_AVFormat_SetBuffer(format.get(), OH_MD_KEY_CODEC_CONFIG, codecData, codecSize);
+    }
     if (config) {
       OH_AVCodecBufferAttr attr{};
       Check(OH_AVBuffer_GetBufferAttr(config, &attr), "Read codec configuration");
@@ -381,13 +397,18 @@ private:
       OH_AVFormat_SetBuffer(format.get(), OH_MD_KEY_CODEC_CONFIG,
           const_cast<uint8_t *>(address + attr.offset), attr.size);
     }
+    return format;
+  }
 
+  void OpenTrackMuxer(Track &track, OH_AVBuffer *config) {
+    Format format = MuxerFormat(track, config);
     const std::string path = path_ + (track.video ? ".video.mp4" : ".audio.mp4");
     track.fd = open(path.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
     if (track.fd < 0) throw std::runtime_error("Cannot create encoded track");
     track.muxer = OH_AVMuxer_Create(track.fd, AV_OUTPUT_FORMAT_MPEG_4);
     if (!track.muxer) throw std::runtime_error("Cannot create track muxer");
-    Check(OH_AVMuxer_AddTrack(track.muxer, &track.muxerTrack, format.get()), "Add encoded track");
+    const std::string operation = track.video ? "Add encoded video track" : "Add encoded audio track";
+    Check(OH_AVMuxer_AddTrack(track.muxer, &track.muxerTrack, format.get()), operation.c_str());
     Check(OH_AVMuxer_Start(track.muxer), "Start track muxer");
   }
 
