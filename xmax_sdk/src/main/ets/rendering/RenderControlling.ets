@@ -1,10 +1,9 @@
 //
 //  RenderControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,68 +15,55 @@ import { XmaxError } from '../foundation/errors/XmaxError';
 import { InteractionControlling } from '../media/interaction/InteractionControlling';
 import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 
-/** 定义渲染层向 Core 暴露的统一能力。 */
+/** The rendering layer interface used by Core. */
 export interface RenderControlling {
-  /**
-   * 设置公开远端帧监听器；null 取消监听并清除待交付帧。
-   *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
-   */
-  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
 
   /**
-   * 停止当前流的公开帧交付，直至设置新的远端流。
+   * Sets remote frame delivery; null removes the listener and clears pending frames.
    *
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
+  setRemoteVideoFrameListener(
+    listener: RealtimeVideoFrameListener | null
+  ): void;
+
+  /** Stops public frame delivery until a new remote stream is set. */
   stopRemoteVideoFrameDelivery(): void;
 
-  /**
-   * 捕获下一张远端帧并以静态覆盖层冻结当前生成画面。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Captures the next remote frame as a frozen result overlay. */
   freezeRemoteVideo(): Promise<void>;
 
-  /**
-   * 收到下一张远端帧后移除静态覆盖层。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Removes the frozen overlay after the next remote frame arrives. */
   resumeRemoteVideo(): Promise<void>;
 
-
   /**
-   * 更新当前需要渲染的远端 RTC 视频流。
+   * Updates the remote RTC stream to render.
    *
-   * @param stream 远端视频流；传入空值时清除当前流。
-   * @returns 无返回值。
+   * @param stream The remote stream, or null to clear it.
    */
-  setRemoteStream(stream: RemoteStream | null): void;
+  setRemoteStream(
+    stream: RemoteStream | null
+  ): void;
 
-  /**
-   * 等待本次 SEI 匹配后出现的首个可用远端帧，超时或流被清除时拒绝。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for a usable frame after the current SEI match, rejecting on timeout or stream removal. */
   waitUntilRemoteFrameReady(): Promise<void>;
 
   /**
-   * 使启动期间的异步致命错误立即结束首帧等待。
+   * Ends a startup frame wait immediately on a fatal asynchronous error.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param error The fatal failure rejecting the pending first-frame wait.
    */
-  failRemoteFrameWait(error: XmaxError): void;
+  failRemoteFrameWait(
+    error: XmaxError
+  ): void;
 
   /**
-   * 为远端视频轨道注册画面和轨迹交互绑定。
+   * Registers rendering and interaction bindings for a remote track.
    *
-   * @param track 需要注册的远端视频轨道。
-   * @param interactionController 接收轨迹交互输入的统一媒体组件。
-   * @param resolvedMediaSize 处理后的本地媒体尺寸，作为独立于回传分辨率的交互基准。
-   * @returns 无返回值。
+   * @param track The remote track to register.
+   * @param interactionController The media component receiving trajectory interactions.
+   * @param resolvedMediaSize The processed local media dimensions defining interaction coordinates
+   * independently of return resolution.
    */
   registerRemoteTrack(
     track: RealtimeVideoTrack,
@@ -86,10 +72,11 @@ export interface RenderControlling {
   ): void;
 
   /**
-   * 注销远端轨道的所有渲染绑定并重置远端画面。
+   * Unregisters remote track bindings and resets remote video.
    *
-   * @param track 需要注销的远端视频轨道；传入空值时仅重置画面。
-   * @returns 无返回值。
+   * @param track The track to unregister; an absent track only resets video.
    */
-  resetRemoteTrack(track: RealtimeVideoTrack | null): void;
+  resetRemoteTrack(
+    track: RealtimeVideoTrack | null
+  ): void;
 }

@@ -1,10 +1,9 @@
 //
 //  ImageSourceController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -31,59 +30,58 @@ import {
   ImageSourceFrameListener
 } from './ImageSourceControlling';
 
-/** 将本地图片处理为目标尺寸，并按固定帧率持续输出视频帧。 */
+/** Processes an image into continuous target-sized video frames at a fixed rate. */
 export class ImageSourceController implements ImageSourceControlling {
 
-  /** 图片解码与尺寸计算依赖 */
+  /** The manager decoding platform images into SDK-owned resources. */
   private readonly imageManager: ImageManaging;
 
-  /** 服务层组件 */
+  /** The service resolving model-specific media dimensions. */
   private readonly mediaService: MediaServicing;
 
-  /** 帧与错误通知 */
+  /** The receiver for prepared media frames. */
   private readonly frameListener: ImageSourceFrameListener;
+
+  /** The handler for asynchronous component failures. */
   private readonly errorListener: ImageSourceErrorListener;
 
-  /** 缓存像素与目标输出格式 */
+  /** The prepared image frame dimensions and pixel layout. */
   private frameFormat: VideoFormat | null = null;
+
+  /** The reusable image pixel plane for repeated output. */
   private framePlane: VideoFramePlane | null = null;
+
+  /** The current video dimensions, frame rate, and encoding settings. */
   private videoFormat: RealtimeVideoFormat | null = null;
 
-  /** 静态图片帧调度 */
+  /** The timer pacing repeated image frame output. */
   private frameTimer: number = -1;
 
-  /**
-   * 创建图片源 Controller。
-   *
-   * @param imageManager 提供图片解码能力的图片 Manager。
-   * @param mediaService 提供图片尺寸处理能力的媒体 Service。
-   * @param frameListener 视频帧输出监听器。
-   * @param errorListener 图片源错误监听器。
-   * @returns 新建的 ImageSourceController 实例。
-   */
+  /** Creates an image source controller. */
   constructor(
     imageManager: ImageManaging,
     mediaService: MediaServicing,
     frameListener: ImageSourceFrameListener,
     errorListener: ImageSourceErrorListener
   ) {
-    // 基础层组件
+    // Foundation components
     this.imageManager = imageManager;
 
-    // 服务层组件
+    // Service components
     this.mediaService = mediaService;
 
-    // 图片帧监听器
+    // Image frame listener
     this.frameListener = frameListener;
     this.errorListener = errorListener;
   }
 
   /**
-   * 加载图片并准备可重复输出的视频帧数据。
+   * Loads an image and prepares reusable frame pixels.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
-   * @returns 图片实际使用的视频输出格式。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The requested format, resolved from image dimensions if omitted.
+   *
+   * @returns The resolved image output format.
    */
   async prepare(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
@@ -100,7 +98,10 @@ export class ImageSourceController implements ImageSourceControlling {
     try {
       decodedImage = await this.decode(source);
       const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(
-        new ImageSize(decodedImage.width, decodedImage.height),
+        new ImageSize(
+          decodedImage.width,
+          decodedImage.height
+        ),
         videoFormat
       );
       const frameData: ImageVideoFrameData =
@@ -131,10 +132,11 @@ export class ImageSourceController implements ImageSourceControlling {
   }
 
   /**
-   * 将公开图片输入收敛为 SDK 内部已解码图片。
+   * Normalizes public image input into an SDK-owned decoded image.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
   private decode(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap
@@ -148,11 +150,7 @@ export class ImageSourceController implements ImageSourceControlling {
     return this.imageManager.decodePixelMap(source);
   }
 
-  /**
-   * 按目标帧率持续输出准备好的图片帧。
-   *
-   * @returns 无返回值。
-   */
+  /** Outputs prepared image frames at the target rate. */
   start(): void {
     const videoFormat: RealtimeVideoFormat | null = this.videoFormat;
     if (videoFormat === null || this.frameFormat === null ||
@@ -170,20 +168,19 @@ export class ImageSourceController implements ImageSourceControlling {
     }
 
     this.emitFrame();
-    this.frameTimer = setInterval((): void => {
-      try {
-        this.emitFrame();
-      } catch (error) {
-        this.errorListener(XmaxError.from(error));
-      }
-    }, 1000 / videoFormat.fps);
+    this.frameTimer = setInterval(
+      (): void => {
+        try {
+          this.emitFrame();
+        } catch (error) {
+          this.errorListener(XmaxError.from(error));
+        }
+      },
+      1000 / videoFormat.fps
+    );
   }
 
-  /**
-   * 停止图片帧输出并清理已准备的帧数据。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops image output and clears prepared pixels. */
   stop(): void {
     if (this.frameTimer >= 0) {
       clearInterval(this.frameTimer);
@@ -195,11 +192,7 @@ export class ImageSourceController implements ImageSourceControlling {
     this.videoFormat = null;
   }
 
-  /**
-   * 使用当前时间戳输出一帧图片视频帧。
-   *
-   * @returns 无返回值。
-   */
+  /** Outputs an image frame with the current timestamp. */
   private emitFrame(): void {
     const frameFormat: VideoFormat | null = this.frameFormat;
     const framePlane: VideoFramePlane | null = this.framePlane;
@@ -218,11 +211,12 @@ export class ImageSourceController implements ImageSourceControlling {
   }
 
   /**
-   * 根据图片尺寸和期望格式解析模型输入视频格式。
+   * Resolves the model input format from image dimensions and the requested format.
    *
-   * @param sourceSize 原始图片尺寸。
-   * @param videoFormat 期望的视频输出格式。
-   * @returns 校验并适配后的实际视频格式。
+   * @param sourceSize The source image dimensions.
+   * @param videoFormat The requested video output format.
+   *
+   * @returns The validated and adapted video format.
    */
   private resolveVideoFormat(
     sourceSize: ImageSize,
@@ -242,10 +236,17 @@ export class ImageSourceController implements ImageSourceControlling {
     }
 
     const targetSize: ImageSize = this.mediaService.resolveMediaSize(
-      new ImageSize(requestedFormat.width, requestedFormat.height), RealtimeMediaSource.IMAGE
+      new ImageSize(
+        requestedFormat.width,
+        requestedFormat.height
+      ),
+      RealtimeMediaSource.IMAGE
     );
 
-    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(targetSize.width, targetSize.height);
+    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(
+      targetSize.width,
+      targetSize.height
+    );
     resolvedFormat.validate();
 
     return resolvedFormat;

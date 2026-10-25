@@ -1,10 +1,9 @@
 //
 //  XmaxStorageManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -25,24 +24,25 @@ import {
   XmaxUploadedFile
 } from './XmaxStorageModel';
 
-/** 文件存储公共入口，负责将服务层模型转换为对外公开模型。 */
+/** A storage manager converting service results into public file models. */
 export class XmaxStorageManager implements XmaxStorageManaging {
 
-  /** 文件存储业务依赖 */
+  // Storage service dependencies
+
+  /** The service coordinating transfers, credentials, and image checks. */
   private readonly storageService: StorageServicing;
 
   /**
-   * 创建文件存储 Manager。
+   * Creates a storage manager.
    *
-   * @param context 访问本地文件和存储平台能力所需的应用上下文。
-   * @param apiService 获取上传配置等服务端数据的网络服务。
-   * @returns 新建的 XmaxStorageManager 实例。
+   * @param context The application context for local files and platform storage services.
+   * @param apiService The network service retrieving upload configuration.
    */
   constructor(
     context: common.Context,
     apiService: ApiServicing
   ) {
-    // 服务层组件
+    // Service components
     this.storageService = new StorageService(
       apiService,
       new StorageManager(context)
@@ -50,13 +50,14 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传图片数据。
+   * Uploads encoded image data.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 图片内容类型。
-   * @param progress 可选的传输进度监听器。
-   * @returns 上传成功后的公开文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The image MIME type.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public uploaded file information.
    */
   async uploadImage(
     data: ArrayBuffer,
@@ -73,12 +74,13 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传本地图片文件。
+   * Uploads a local image file.
    *
-   * @param filePath 本地图片文件路径。
-   * @param contentType 可选的图片内容类型；未传入时由服务层推断。
-   * @param progress 可选的传输进度监听器。
-   * @returns 上传成功后的公开文件信息。
+   * @param filePath The local image file path.
+   * @param contentType The image MIME type; inferred by the service if omitted.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public uploaded file information.
    */
   async uploadImageFile(
     filePath: string,
@@ -93,13 +95,14 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传图片数据并执行内容安全检查。
+   * Uploads encoded image data and checks its content.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 图片内容类型。
-   * @param progress 可选的传输进度监听器。
-   * @returns 通过内容安全检查并上传成功后的公开文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The image MIME type.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The uploaded file information after a successful content check.
    */
   async uploadImageWithSafetyCheck(
     data: ArrayBuffer,
@@ -116,12 +119,13 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传本地图片文件并执行内容安全检查。
+   * Uploads a local image file and checks its content.
    *
-   * @param filePath 本地图片文件路径。
-   * @param contentType 可选的图片内容类型；未传入时由服务层推断。
-   * @param progress 可选的传输进度监听器。
-   * @returns 通过内容安全检查并上传成功后的公开文件信息。
+   * @param filePath The local image file path.
+   * @param contentType The image MIME type; inferred by the service if omitted.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The uploaded file information after a successful content check.
    */
   async uploadImageFileWithSafetyCheck(
     filePath: string,
@@ -136,13 +140,14 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传视频数据。
+   * Uploads encoded video data.
    *
-   * @param data 视频二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 视频内容类型。
-   * @param progress 可选的传输进度监听器。
-   * @returns 上传成功后的公开文件信息。
+   * @param data The encoded video bytes.
+   * @param fileName The filename.
+   * @param contentType The video MIME type.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public uploaded file information.
    */
   async uploadVideo(
     data: ArrayBuffer,
@@ -159,12 +164,13 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 上传本地视频文件。
+   * Uploads a local video file.
    *
-   * @param filePath 本地视频文件路径。
-   * @param contentType 可选的视频内容类型；未传入时由服务层推断。
-   * @param progress 可选的传输进度监听器。
-   * @returns 上传成功后的公开文件信息。
+   * @param filePath The local video file path.
+   * @param contentType The video MIME type; inferred by the service if omitted.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public uploaded file information.
    */
   async uploadVideoFile(
     filePath: string,
@@ -179,12 +185,13 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 下载远端图片到指定本地路径。
+   * Downloads a remote image to a local path.
    *
-   * @param remoteUrl 远端图片地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 可选的传输进度监听器。
-   * @returns 下载成功后的公开文件信息。
+   * @param remoteUrl The remote image URL.
+   * @param destinationPath The destination file path.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public downloaded file information.
    */
   async downloadImage(
     remoteUrl: string,
@@ -199,12 +206,13 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 下载远端视频到指定本地路径。
+   * Downloads a remote video to a local path.
    *
-   * @param remoteUrl 远端视频地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 可选的传输进度监听器。
-   * @returns 下载成功后的公开文件信息。
+   * @param remoteUrl The remote video URL.
+   * @param destinationPath The destination file path.
+   * @param progress The optional transfer progress handler.
+   *
+   * @returns The public downloaded file information.
    */
   async downloadVideo(
     remoteUrl: string,
@@ -219,10 +227,11 @@ export class XmaxStorageManager implements XmaxStorageManaging {
   }
 
   /**
-   * 将公开进度监听器转换为服务层进度监听器。
+   * Converts a public progress handler into a service handler.
    *
-   * @param listener 可选的公开进度监听器。
-   * @returns 服务层进度监听器；未传入监听器时返回空值。
+   * @param listener The optional public progress handler.
+   *
+   * @returns The service progress handler, or undefined if absent.
    */
   private progressListener(
     listener?: XmaxStorageProgressListener
@@ -232,27 +241,43 @@ export class XmaxStorageManager implements XmaxStorageManaging {
     }
 
     return (completedBytes: number, totalBytes: number): void => {
-      listener(new XmaxStorageProgress(completedBytes, totalBytes));
+      listener(new XmaxStorageProgress(
+        completedBytes,
+        totalBytes
+      ));
     };
   }
 
   /**
-   * 将服务层上传结果转换为公开上传文件模型。
+   * Converts a service upload result into a public file model.
    *
-   * @param file 服务层上传结果。
-   * @returns 对接入方公开的上传文件信息。
+   * @param file The service upload result.
+   *
+   * @returns The public uploaded file information.
    */
-  private toUploadedFile(file: StoredFile): XmaxUploadedFile {
-    return new XmaxUploadedFile(file.url, file.objectKey, file.etag);
+  private toUploadedFile(
+    file: StoredFile
+  ): XmaxUploadedFile {
+    return new XmaxUploadedFile(
+      file.url,
+      file.objectKey,
+      file.etag
+    );
   }
 
   /**
-   * 将服务层下载结果转换为公开下载文件模型。
+   * Converts a service download result into a public file model.
    *
-   * @param file 服务层下载结果。
-   * @returns 对接入方公开的下载文件信息。
+   * @param file The service download result.
+   *
+   * @returns The public downloaded file information.
    */
-  private toDownloadedFile(file: DownloadedFile): XmaxDownloadedFile {
-    return new XmaxDownloadedFile(file.filePath, file.byteCount);
+  private toDownloadedFile(
+    file: DownloadedFile
+  ): XmaxDownloadedFile {
+    return new XmaxDownloadedFile(
+      file.filePath,
+      file.byteCount
+    );
   }
 }

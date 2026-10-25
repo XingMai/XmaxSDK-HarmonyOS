@@ -1,10 +1,9 @@
 //
 //  CameraController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -49,67 +48,109 @@ const MAXIMUM_CAPTURE_WIDTH: number = 1920;
 const MAXIMUM_CAPTURE_HEIGHT: number = 1440;
 const CAMERA_CAPTURE_FRAME_RATE: number = 30;
 
-/** 使用 CameraKit 采集原始视频帧，并交给 RTC 外部视频源。 */
+/** Captures raw CameraKit frames for external RTC video input. */
 export class CameraController {
 
-  /** 采集平台与业务依赖 */
+  // Capture platform and business dependencies
+
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
+
+  /** The manager checking and requesting platform permissions. */
   private readonly permissionManager: PermissionManaging;
+
+  /** The CameraKit manager creating capture resources. */
   private readonly platformManager: camera.CameraManager;
+
+  /** The service resolving model-specific media dimensions. */
   private readonly mediaService: MediaServicing;
+
+  /** The controller coordinating RTC rooms, streams, and signaling. */
   private readonly streamController: StreamControlling;
 
-  /** 错误与输出格式通知 */
-  private readonly errorListener: XmaxErrorListener;
-  /**
-   * 通知摄像头实际输出的视频格式变化。
-   *
-   * @param format 需要使用的视频格式。
-   * @returns 无返回值。
-   */
-  private readonly formatListener: (format: RealtimeVideoFormat) => void;
+  // Error and output format notifications
 
-  /** 摄像头会话资源 */
+  /** The handler for asynchronous component failures. */
+  private readonly errorListener: XmaxErrorListener;
+
+  /**
+   * Reports camera output format changes.
+   *
+   * @param format The video format to use.
+   */
+  private readonly formatListener: (
+    format: RealtimeVideoFormat
+  ) => void;
+
+  // Camera session resources
+
+  /** The CameraKit input for the selected device. */
   private cameraInput: camera.CameraInput | null = null;
+
+  /** The camera output and native frame receiver. */
   private frameOutput: CameraFrameOutput | null = null;
+
+  /** The configured CameraKit capture session. */
   private captureSession: camera.Session | null = null;
 
-  /** 输出轨道与采集开关 */
+  // Output track and capture enablement
+
+  /** The local track owned by the current media source. */
   private activeTrack: RealtimeVideoTrack | null = null;
+
+  /** Whether the current source may deliver media frames. */
   private acceptsFrames: boolean = false;
 
-  /** 音频与方向配置 */
+  // Audio and orientation configuration
+
+  /** Whether the camera source enables microphone capture on connection. */
   private storedUseMicrophone: boolean = false;
+
+  /** Whether capture output follows display orientation. */
   private observeDisplayChange: boolean = true;
+
+  /** Whether RTC microphone capture needs to be stopped during cleanup. */
   private isMicrophoneCapturing: boolean = false;
 
-  /** 采集回调版本 */
+  // Capture callback revision
+
+  /** The revision rejecting obsolete camera capture callbacks. */
   private captureGeneration: number = 0;
 
-  /** 预览就绪条件与通知 */
+  // Preview readiness conditions and notification
+
+  /** The camera capture and preview readiness handler. */
   private previewReadyListener: CameraPreviewReadyHandler | null = null;
+
+  /** Whether a valid camera frame has arrived for this source. */
   private hasCapturedFrame: boolean = false;
+
+  /** Whether a preview view is bound to the camera track. */
   private hasBoundPreview: boolean = false;
+
+  /** Whether camera readiness has already been notified. */
   private hasReportedPreviewReady: boolean = false;
 
   /**
-   * 创建摄像头媒体控制器。
+   * Creates a camera media controller.
    *
-   * @param context 平台应用上下文，用于权限、媒体与存储能力。
-   * @param rtcManager 提供音视频采集、发布和订阅能力的 RTC 组件。
-   * @param streamController 管理传输、房间信令和生成任务的组件。
-   * @param mediaService 计算媒体处理、生成与目标尺寸的业务服务。
-   * @param errorListener 接收组件错误的监听器。
-   * @param formatListener 接收视频格式变化的监听器。
-   * @returns 新建的 CameraController 实例。
+   * @param context The application context for permissions, media, and storage services.
+   * @param rtcManager The RTC adapter for capture, publishing, and subscriptions.
+   * @param streamController The stream controller for transport, room signaling, and generation
+   * tasks.
+   * @param mediaService The service resolving media, canvas, and target dimensions.
+   * @param errorListener The component error handler.
+   * @param formatListener The video format change handler.
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
     streamController: StreamControlling,
     mediaService: MediaServicing = new MediaService(),
-    errorListener: XmaxErrorListener = (_error: XmaxError): void => {},
-    formatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {}
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => { },
+    formatListener: (
+      format: RealtimeVideoFormat
+    ) => void = (_format: RealtimeVideoFormat): void => { }
   ) {
     this.rtcManager = rtcManager;
     this.permissionManager = new PermissionManager(context);
@@ -120,29 +161,20 @@ export class CameraController {
     this.formatListener = formatListener;
   }
 
-  /**
-   * 读取当前本地输入提供的视频轨道。
-   *
-   * @returns 当前轨道；尚无本地媒体时返回 null。
-   */
+  /** The current local input track, or null without local media. */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
   }
 
-  /**
-   * 当前相机是否配置为在连接时采集麦克风。
-   *
-   * @returns 当前摄像头流已启用麦克风时返回 true。
-   */
+  /** Whether the camera is configured to capture microphone audio while connected. */
   get useMicrophone(): boolean {
     return this.activeTrack !== null && this.storedUseMicrophone;
   }
 
   /**
-   * 设置摄像头预览就绪监听器。
+   * Sets the camera preview readiness listener.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
   setPreviewReadyListener(
     listener: CameraPreviewReadyHandler | null
@@ -152,13 +184,14 @@ export class CameraController {
   }
 
   /**
-   * 创建并启动 CameraKit 本地相机流。
+   * Creates and starts a local CameraKit stream.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param position 使用的摄像头位置。
-   * @param useMicrophone 是否采集并发布麦克风音频。
-   * @param observeDisplayChange 是否跟随设备显示方向更新输出格式。
-   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   * @param videoFormat The media output or transport format.
+   * @param position The active camera position.
+   * @param useMicrophone Whether to capture and publish microphone audio.
+   * @param observeDisplayChange Whether output format follows display orientation.
+   *
+   * @returns The local stream for connection, generation, or display.
    */
   async createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
@@ -173,42 +206,48 @@ export class CameraController {
       );
     }
 
-    return this.createStream(videoFormat, position, useMicrophone, observeDisplayChange);
+    return this.createStream(
+      videoFormat,
+      position,
+      useMicrophone,
+      observeDisplayChange
+    );
   }
 
   /**
-   * 在窗口转屏和建连前同步 Native 方向，不等待下一帧才更新轨道规格。
-   *
-   * @returns 无返回值。
+   * Updates native orientation on window rotation and before connection, without waiting for the
+   * next frame.
    */
   updateOrientation(): void {
     const track = this.activeTrack;
     const format = track?.videoFormat;
     const output = this.frameOutput;
     if (track !== null && format !== undefined && output !== null) {
-      output.configure(format, CAMERA_CAPTURE_FRAME_RATE, this.observeDisplayChange);
-      this.synchronizeVideoFormat(track, output.currentVideoFormat ?? format);
+      output.configure(
+        format,
+        CAMERA_CAPTURE_FRAME_RATE,
+        this.observeDisplayChange
+      );
+      this.synchronizeVideoFormat(
+        track,
+        output.currentVideoFormat ?? format
+      );
     }
   }
 
-  /**
-   * 在连接时启动 RTC 内部麦克风采集，不开启本地回放。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts internal RTC microphone capture on connection without local playback. */
   startMicrophoneCapture(): void {
     if (!this.useMicrophone || this.isMicrophoneCapturing) {
       return;
     }
-    // 即使启动失败，也由连接清理停止可能已经打开的设备。
+    // Connection cleanup must stop any opened device even if startup fails.
     this.isMicrophoneCapturing = true;
     this.rtcManager.startMicrophoneCapture();
   }
 
   /**
-   * 停止采集并保留重连配置；停止失败时保留标记，允许清理重试。
-   *
-   * @returns 无返回值。
+   * Stops capture while retaining reconnection settings; keep the marker on failure so cleanup can
+   * retry.
    */
   stopMicrophoneCapture(): void {
     if (!this.isMicrophoneCapturing) {
@@ -218,11 +257,7 @@ export class CameraController {
     this.isMicrophoneCapturing = false;
   }
 
-  /**
-   * 停止 CameraKit 采集并释放本地预览绑定。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops CameraKit capture and releases preview bindings. */
   async stopLocalCameraStream(): Promise<void> {
     const track: RealtimeVideoTrack | null = this.activeTrack;
     this.prepareForStop();
@@ -236,16 +271,15 @@ export class CameraController {
     this.isMicrophoneCapturing = false;
   }
 
-  /**
-   * 立即停止麦克风、阻断相机帧输出并解除本地预览绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops the microphone, blocks camera output, and detaches preview immediately. */
   prepareForStop(): void {
     try {
       this.stopMicrophoneCapture();
     } catch (error) {
-      this.logResourceError('停止麦克风采集 (Stop Microphone Capture)', error);
+      this.logResourceError(
+        '停止麦克风采集 (Stop Microphone Capture)',
+        error
+      );
     }
     this.acceptsFrames = false;
     this.captureGeneration += 1;
@@ -253,14 +287,20 @@ export class CameraController {
     try {
       this.rtcManager.unbindLocalVideo();
     } catch (error) {
-      this.logResourceError(XmaxLogger.localized("解除相机预览绑定", "Unbind Camera Preview"), error);
+      this.logResourceError(
+        XmaxLogger.localized(
+          "解除相机预览绑定",
+          "Unbind Camera Preview"
+        ),
+        error
+      );
     }
   }
 
   /**
-   * 在前置和后置 CameraKit 摄像头之间切换。
+   * Switches between front and rear CameraKit cameras.
    *
-   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   * @returns The local stream for connection, generation, or display.
    */
   async switchCamera(): Promise<RealtimeMediaStream> {
     const currentTrack: RealtimeVideoTrack | null = this.activeTrack;
@@ -268,7 +308,10 @@ export class CameraController {
     const position: CameraPosition | undefined = currentTrack?.position;
     if (currentTrack === null || videoFormat === undefined || position === undefined ||
       this.captureSession === null) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Local camera preview is not started');
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local camera preview is not started'
+      );
     }
 
     const nextPosition: CameraPosition = position === CameraPosition.FRONT ?
@@ -280,26 +323,42 @@ export class CameraController {
     try {
       this.rtcManager.configureLocalVideoMirror(nextPosition);
       this.acceptsFrames = true;
-      await this.startCamera(videoFormat, nextPosition);
-      this.synchronizeVideoFormat(currentTrack, this.frameOutput?.currentVideoFormat ?? videoFormat);
-      updateRealtimeVideoTrackPosition(currentTrack, nextPosition);
-      return new RealtimeMediaStream(StreamId.LOCAL, currentTrack);
+      await this.startCamera(
+        videoFormat,
+        nextPosition
+      );
+      this.synchronizeVideoFormat(
+        currentTrack,
+        this.frameOutput?.currentVideoFormat ?? videoFormat
+      );
+      updateRealtimeVideoTrackPosition(
+        currentTrack,
+        nextPosition
+      );
+      return new RealtimeMediaStream(
+        StreamId.LOCAL,
+        currentTrack
+      );
     } catch (error) {
       this.acceptsFrames = false;
       await this.releaseCamera();
-      await this.restoreCameraAfterFailedSwitch(videoFormat, position);
+      await this.restoreCameraAfterFailedSwitch(
+        videoFormat,
+        position
+      );
       throw XmaxError.from(error);
     }
   }
 
   /**
-   * 完成权限检查、外部视频源配置、CameraKit 启动和预览注册。
+   * Checks permissions, configures external input, starts CameraKit, and registers preview.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param position 使用的摄像头位置。
-   * @param useMicrophone 是否采集并发布麦克风音频。
-   * @param observeDisplayChange 是否跟随设备显示方向更新输出格式。
-   * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+   * @param videoFormat The media output or transport format.
+   * @param position The active camera position.
+   * @param useMicrophone Whether to capture and publish microphone audio.
+   * @param observeDisplayChange Whether output format follows display orientation.
+   *
+   * @returns The local stream for connection, generation, or display.
    */
   private async createStream(
     videoFormat: RealtimeVideoFormat,
@@ -308,7 +367,11 @@ export class CameraController {
     observeDisplayChange: boolean = true
   ): Promise<RealtimeMediaStream> {
     const resolvedFormat: RealtimeVideoFormat = this.resolveVideoFormat(videoFormat);
-    const track = new RealtimeVideoTrack('video0', resolvedFormat, position);
+    const track = new RealtimeVideoTrack(
+      'video0',
+      resolvedFormat,
+      position
+    );
     this.observeDisplayChange = observeDisplayChange;
 
     try {
@@ -320,26 +383,41 @@ export class CameraController {
       this.rtcManager.useExternalVideoSource();
       this.rtcManager.configureLocalVideoMirror(position);
       this.acceptsFrames = true;
-      await this.startCamera(resolvedFormat, position);
-      this.synchronizeVideoFormat(track, this.frameOutput?.currentVideoFormat ?? resolvedFormat);
+      await this.startCamera(
+        resolvedFormat,
+        position
+      );
+      this.synchronizeVideoFormat(
+        track,
+        this.frameOutput?.currentVideoFormat ?? resolvedFormat
+      );
 
-      VideoRenderRegistry.register(track, new VideoRenderBinding(
-        this.rtcManager.renderLibraryName(),
-        (viewId: string, contentMode: VideoContentMode): void => {
-          this.rtcManager.bindLocalVideo(viewId, contentMode);
-          this.hasBoundPreview = true;
-          this.notifyPreviewReadyIfNeeded();
-        },
-        (_viewId: string): void => {
-          this.hasBoundPreview = false;
-          this.rtcManager.unbindLocalVideo();
-        },
-        CameraPreviewRatio.FILL
-      ));
+      VideoRenderRegistry.register(
+        track,
+        new VideoRenderBinding(
+          this.rtcManager.renderLibraryName(),
+          (viewId: string, contentMode: VideoContentMode): void => {
+            this.rtcManager.bindLocalVideo(
+              viewId,
+              contentMode
+            );
+            this.hasBoundPreview = true;
+            this.notifyPreviewReadyIfNeeded();
+          },
+          (_viewId: string): void => {
+            this.hasBoundPreview = false;
+            this.rtcManager.unbindLocalVideo();
+          },
+          CameraPreviewRatio.FILL
+        )
+      );
       this.activeTrack = track;
       this.storedUseMicrophone = useMicrophone;
 
-      return new RealtimeMediaStream(StreamId.LOCAL, track);
+      return new RealtimeMediaStream(
+        StreamId.LOCAL,
+        track
+      );
     } catch (error) {
       this.acceptsFrames = false;
       VideoRenderRegistry.unregister(track);
@@ -349,11 +427,10 @@ export class CameraController {
   }
 
   /**
-   * 创建 CameraKit 会话，并将帧输出绑定到 Native ImageReceiver Surface。
+   * Creates a CameraKit session bound to a native ImageReceiver Surface.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param position 使用的摄像头位置。
-   * @returns 操作完成时兑现的 Promise。
+   * @param videoFormat The media output or transport format.
+   * @param position The active camera position.
    */
   private async startCamera(
     videoFormat: RealtimeVideoFormat,
@@ -377,9 +454,13 @@ export class CameraController {
         const dimensions: string = `${profile.size.width} × ${profile.size.height}`;
         operation = `Configure CameraKit session (${dimensions})`;
         const generation: number = ++this.captureGeneration;
-        const output: CameraFrameOutput = await this.prepareFrameOutput(device, profile, generation);
+        const output: CameraFrameOutput = await this.prepareFrameOutput(
+          device,
+          profile,
+          generation
+        );
 
-        // 帧率能力依赖输出所关联的相机和会话，必须在提交配置后查询。
+        // Frame-rate capabilities depend on the bound camera and session; query after configuration is committed.
         operation = `Query CameraKit frame rates (${dimensions})`;
         const ranges: Array<camera.FrameRateRange> = output.output.getSupportedFrameRates();
         if (ranges.length === 0) {
@@ -388,16 +469,25 @@ export class CameraController {
         if (!ranges.some((range: camera.FrameRateRange): boolean =>
           range.min <= CAMERA_CAPTURE_FRAME_RATE && range.max >= CAMERA_CAPTURE_FRAME_RATE)) {
           XmaxLogger.debug(
-            `${XmaxLogger.localized("CameraKit 采集规格 ", "CameraKit Capture Profile ")}${dimensions}${XmaxLogger.localized(" 不支持 30 fps，尝试下一档规格", " does not support 30 fps; trying the next profile")}`, 'Camera');
+            `${XmaxLogger.localized("CameraKit 采集规格 ", "CameraKit Capture Profile ")}${dimensions}${XmaxLogger.localized(" 不支持 30 fps，尝试下一档规格", " does not support 30 fps; trying the next profile")}`,
+            'Camera'
+          );
           await this.releaseCamera();
           continue;
         }
 
         operation = `Set CameraKit frame rate to 30 fps (${dimensions})`;
-        output.output.setFrameRate(CAMERA_CAPTURE_FRAME_RATE, CAMERA_CAPTURE_FRAME_RATE);
+        output.output.setFrameRate(
+          CAMERA_CAPTURE_FRAME_RATE,
+          CAMERA_CAPTURE_FRAME_RATE
+        );
         operation = `Start CameraKit capture (${dimensions})`;
         await this.captureSession!.start();
-        output.configure(videoFormat, CAMERA_CAPTURE_FRAME_RATE, this.observeDisplayChange);
+        output.configure(
+          videoFormat,
+          CAMERA_CAPTURE_FRAME_RATE,
+          this.observeDisplayChange
+        );
         const outputFormat: RealtimeVideoFormat = output.currentVideoFormat ?? videoFormat;
 
         XmaxLogger.debug(
@@ -424,12 +514,13 @@ export class CameraController {
   }
 
   /**
-   * 将候选输出接入实际会话，使帧率查询具备设备与配置上下文。
+   * Attaches candidate output to the session before querying device-specific frame rates.
    *
-   * @param device 所选摄像头设备。
-   * @param profile 摄像头采集规格。
-   * @param generation 摄像头采集版本，用于忽略已停止采集的回调。
-   * @returns 异步返回已创建的摄像头原始帧输出组件的 Promise。
+   * @param device The selected camera device.
+   * @param profile The camera capture profile.
+   * @param generation The capture revision rejecting callbacks after capture stops.
+   *
+   * @returns The created raw camera frame output.
    */
   private async prepareFrameOutput(
     device: camera.CameraDevice,
@@ -443,7 +534,10 @@ export class CameraController {
       this.platformManager,
       profile,
       device.cameraPosition,
-      (frame: VideoFrame): void => this.handleFrame(frame, generation),
+      (frame: VideoFrame): void => this.handleFrame(
+        frame,
+        generation
+      ),
       (error: XmaxError): void => this.errorListener(error)
     );
     this.frameOutput = output;
@@ -465,23 +559,31 @@ export class CameraController {
   }
 
   /**
-   * 将摄像头失败原因包装为媒体采集错误。
+   * Wraps camera failures as media capture errors.
    *
-   * @param message 日志内容、错误说明或收到的信令文本。
-   * @returns 描述摄像头采集失败的 SDK 错误。
+   * @param message The camera capture failure description.
+   *
+   * @returns The camera capture SDK error.
    */
-  private cameraError(message: string): XmaxError {
-    return new XmaxError(XmaxErrorCode.MEDIA_ERROR, message);
+  private cameraError(
+    message: string
+  ): XmaxError {
+    return new XmaxError(
+      XmaxErrorCode.MEDIA_ERROR,
+      message
+    );
   }
 
   /**
-   * 将相机帧交给统一外部视频推送链路。
+   * Submits camera frames through the shared external video path.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @param generation 摄像头采集版本，用于忽略已停止采集的回调。
-   * @returns 无返回值。
+   * @param frame The oriented camera video frame for local preview and RTC submission.
+   * @param generation The capture revision rejecting callbacks after capture stops.
    */
-  private handleFrame(frame: VideoFrame, generation: number): void {
+  private handleFrame(
+    frame: VideoFrame,
+    generation: number
+  ): void {
     if (!this.acceptsFrames || generation !== this.captureGeneration) {
       return;
     }
@@ -489,12 +591,15 @@ export class CameraController {
     try {
       const format: RealtimeVideoFormat | null | undefined = this.frameOutput?.currentVideoFormat;
       if (format !== undefined && format !== null) {
-        // 转屏前已经排队的帧不能重新覆盖新规格，也不能用新编码尺寸推送。
+        // Queued frames from before rotation must not overwrite the new format or use its encoder dimensions.
         if (frame.format.width !== format.width || frame.format.height !== format.height) {
           return;
         }
         if (this.activeTrack !== null) {
-          this.synchronizeVideoFormat(this.activeTrack, format);
+          this.synchronizeVideoFormat(
+            this.activeTrack,
+            format
+          );
         }
       }
       this.streamController.pushLocalVideoFrame(frame);
@@ -506,29 +611,33 @@ export class CameraController {
   }
 
   /**
-   * 同步摄像头轨道格式，并通知渲染与生成配置更新。
+   * Synchronizes camera track format and notifies rendering and generation.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param format 需要使用的视频格式。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param format The video format to use.
    */
-  private synchronizeVideoFormat(track: RealtimeVideoTrack, format: RealtimeVideoFormat): void {
+  private synchronizeVideoFormat(
+    track: RealtimeVideoTrack,
+    format: RealtimeVideoFormat
+  ): void {
     const previous: RealtimeVideoFormat | undefined = track.videoFormat;
     if (previous?.width === format.width && previous.height === format.height && previous.fps === format.fps) {
       return;
     }
     this.streamController.setVideoEncoderConfig(format);
     this.formatListener(format);
-    updateRealtimeVideoTrackFormat(track, format);
+    updateRealtimeVideoTrackFormat(
+      track,
+      format
+    );
     VideoRenderRegistry.notifyVideoFormatChanged(track);
   }
 
   /**
-   * 尝试在切换失败后恢复原摄像头。
+   * Attempts to restore the previous camera after a failed switch.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param position 使用的摄像头位置。
-   * @returns 操作完成时兑现的 Promise。
+   * @param videoFormat The media output or transport format.
+   * @param position The active camera position.
    */
   private async restoreCameraAfterFailedSwitch(
     videoFormat: RealtimeVideoFormat,
@@ -537,7 +646,10 @@ export class CameraController {
     try {
       this.rtcManager.configureLocalVideoMirror(position);
       this.acceptsFrames = true;
-      await this.startCamera(videoFormat, position);
+      await this.startCamera(
+        videoFormat,
+        position
+      );
     } catch (rollbackError) {
       this.prepareForStop();
       const track: RealtimeVideoTrack | null = this.activeTrack;
@@ -553,11 +665,7 @@ export class CameraController {
     }
   }
 
-  /**
-   * 按停止会话、释放输出、关闭输入的顺序释放 CameraKit。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Releases CameraKit by stopping the session, releasing output, then closing input. */
   private async releaseCamera(): Promise<void> {
     this.captureGeneration += 1;
     const session: camera.Session | null = this.captureSession;
@@ -571,12 +679,24 @@ export class CameraController {
       try {
         await session.stop();
       } catch (error) {
-        this.logResourceError(XmaxLogger.localized("停止 CameraKit 会话", "Stop CameraKit Session"), error);
+        this.logResourceError(
+          XmaxLogger.localized(
+            "停止 CameraKit 会话",
+            "Stop CameraKit Session"
+          ),
+          error
+        );
       }
       try {
         await session.release();
       } catch (error) {
-        this.logResourceError(XmaxLogger.localized("释放 CameraKit 会话", "Release CameraKit Session"), error);
+        this.logResourceError(
+          XmaxLogger.localized(
+            "释放 CameraKit 会话",
+            "Release CameraKit Session"
+          ),
+          error
+        );
       }
     }
     if (output !== null) {
@@ -586,18 +706,27 @@ export class CameraController {
       try {
         await input.close();
       } catch (error) {
-        this.logResourceError(XmaxLogger.localized("关闭 CameraKit 输入", "Close CameraKit Input"), error);
+        this.logResourceError(
+          XmaxLogger.localized(
+            "关闭 CameraKit 输入",
+            "Close CameraKit Input"
+          ),
+          error
+        );
       }
     }
   }
 
   /**
-   * 选择指定方向的相机设备。
+   * Selects a camera with the requested position.
    *
-   * @param position 使用的摄像头位置。
-   * @returns 匹配指定前后位置的可用摄像头；不存在时抛出采集错误。
+   * @param position The active camera position.
+   *
+   * @returns The matching camera, throwing a capture error if unavailable.
    */
-  private selectCamera(position: CameraPosition): camera.CameraDevice {
+  private selectCamera(
+    position: CameraPosition
+  ): camera.CameraDevice {
     const platformPosition: camera.CameraPosition = position === CameraPosition.FRONT ?
       camera.CameraPosition.CAMERA_POSITION_FRONT :
       camera.CameraPosition.CAMERA_POSITION_BACK;
@@ -612,14 +741,20 @@ export class CameraController {
   }
 
   /**
-   * 优先从 1920×1080 向下尝试 16:9；不支持 30 fps 时回退到 4:3。
+   * Try 16:9 from 1920 by 1080 downward; fall back to 4:3 when 30 fps is unsupported.
    *
-   * @param device 所选摄像头设备。
-   * @returns 所选摄像头可用的原始帧采集规格列表。
+   * @param device The selected camera device.
+   *
+   * @returns The camera's candidate raw capture profiles.
    */
-  private captureProfiles(device: camera.CameraDevice): Array<camera.Profile> {
+  private captureProfiles(
+    device: camera.CameraDevice
+  ): Array<camera.Profile> {
     const capability: camera.CameraOutputCapability = this.platformManager
-      .getSupportedOutputCapability(device, camera.SceneMode.NORMAL_VIDEO);
+      .getSupportedOutputCapability(
+        device,
+        camera.SceneMode.NORMAL_VIDEO
+      );
     const profiles: Array<camera.Profile> = capability.previewProfiles.filter(
       (profile: camera.Profile): boolean => {
         const width: number = Math.max(profile.size.width, profile.size.height);
@@ -643,46 +778,51 @@ export class CameraController {
   }
 
   /**
-   * 判断摄像头采集规格是否为横向画幅。
+   * Checks whether a capture profile is landscape.
    *
-   * @param profile 摄像头采集规格。
-   * @returns 采集宽度大于高度时返回 true。
+   * @param profile The camera capture profile.
+   *
+   * @returns True if capture width exceeds height.
    */
-  private isWideCaptureProfile(profile: camera.Profile): boolean {
+  private isWideCaptureProfile(
+    profile: camera.Profile
+  ): boolean {
     const width: number = Math.max(profile.size.width, profile.size.height);
     const height: number = Math.min(profile.size.width, profile.size.height);
     return width * 9 === height * 16;
   }
 
   /**
-   * 校验视频格式并将尺寸调整为模型支持的输入规格。
+   * Validates a format and resolves model-supported input dimensions.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @returns 计算或更新后的视频格式。
+   * @param videoFormat The media output or transport format.
+   *
+   * @returns The resolved or updated video format.
    */
-  private resolveVideoFormat(videoFormat: RealtimeVideoFormat): RealtimeVideoFormat {
+  private resolveVideoFormat(
+    videoFormat: RealtimeVideoFormat
+  ): RealtimeVideoFormat {
     videoFormat.validate();
     const targetSize: ImageSize = this.mediaService.resolveMediaSize(
-      new ImageSize(videoFormat.width, videoFormat.height), RealtimeMediaSource.CAMERA
+      new ImageSize(
+        videoFormat.width,
+        videoFormat.height
+      ),
+      RealtimeMediaSource.CAMERA
     );
-    return videoFormat.resized(targetSize.width, targetSize.height);
+    return videoFormat.resized(
+      targetSize.width,
+      targetSize.height
+    );
   }
 
-  /**
-   * 清除摄像头预览的采集、绑定和通知标记。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears camera capture, binding, and readiness markers. */
   private resetPreviewReadiness(): void {
     this.hasCapturedFrame = false;
     this.hasReportedPreviewReady = false;
   }
 
-  /**
-   * 在采集和预览绑定均完成后仅通知一次预览就绪。
-   *
-   * @returns 无返回值。
-   */
+  /** Notifies preview readiness once capture and binding are both ready. */
   private notifyPreviewReadyIfNeeded(): void {
     const listener: CameraPreviewReadyHandler | null = this.previewReadyListener;
     if (listener === null || !this.hasCapturedFrame || !this.hasBoundPreview ||
@@ -693,19 +833,30 @@ export class CameraController {
     try {
       listener();
     } catch (error) {
-      this.logResourceError(XmaxLogger.localized("执行摄像头预览就绪监听器", "Invoke Camera Preview Ready Listener"), error);
+      this.logResourceError(
+        XmaxLogger.localized(
+          "执行摄像头预览就绪监听器",
+          "Invoke Camera Preview Ready Listener"
+        ),
+        error
+      );
     }
   }
 
   /**
-   * 记录摄像头资源操作失败的名称和原因。
+   * Logs a camera resource operation failure and its reason.
    *
-   * @param action 正在执行的资源操作名称或操作函数。
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param action The resource operation name or function.
+   * @param error The exception raised by the camera resource operation.
    */
-  private logResourceError(action: string, error: Object): void {
+  private logResourceError(
+    action: string,
+    error: Object
+  ): void {
     const reason: string = error instanceof Error ? error.message : String(error);
-    XmaxLogger.error(`${action}${XmaxLogger.localized("失败\n└─ 原因：", " Failed\n└─ Reason: ")}${reason}`, 'Camera');
+    XmaxLogger.error(
+      `${action}${XmaxLogger.localized("失败\n└─ 原因：", " Failed\n└─ Reason: ")}${reason}`,
+      'Camera'
+    );
   }
 }

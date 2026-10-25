@@ -1,31 +1,33 @@
 //
 //  XmaxEnvironment.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** Xmax 服务环境。 */
+/** An Xmax service environment. */
 export enum XmaxEnvironment {
 
-  /** 国内环境。 */
+  /** The China environment. */
   CHINA = 'china',
 
-  /** 海外环境。 */
+  /** The global environment. */
   GLOBAL = 'global'
 }
 
 /**
- * 根据服务环境返回对应的 API 基础地址。
+ * Returns the API base URL for a service environment.
  *
- * @param environment SDK 连接的服务环境。
- * @returns 当前服务环境使用的 API 基础地址。
+ * @param environment The service environment.
+ *
+ * @returns The environment's API base URL.
  */
-export function apiBaseURL(environment: XmaxEnvironment): string {
+export function apiBaseURL(
+  environment: XmaxEnvironment
+): string {
   switch (environment) {
     case XmaxEnvironment.CHINA:
       return 'https://cloud.xmax.22duck.cn/open/api/v1';

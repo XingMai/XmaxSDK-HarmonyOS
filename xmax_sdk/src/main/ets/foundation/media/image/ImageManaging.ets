@@ -1,10 +1,9 @@
 //
 //  ImageManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,30 +11,39 @@
 import { image } from '@kit.ImageKit';
 import { DecodedImage } from './DecodedImage';
 
-/** 定义 SDK 内部使用的平台图片处理能力。 */
+/** An interface for platform image processing. */
 export interface ImageManaging {
 
   /**
-   * 解码图片编码数据。
+   * Decodes encoded image data.
    *
-   * @param data 完整的图片编码数据。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param data The complete encoded image bytes.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  decode(data: ArrayBuffer | Uint8Array): Promise<DecodedImage>;
+  decode(
+    data: ArrayBuffer | Uint8Array
+  ): Promise<DecodedImage>;
 
   /**
-   * 解码本地图片文件。
+   * Decodes a local image file.
    *
-   * @param filePath 可读取的本地图片文件路径。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param filePath The readable local image file path.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  decodeFile(filePath: string): Promise<DecodedImage>;
+  decodeFile(
+    filePath: string
+  ): Promise<DecodedImage>;
 
   /**
-   * 为平台 PixelMap 创建不影响调用方所有权的已解码图片快照。
+   * Snapshots a PixelMap without changing caller ownership.
    *
-   * @param pixelMap 接入方持有的 PixelMap；SDK 不会修改或释放该对象。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param pixelMap The caller-owned PixelMap, which XmaxSDK neither modifies nor releases.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  decodePixelMap(pixelMap: image.PixelMap): Promise<DecodedImage>;
+  decodePixelMap(
+    pixelMap: image.PixelMap
+  ): Promise<DecodedImage>;
 }

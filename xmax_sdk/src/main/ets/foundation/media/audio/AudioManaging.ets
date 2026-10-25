@@ -1,72 +1,69 @@
 //
 //  AudioManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 import { AudioFrame } from './AudioFrame';
 
-/** 定义本地 PCM 音频播放能力。 */
+/** An interface for local PCM playback. */
 export interface AudioManaging {
 
-  /** 本地播放音量 */
-  /** 当前配置的本地播放音量（0～1），默认 0.45。 */
+  /** The configured local playback volume in 0 to 1; defaults to 0.45. */
   readonly volume: number;
 
   /**
-   * 创建并启动本地 PCM 音频播放器。
+   * Creates and starts a local PCM player.
    *
-   * @returns 播放器启动完成后的 Promise。
+   * The Promise fulfills after playback starts.
    */
   start(): Promise<void>;
 
   /**
-   * 写入一帧本地预览音频。
+   * Queues a local preview audio frame.
    *
-   * @param frame 待播放的 PCM 音频帧。
-   * @returns 无返回值。
+   * @param frame The PCM frame to play.
    */
-  write(frame: AudioFrame): void;
+  write(
+    frame: AudioFrame
+  ): void;
 
   /**
-   * 启用或暂停本地音频预览，不影响音频帧的其他消费者。
+   * Enables or pauses local audio preview without affecting other frame consumers.
    *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setPlaybackEnabled(enabled: boolean): void;
+  setPlaybackEnabled(
+    enabled: boolean
+  ): void;
 
   /**
-   * 设置播放器音量（0～1），播放器停止后保留设置。
+   * Sets player volume in 0 to 1, retaining it after the player stops.
    *
-   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume The volume in 0 to 1, from muted to original volume.
    */
-  setVolume(volume: number): Promise<void>;
+  setVolume(
+    volume: number
+  ): Promise<void>;
 
   /**
-   * 清除尚未播放的音频数据。
+   * Clears unplayed audio data.
    *
-   * @returns 缓冲区清理完成后的 Promise。
+   * The Promise fulfills after buffered audio is cleared.
    */
   flush(): Promise<void>;
 
-  /**
-   * 等待已提交的本地音频播放完，不清空尾部音频。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for queued local audio playback without dropping its tail. */
   drain(): Promise<void>;
 
   /**
-   * 停止本地音频播放并释放资源。
+   * Stops local audio playback and releases resources.
    *
-   * @returns 播放器停止完成后的 Promise。
+   * The Promise fulfills after the player stops.
    */
   stop(): Promise<void>;
 }

@@ -1,10 +1,9 @@
 //
 //  video_frame_converter.cpp
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -25,41 +24,38 @@
 #include "libyuv/scale.h"
 
 namespace {
+
 /**
- * 比较缓存转换计划与输入配置，判断中间缓冲能否复用。
+ * Checks whether the cached conversion plan matches the input configuration.
  *
- * @param left 缓存转换计划持有的几何配置。
- * @param right 当前帧请求使用的转换配置。
- * @returns 源布局、方向和目标尺寸均一致时返回 true。
+ * @param left The geometry stored in the cached plan.
+ * @param right The requested frame conversion configuration.
+ * @return True if source layout, rotation, and target dimensions match.
  */
-bool MatchesConfiguration(
-    const xmax::internal::VideoFrameTransformGeometry& left,
-    const xmax::VideoFrameTransformConfiguration& right) {
-  return left.sourceWidth == right.sourceWidth &&
-      left.sourceHeight == right.sourceHeight &&
+bool MatchesConfiguration(const xmax::internal::VideoFrameTransformGeometry &left,
+    const xmax::VideoFrameTransformConfiguration &right) {
+  return left.sourceWidth == right.sourceWidth && left.sourceHeight == right.sourceHeight &&
       left.sourceStride == right.sourceStride &&
-      left.sourceChromaStride == right.sourceChromaStride &&
-      left.rotation == right.rotation &&
-      left.targetWidth == right.targetWidth &&
-      left.targetHeight == right.targetHeight;
+      left.sourceChromaStride == right.sourceChromaStride && left.rotation == right.rotation &&
+      left.targetWidth == right.targetWidth && left.targetHeight == right.targetHeight;
 }
 
 /**
- * 将数值向下取整为偶数。
+ * Rounds a value down to an even integer.
  *
- * @param value 待读取或计算的数值。
- * @returns 不大于原值的最大偶数。
+ * @param value The value to read or calculate.
+ * @return The greatest even integer not exceeding the input.
  */
 int32_t FloorToEven(double value) {
   return static_cast<int32_t>(std::floor(value)) & ~1;
 }
 
 /**
- * 将像素长度限制为合法偶数且不超过指定上限。
+ * Clamps a pixel length to a valid even value within the limit.
  *
- * @param value 待读取或计算的数值。
- * @param maximum 需要限制到的像素上限。
- * @returns 至少为 2 且不超过上限的偶数长度。
+ * @param value The value to read or calculate.
+ * @param maximum The pixel limit.
+ * @return An even length of at least 2 within the limit.
  */
 int32_t ClampEvenLength(double value, int32_t maximum) {
   const int32_t evenMaximum = maximum & ~1;
@@ -67,54 +63,46 @@ int32_t ClampEvenLength(double value, int32_t maximum) {
 }
 
 /**
- * 将裁剪偏移限制为非负偶数且不超过指定边界。
+ * Clamps a crop offset to a nonnegative even value within bounds.
  *
- * @param value 待读取或计算的数值。
- * @param maximum 需要限制到的像素上限。
- * @returns 合法的偶数裁剪偏移。
+ * @param value The value to read or calculate.
+ * @param maximum The pixel limit.
+ * @return The valid even crop offset.
  */
-int32_t ClampEvenOffset(
-    double value,
-    int32_t maximum) {
+int32_t ClampEvenOffset(double value, int32_t maximum) {
   return std::clamp(FloorToEven(value), 0, maximum & ~1);
 }
 
 /**
- * 将角度转换为 libyuv 使用的旋转模式。
+ * Converts degrees into the libyuv rotation mode.
  *
- * @param rotation 旋转角度，支持 0、90、180 或 270。
- * @returns 对应角度的 libyuv 旋转枚举。
+ * @param rotation The rotation, in degrees: 0, 90, 180, or 270.
+ * @return The libyuv rotation mode.
  */
 libyuv::RotationMode ToRotationMode(int32_t rotation) {
   switch (rotation) {
-    case 90:
-      return libyuv::kRotate90;
-    case 180:
-      return libyuv::kRotate180;
-    case 270:
-      return libyuv::kRotate270;
-    default:
-      return libyuv::kRotate0;
+  case 90:
+    return libyuv::kRotate90;
+  case 180:
+    return libyuv::kRotate180;
+  case 270:
+    return libyuv::kRotate270;
+  default:
+    return libyuv::kRotate0;
   }
 }
 
-/**
- * 持有可复用的 I420 像素缓冲区，提供平面地址与行跨度。
- */
+/** A reusable I420 buffer with plane addresses and row strides. */
 class I420Buffer {
- public:
+public:
   /**
-   * 重新设置 I420 平面布局，并按需分配亮度和色度缓冲区。
+   * Resets I420 layout and allocates luma and chroma buffers as needed.
    *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param allocateLuma 是否为亮度平面分配缓冲区；false 时仅分配色度平面。
-   * @returns 无返回值。
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   * @param allocateLuma Whether to allocate luma; false allocates only chroma.
    */
-  void Reset(
-      int32_t width,
-      int32_t height,
-      bool allocateLuma) {
+  void Reset(int32_t width, int32_t height, bool allocateLuma) {
     width_ = width;
     height_ = height;
     chromaWidth_ = (width + 1) / 2;
@@ -122,183 +110,191 @@ class I420Buffer {
 
     // Converted/rotated Y is read from the source or written directly to the
     // caller. Only allocate intermediate Y when a separate rotation is needed.
-    const size_t lumaLength = allocateLuma ? static_cast<size_t>(width_) *
-        static_cast<size_t>(height_) : 0;
-    const size_t chromaLength = static_cast<size_t>(chromaWidth_) *
-        static_cast<size_t>(chromaHeight_);
+    const size_t lumaLength =
+        allocateLuma ? static_cast<size_t>(width_) * static_cast<size_t>(height_) : 0;
+    const size_t chromaLength =
+        static_cast<size_t>(chromaWidth_) * static_cast<size_t>(chromaHeight_);
     data_.resize(lumaLength + chromaLength * 2);
     uOffset_ = lumaLength;
     vOffset_ = lumaLength + chromaLength;
   }
 
   /**
-   * 读取 I420 图像宽度。
+   * Returns the I420 image width.
    *
-   * @returns 图像宽度，单位像素。
+   * @return The image width, in pixels.
    */
   int32_t width() const {
     return width_;
   }
 
   /**
-   * 读取 I420 图像高度。
+   * Returns the I420 image height.
    *
-   * @returns 图像高度，单位像素。
+   * @return The image height, in pixels.
    */
   int32_t height() const {
     return height_;
   }
 
   /**
-   * 读取 I420 色度平面的行跨度。
+   * Returns the I420 chroma row stride.
    *
-   * @returns U、V 平面每行的字节跨度。
+   * @return The U and V plane row stride, in bytes.
    */
   int32_t chromaStride() const {
     return chromaWidth_;
   }
 
   /**
-   * 取得 I420 亮度平面地址。
+   * Returns the I420 luma plane address.
    *
-   * @returns 亮度平面首地址。
+   * @return The luma plane address.
    */
-  uint8_t* y() {
+  uint8_t *y() {
     return uOffset_ == 0 ? nullptr : data_.data();
   }
 
   /**
-   * 取得 I420 U 色度平面地址。
+   * Returns the I420 U plane address.
    *
-   * @returns U 平面首地址。
+   * @return The U plane address.
    */
-  uint8_t* u() {
+  uint8_t *u() {
     return data_.data() + uOffset_;
   }
 
   /**
-   * 取得 I420 U 色度平面地址。
+   * Returns the I420 U plane address.
    *
-   * @returns U 平面首地址。
+   * @return The U plane address.
    */
-  const uint8_t* u() const {
+  const uint8_t *u() const {
     return data_.data() + uOffset_;
   }
 
   /**
-   * 取得 I420 V 色度平面地址。
+   * Returns the I420 V plane address.
    *
-   * @returns V 平面首地址。
+   * @return The V plane address.
    */
-  uint8_t* v() {
+  uint8_t *v() {
     return data_.data() + vOffset_;
   }
 
   /**
-   * 取得 I420 V 色度平面地址。
+   * Returns the I420 V plane address.
    *
-   * @returns V 平面首地址。
+   * @return The V plane address.
    */
-  const uint8_t* v() const {
+  const uint8_t *v() const {
     return data_.data() + vOffset_;
   }
 
- private:
+private:
+  // Pixel dimensions and chroma layout
 
-  /** 像素尺寸与色度平面布局 */
+  /** The image or frame width. */
   int32_t width_ = 0;
+
+  /** The image or frame height. */
   int32_t height_ = 0;
+
+  /** The chroma plane width, in samples. */
   int32_t chromaWidth_ = 0;
+
+  /** The chroma plane height, in samples. */
   int32_t chromaHeight_ = 0;
+
+  /** The U plane starting byte offset. */
   size_t uOffset_ = 0;
+
+  /** The V plane starting byte offset. */
   size_t vOffset_ = 0;
 
-  /** 可复用像素缓冲区 */
+  // Reusable pixel buffers
+
+  /** The owned media bytes. */
   std::vector<uint8_t> data_;
 };
 
-/**
- * 缓存裁剪、缩放和旋转所需的几何信息与中间帧，减少逐帧内存分配。
- */
+/** Caches geometry and intermediate frames for crop, scaling, and rotation. */
 struct LibyuvTransformPlan {
-  /**
-   * 按帧几何信息创建可复用的裁剪、缩放和旋转缓冲区。
-   *
-   * @param frameGeometry 已经计算好的裁剪、方向和目标尺寸。
-   * @returns 无返回值；完成实例初始化。
-   */
-  explicit LibyuvTransformPlan(
-      const xmax::internal::VideoFrameTransformGeometry& frameGeometry)
-      : geometry(frameGeometry) {
-    cropWidth = ClampEvenLength(
-        geometry.sourceCrop.width,
-        geometry.sourceWidth);
-    cropHeight = ClampEvenLength(
-        geometry.sourceCrop.height,
-        geometry.sourceHeight);
-    cropX = ClampEvenOffset(
-        geometry.sourceCrop.x,
-        geometry.sourceWidth - cropWidth);
-    cropY = ClampEvenOffset(
-        geometry.sourceCrop.y,
-        geometry.sourceHeight - cropHeight);
 
-    const bool swapsDimensions = geometry.rotation == 90 ||
-        geometry.rotation == 270;
-    const int32_t scaledWidth = swapsDimensions ?
-        geometry.targetHeight : geometry.targetWidth;
-    const int32_t scaledHeight = swapsDimensions ?
-        geometry.targetWidth : geometry.targetHeight;
+  /**
+   * Allocates reusable intermediate buffers for the frame geometry.
+   *
+   * @param frameGeometry The resolved crop, rotation, and target dimensions.
+   */
+  explicit LibyuvTransformPlan(const xmax::internal::VideoFrameTransformGeometry &frameGeometry)
+      : geometry(frameGeometry) {
+    cropWidth = ClampEvenLength(geometry.sourceCrop.width, geometry.sourceWidth);
+    cropHeight = ClampEvenLength(geometry.sourceCrop.height, geometry.sourceHeight);
+    cropX = ClampEvenOffset(geometry.sourceCrop.x, geometry.sourceWidth - cropWidth);
+    cropY = ClampEvenOffset(geometry.sourceCrop.y, geometry.sourceHeight - cropHeight);
+
+    const bool swapsDimensions = geometry.rotation == 90 || geometry.rotation == 270;
+    const int32_t scaledWidth = swapsDimensions ? geometry.targetHeight : geometry.targetWidth;
+    const int32_t scaledHeight = swapsDimensions ? geometry.targetWidth : geometry.targetHeight;
 
     convertedFrame.Reset(cropWidth, cropHeight, false);
     scaledFrame.Reset(scaledWidth, scaledHeight, geometry.rotation != 0);
     if (geometry.rotation != 0) {
-      rotatedFrame.Reset(
-          geometry.targetWidth,
-          geometry.targetHeight,
-          false);
+      rotatedFrame.Reset(geometry.targetWidth, geometry.targetHeight, false);
     }
   }
 
   /**
-   * 选择转换流程中最终持有目标方向像素的中间帧。
+   * Selects the intermediate frame holding the final oriented pixels.
    *
-   * @returns 最终缩放或旋转后的 I420 帧引用。
+   * @return The scaled or rotated I420 frame.
    */
-  const I420Buffer& finalFrame() const {
+  const I420Buffer &finalFrame() const {
     return geometry.rotation == 0 ? scaledFrame : rotatedFrame;
   }
 
-  /** 转换几何与偶数裁剪区域 */
+  // Conversion geometry and even crop bounds
+
+  /** The resolved source crop, orientation, and output dimensions. */
   xmax::internal::VideoFrameTransformGeometry geometry;
+
+  /** The source crop's horizontal offset, in pixels. */
   int32_t cropX = 0;
+
+  /** The source crop's vertical offset, in pixels. */
   int32_t cropY = 0;
+
+  /** The source crop width, in pixels. */
   int32_t cropWidth = 0;
+
+  /** The source crop height, in pixels. */
   int32_t cropHeight = 0;
 
-  /** 格式转换、缩放与旋转中间帧 */
+  // Conversion, scaling, and rotation intermediates
+
+  /** The reusable I420 conversion output. */
   I420Buffer convertedFrame;
+
+  /** The reusable I420 scaling output. */
   I420Buffer scaledFrame;
+
+  /** The reusable I420 rotation output. */
   I420Buffer rotatedFrame;
 };
 
 /**
- * 将 NV21 交错色度分离到转换计划的 I420 U、V 平面。
+ * Splits NV21 chroma into the conversion plan's I420 U and V planes.
  *
- * @param sourceChroma 源图像交错色度平面首地址。
- * @param plan 包含几何信息与可复用中间帧的转换计划。
- * @returns 无返回值。
+ * @param sourceChroma The source interleaved chroma plane address.
+ * @param plan The conversion geometry and reusable intermediate frames.
  */
-void SplitSourceChroma(
-    const uint8_t* sourceChroma,
-    LibyuvTransformPlan* plan) {
-  const uint8_t* croppedChroma = sourceChroma +
+void SplitSourceChroma(const uint8_t *sourceChroma, LibyuvTransformPlan *plan) {
+  const uint8_t *croppedChroma = sourceChroma +
       static_cast<size_t>(plan->cropY / 2) *
           static_cast<size_t>(plan->geometry.sourceChromaStride) +
       static_cast<size_t>(plan->cropX);
 
-  libyuv::SplitUVPlane(
-      croppedChroma,
+  libyuv::SplitUVPlane(croppedChroma,
       plan->geometry.sourceChromaStride,
       plan->convertedFrame.v(),
       plan->convertedFrame.chromaStride(),
@@ -309,90 +305,79 @@ void SplitSourceChroma(
 }
 
 /**
- * 按转换计划缩放源亮度及色度到目标 I420 平面。
+ * Scales luma and chroma into the target I420 planes.
  *
- * @param sourceLuma 源图像 Y 亮度平面首地址。
- * @param destination 调用方提供的目标 NV12 缓冲区，容量须覆盖目标宽高的 1.5 倍。
- * @param plan 包含几何信息与可复用中间帧的转换计划。
- * @returns libyuv 缩放成功时返回 true。
+ * @param sourceLuma The source Y plane address.
+ * @param destination The caller-owned NV12 buffer with capacity for 1.5 times the target pixel count.
+ * @param plan The conversion geometry and reusable intermediate frames.
+ * @return True if libyuv scaling succeeds.
  */
-bool ScaleFrame(
-    const uint8_t* sourceLuma,
-    uint8_t* destination,
-    LibyuvTransformPlan* plan) {
-  const uint8_t* croppedLuma = sourceLuma +
-      static_cast<size_t>(plan->cropY) *
-          static_cast<size_t>(plan->geometry.sourceStride) +
+bool ScaleFrame(const uint8_t *sourceLuma, uint8_t *destination, LibyuvTransformPlan *plan) {
+  const uint8_t *croppedLuma = sourceLuma +
+      static_cast<size_t>(plan->cropY) * static_cast<size_t>(plan->geometry.sourceStride) +
       static_cast<size_t>(plan->cropX);
-  uint8_t* scaledLuma = plan->geometry.rotation == 0 ?
-      destination : plan->scaledFrame.y();
-  return libyuv::I420Scale(
-      croppedLuma,
-      plan->geometry.sourceStride,
-      plan->convertedFrame.u(),
-      plan->convertedFrame.chromaStride(),
-      plan->convertedFrame.v(),
-      plan->convertedFrame.chromaStride(),
-      plan->convertedFrame.width(),
-      plan->convertedFrame.height(),
-      scaledLuma,
-      plan->scaledFrame.width(),
-      plan->scaledFrame.u(),
-      plan->scaledFrame.chromaStride(),
-      plan->scaledFrame.v(),
-      plan->scaledFrame.chromaStride(),
-      plan->scaledFrame.width(),
-      plan->scaledFrame.height(),
-      libyuv::kFilterBilinear) == 0;
+  uint8_t *scaledLuma = plan->geometry.rotation == 0 ? destination : plan->scaledFrame.y();
+  return libyuv::I420Scale(croppedLuma,
+             plan->geometry.sourceStride,
+             plan->convertedFrame.u(),
+             plan->convertedFrame.chromaStride(),
+             plan->convertedFrame.v(),
+             plan->convertedFrame.chromaStride(),
+             plan->convertedFrame.width(),
+             plan->convertedFrame.height(),
+             scaledLuma,
+             plan->scaledFrame.width(),
+             plan->scaledFrame.u(),
+             plan->scaledFrame.chromaStride(),
+             plan->scaledFrame.v(),
+             plan->scaledFrame.chromaStride(),
+             plan->scaledFrame.width(),
+             plan->scaledFrame.height(),
+             libyuv::kFilterBilinear) == 0;
 }
 
 /**
- * 将缩放后的 I420 帧旋转到目标方向，零角度时直接复用。
+ * Rotates the scaled I420 frame, reusing it for zero rotation.
  *
- * @param destination 调用方提供的目标 NV12 缓冲区，容量须覆盖目标宽高的 1.5 倍。
- * @param plan 包含几何信息与可复用中间帧的转换计划。
- * @returns 旋转成功或无需旋转时返回 true。
+ * @param destination The caller-owned NV12 buffer with capacity for 1.5 times the target pixel count.
+ * @param plan The conversion geometry and reusable intermediate frames.
+ * @return True if rotation succeeds or is unnecessary.
  */
-bool RotateFrame(uint8_t* destination, LibyuvTransformPlan* plan) {
+bool RotateFrame(uint8_t *destination, LibyuvTransformPlan *plan) {
   if (plan->geometry.rotation == 0) {
     return true;
   }
 
-  return libyuv::I420Rotate(
-      plan->scaledFrame.y(),
-      plan->scaledFrame.width(),
-      plan->scaledFrame.u(),
-      plan->scaledFrame.chromaStride(),
-      plan->scaledFrame.v(),
-      plan->scaledFrame.chromaStride(),
-      destination,
-      plan->geometry.targetWidth,
-      plan->rotatedFrame.u(),
-      plan->rotatedFrame.chromaStride(),
-      plan->rotatedFrame.v(),
-      plan->rotatedFrame.chromaStride(),
-      plan->scaledFrame.width(),
-      plan->scaledFrame.height(),
-      ToRotationMode(plan->geometry.rotation)) == 0;
+  return libyuv::I420Rotate(plan->scaledFrame.y(),
+             plan->scaledFrame.width(),
+             plan->scaledFrame.u(),
+             plan->scaledFrame.chromaStride(),
+             plan->scaledFrame.v(),
+             plan->scaledFrame.chromaStride(),
+             destination,
+             plan->geometry.targetWidth,
+             plan->rotatedFrame.u(),
+             plan->rotatedFrame.chromaStride(),
+             plan->rotatedFrame.v(),
+             plan->rotatedFrame.chromaStride(),
+             plan->scaledFrame.width(),
+             plan->scaledFrame.height(),
+             ToRotationMode(plan->geometry.rotation)) == 0;
 }
 
 /**
- * 将最终 I420 色度平面合并为目标 NV12 的交错 UV 平面。
+ * Interleaves the final I420 chroma into target NV12 UV.
  *
- * @param destination 调用方提供的目标 NV12 缓冲区，容量须覆盖目标宽高的 1.5 倍。
- * @param plan 包含几何信息与可复用中间帧的转换计划。
- * @returns 无返回值。
+ * @param destination The caller-owned NV12 buffer with capacity for 1.5 times the target pixel count.
+ * @param plan The conversion geometry and reusable intermediate frames.
  */
-void WriteNv12Chroma(
-    uint8_t* destination,
-    const LibyuvTransformPlan& plan) {
-  const I420Buffer& frame = plan.finalFrame();
-  uint8_t* destinationChroma = destination +
+void WriteNv12Chroma(uint8_t *destination, const LibyuvTransformPlan &plan) {
+  const I420Buffer &frame = plan.finalFrame();
+  uint8_t *destinationChroma = destination +
       static_cast<size_t>(plan.geometry.targetWidth) *
           static_cast<size_t>(plan.geometry.targetHeight);
 
-  libyuv::MergeUVPlane(
-      frame.u(),
+  libyuv::MergeUVPlane(frame.u(),
       frame.chromaStride(),
       frame.v(),
       frame.chromaStride(),
@@ -401,48 +386,39 @@ void WriteNv12Chroma(
       plan.geometry.targetWidth / 2,
       plan.geometry.targetHeight / 2);
 }
-}  /** namespace */
+} // namespace
 
 namespace xmax {
-/**
- * 持有视频转换计划，隔离转换器的缓存实现。
- */
-class VideoFrameTransformer::Impl {
- public:
 
-  /** 可复用视频转换计划 */
+/** Owns the cached video conversion plan. */
+class VideoFrameTransformer::Impl {
+public:
+  // Reusable video conversion plan
+
+  /** The cached geometry and intermediate conversion buffers. */
   std::unique_ptr<LibyuvTransformPlan> plan;
 };
 
-/**
- * 创建可复用的视频帧转换器。
- *
- * @returns 无返回值；完成实例初始化。
- */
-VideoFrameTransformer::VideoFrameTransformer()
-    : impl_(std::make_unique<Impl>()) {}
+/** Creates a reusable video frame converter. */
+VideoFrameTransformer::VideoFrameTransformer() : impl_(std::make_unique<Impl>()) {
+}
 
-/**
- * 停止媒体输出并释放实例持有的原生资源与缓存。
- *
- * @returns 无返回值。
- */
+/** Releases the cached conversion plan and intermediate buffers. */
 VideoFrameTransformer::~VideoFrameTransformer() = default;
 
 /**
- * 校验源布局并完成 NV21 到 NV12 的裁剪、缩放和旋转；非法参数或转换失败时抛出异常。
+ * Validates and transforms NV21 into cropped, scaled, rotated NV12; invalid input or conversion failure
+ * throws.
  *
- * @param sourceLuma 源图像 Y 亮度平面首地址。
- * @param sourceChroma 源图像交错色度平面首地址。
- * @param destination 调用方提供的目标 NV12 缓冲区，容量须覆盖目标宽高的 1.5 倍。
- * @param configuration 源图像布局、旋转角度和目标尺寸配置。
- * @returns 无返回值。
+ * @param sourceLuma The source Y plane address.
+ * @param sourceChroma The source interleaved chroma plane address.
+ * @param destination The caller-owned NV12 buffer with capacity for 1.5 times the target pixel count.
+ * @param configuration The source layout, rotation, and target dimensions.
  */
-void VideoFrameTransformer::TransformNv21ToNv12(
-    const uint8_t* sourceLuma,
-    const uint8_t* sourceChroma,
-    uint8_t* destination,
-    const VideoFrameTransformConfiguration& configuration) {
+void VideoFrameTransformer::TransformNv21ToNv12(const uint8_t *sourceLuma,
+    const uint8_t *sourceChroma,
+    uint8_t *destination,
+    const VideoFrameTransformConfiguration &configuration) {
   const auto validLength = [](int32_t length) {
     return length >= 2 && length <= 32768 && length % 2 == 0;
   };
@@ -456,8 +432,7 @@ void VideoFrameTransformer::TransformNv21ToNv12(
     throw std::invalid_argument("Invalid NV21 frame configuration");
   }
 
-  if (impl_->plan == nullptr ||
-      !MatchesConfiguration(impl_->plan->geometry, configuration)) {
+  if (impl_->plan == nullptr || !MatchesConfiguration(impl_->plan->geometry, configuration)) {
     impl_->plan = std::make_unique<LibyuvTransformPlan>(
         internal::MakeVideoFrameTransformGeometry(configuration));
   }
@@ -471,4 +446,4 @@ void VideoFrameTransformer::TransformNv21ToNv12(
   }
   WriteNv12Chroma(destination, *impl_->plan);
 }
-}  /** namespace xmax */
+} // namespace xmax

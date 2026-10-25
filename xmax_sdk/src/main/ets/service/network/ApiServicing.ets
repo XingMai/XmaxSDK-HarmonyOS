@@ -1,31 +1,34 @@
 //
 //  ApiServicing.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 定义 Xmax API 的基础请求能力。 */
+/** An interface for Xmax API requests. */
 export interface ApiServicing {
 
   /**
-   * 发送 GET 请求。
+   * Sends a GET request.
    *
-   * @param path 请求路径。
-   * @returns 响应数据。
+   * @param path The request path.
+   *
+   * @returns The response data.
    */
-  get<T>(path: string): Promise<T>;
+  get<T>(
+    path: string
+  ): Promise<T>;
 
   /**
-   * 发送 POST 请求。
+   * Sends a POST request.
    *
-   * @param path 请求路径。
-   * @param body 请求体。
-   * @returns 响应数据。
+   * @param path The request path.
+   * @param body The request body.
+   *
+   * @returns The response data.
    */
   post<T>(
     path: string,
@@ -33,11 +36,12 @@ export interface ApiServicing {
   ): Promise<T>;
 
   /**
-   * 发送 PUT 请求。
+   * Sends a PUT request.
    *
-   * @param path 请求路径。
-   * @param body 请求体。
-   * @returns 响应数据。
+   * @param path The request path.
+   * @param body The request body.
+   *
+   * @returns The response data.
    */
   put<T>(
     path: string,
@@ -45,10 +49,13 @@ export interface ApiServicing {
   ): Promise<T>;
 
   /**
-   * 发送 DELETE 请求。
+   * Sends a DELETE request.
    *
-   * @param path 请求路径。
-   * @returns 响应数据。
+   * @param path The request path.
+   *
+   * @returns The response data.
    */
-  delete<T>(path: string): Promise<T>;
+  delete<T>(
+    path: string
+  ): Promise<T>;
 }

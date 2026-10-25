@@ -1,36 +1,35 @@
 //
 //  RealtimePerformanceAlarm.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 import { RealtimeVideoFormat } from './RealtimeVideoFormat';
 
-/** 标识设备性能正常或已受限。 */
+/** The device performance status: normal or limited. */
 export enum RealtimePerformanceStatus {
+
+  /** Device performance is limited. */
   LIMITED = 'Limited',
+
+  /** Device performance has recovered. */
   RECOVERED = 'Recovered'
 }
 
-/** 提供设备性能状态及 RTC 建议采用的视频格式。 */
+/** Device performance state and the recommended RTC video format. */
 export class RealtimePerformanceAlarm {
 
-  /** 设备性能状态与建议规格 */
+  /** The server session status. */
   readonly status: RealtimePerformanceStatus;
+
+  /** The video format recommended by a device performance alarm. */
   readonly suggestedVideoFormat?: RealtimeVideoFormat;
 
-  /**
-   * 创建设备性能告警。
-   *
-   * @param status 会话状态或设备性能状态。
-   * @param suggestedVideoFormat 设备性能告警建议使用的视频格式；不可用时可省略。
-   * @returns 新建的 RealtimePerformanceAlarm 实例。
-   */
+  /** Creates a device performance alarm. */
   constructor(
     status: RealtimePerformanceStatus,
     suggestedVideoFormat?: RealtimeVideoFormat
@@ -41,9 +40,10 @@ export class RealtimePerformanceAlarm {
 }
 
 /**
- * 接收设备性能告警与建议格式的回调。
+ * Receives device performance alarms and recommended formats.
  *
- * @param alarm 包含性能状态和建议视频格式的告警。
- * @returns 无返回值。
+ * @param alarm The performance status and recommended video format.
  */
-export type RealtimePerformanceAlarmListener = (alarm: RealtimePerformanceAlarm) => void;
+export type RealtimePerformanceAlarmListener = (
+  alarm: RealtimePerformanceAlarm
+) => void;

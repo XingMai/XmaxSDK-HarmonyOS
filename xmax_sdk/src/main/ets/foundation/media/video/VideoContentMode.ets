@@ -1,19 +1,19 @@
 //
 //  VideoContentMode.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 视频内容在渲染容器中的显示模式。 */
+/** The video fitting mode within a rendering container. */
 export enum VideoContentMode {
-  /** 等比完整显示，允许容器留空。 */
+
+  /** Preserves the entire image's aspect ratio, allowing empty space. */
   FIT = 'fit',
 
-  /** 等比铺满容器，允许裁剪画面。 */
+  /** Fills the container while preserving aspect ratio, allowing cropping. */
   FILL = 'fill'
 }

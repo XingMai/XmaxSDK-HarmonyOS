@@ -1,10 +1,9 @@
 //
 //  RemoteVideoController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,36 +13,48 @@ import { RtcManaging } from '../../foundation/rtc/RtcManaging';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 import { RemoteVideoControlling } from './RemoteVideoControlling';
 
-/** 管理远端视频流与渲染容器之间的绑定关系。 */
+/** Manages remote stream bindings to rendering containers. */
 export class RemoteVideoController implements RemoteVideoControlling {
 
-  /** 平台渲染与就绪通知 */
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
 
-  /** 渲染资源 */
   /**
-   * 通知远端画面是否已具备显示条件。
+   * Reports whether remote video is ready to display.
    *
-   * @param ready 视频画面是否已经可见。
-   * @returns 无返回值。
+   * @param ready Whether video is visible.
    */
-  private readonly readinessListener: (ready: boolean) => void;
+  private readonly readinessListener: (
+    ready: boolean
+  ) => void;
 
-  /** 当前远端流和视图配置 */
+  /** The current remote result stream. */
   private remoteStream: RemoteStream | null = null;
+
+  /** The view currently bound to remote rendering. */
   private remoteViewId: string = '';
+
+  /** The content mode for remote rendering. */
   private remoteContentMode: VideoContentMode = VideoContentMode.FIT;
-  /** 仅缓存当前生成流绑定周期内的真实渲染事件，不复用 RTC 发布周期的历史记录。 */
+
+  /**
+   * Cache real display events only within the current result binding, not the RTC publication's
+   * history.
+   */
   private currentGenerationRendered: boolean = false;
 
   /**
-   * 创建远端视频渲染 Controller。
+   * Creates a remote video controller.
    *
-   * @param rtcManager 提供远端视频绑定能力的 RTC Manager。
-   * @param readinessListener 接收远端画面可见状态的监听器。
-   * @returns 新建的 RemoteVideoController 实例。
+   * @param rtcManager The RTC manager binding remote video.
+   * @param readinessListener The remote video visibility handler.
    */
-  constructor(rtcManager: RtcManaging, readinessListener: (ready: boolean) => void) {
+  constructor(
+    rtcManager: RtcManaging,
+    readinessListener: (
+      ready: boolean
+    ) => void
+  ) {
     this.rtcManager = rtcManager;
     this.readinessListener = readinessListener;
     rtcManager.setRemoteVideoRenderedListener((stream: RemoteStream): void => {
@@ -55,12 +66,13 @@ export class RemoteVideoController implements RemoteVideoControlling {
   }
 
   /**
-   * 更新当前需要渲染的远端视频流。
+   * Updates the remote stream to render.
    *
-   * @param stream 远端视频流；传入空值时清除当前流。
-   * @returns 无返回值。
+   * @param stream The remote stream, or null to clear it.
    */
-  setRemoteStream(stream: RemoteStream | null): void {
+  setRemoteStream(
+    stream: RemoteStream | null
+  ): void {
     const previousStream: RemoteStream | null = this.remoteStream;
     if (previousStream !== null && previousStream !== stream) {
       this.rtcManager.unbindRemoteVideo(previousStream);
@@ -77,8 +89,9 @@ export class RemoteVideoController implements RemoteVideoControlling {
   }
 
   /**
-   * 新任务复用已渲染的 RTC 流时重建视频订阅，让 RTC 再次报告真实首帧渲染。
-   * 仅重新绑定画布不会保证触发首帧事件；连接和本地流保持不变。
+   * Resubscribes when a new task reuses a rendered RTC stream so the renderer reports a fresh first
+   * frame. Canvas rebinding alone does not guarantee a first-frame event; preserve the connection
+   * and local stream.
    */
   private bindCurrentVideo(): void {
     const stream: RemoteStream | null = this.remoteStream;
@@ -88,21 +101,30 @@ export class RemoteVideoController implements RemoteVideoControlling {
     const renewSubscription: boolean = !this.currentGenerationRendered &&
       this.rtcManager.hasRenderedRemoteVideo(stream);
     if (renewSubscription) {
-      this.rtcManager.subscribeRemoteVideo(stream.userId, false);
+      this.rtcManager.subscribeRemoteVideo(
+        stream.userId,
+        false
+      );
     }
-    this.rtcManager.bindRemoteVideo(stream, this.remoteViewId, this.remoteContentMode);
+    this.rtcManager.bindRemoteVideo(
+      stream,
+      this.remoteViewId,
+      this.remoteContentMode
+    );
     if (renewSubscription) {
-      this.rtcManager.subscribeRemoteVideo(stream.userId, true);
+      this.rtcManager.subscribeRemoteVideo(
+        stream.userId,
+        true
+      );
     }
     this.readinessListener(this.currentGenerationRendered);
   }
 
   /**
-   * 将远端视频绑定到指定渲染容器。
+   * Binds remote video to a rendering container.
    *
-   * @param viewId 渲染容器标识。
-   * @param contentMode 画面显示模式。
-   * @returns 无返回值。
+   * @param viewId The rendering container identifier.
+   * @param contentMode The video display mode.
    */
   attach(
     viewId: string,
@@ -118,12 +140,13 @@ export class RemoteVideoController implements RemoteVideoControlling {
   }
 
   /**
-   * 解除指定渲染容器与远端视频的绑定。
+   * Detaches a rendering container from remote video.
    *
-   * @param viewId 渲染容器标识。
-   * @returns 无返回值。
+   * @param viewId The rendering container identifier.
    */
-  detach(viewId: string): void {
+  detach(
+    viewId: string
+  ): void {
     if (this.remoteViewId !== viewId) {
       return;
     }
@@ -137,11 +160,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
     this.readinessListener(false);
   }
 
-  /**
-   * 清理远端视频流和渲染绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears the remote stream and rendering bindings. */
   reset(): void {
     const stream: RemoteStream | null = this.remoteStream;
     this.remoteStream = null;

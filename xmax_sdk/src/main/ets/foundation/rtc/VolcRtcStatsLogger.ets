@@ -1,10 +1,9 @@
 //
 //  VolcRtcStatsLogger.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -20,14 +19,14 @@ import { XmaxLoggerOption } from '../logging/XmaxLoggerOption';
 
 const VOLC_LOG_CATEGORY: string = 'RTC';
 
-/** 火山 RTC 网络质量与性能告警日志；公共视频指标由 RtcStatsLogger 输出。 */
+/** VolcEngine network and performance diagnostics. RtcStatsLogger formats public video metrics. */
 export class VolcRtcStatsLogger {
+
   /**
-   * 输出 RTC 原生网络质量诊断，包括带宽、丢包和往返时延。
+   * Logs native RTC bandwidth, packet loss, and round-trip latency.
    *
-   * @param localQuality 本地 RTC 网络质量统计。
-   * @param remoteQualities RTC 返回的各远端用户网络质量统计。
-   * @returns 无返回值。
+   * @param localQuality The local RTC network quality statistics.
+   * @param remoteQualities The remote users' RTC network quality statistics.
    */
   static logNetworkQuality(
     localQuality: NetworkQualityStats,
@@ -58,22 +57,28 @@ export class VolcRtcStatsLogger {
       const branch: string = isLast ? '└─' : '├─';
       const indent: string = isLast ? '   ' : '│  ';
       const qualityText: string = VolcRtcStatsLogger.networkQualityName(quality.rx_quality);
-      const metricsText: string = VolcRtcStatsLogger.formatNetworkMetrics(quality, false);
+      const metricsText: string = VolcRtcStatsLogger.formatNetworkMetrics(
+        quality,
+        false
+      );
 
       lines.push(`${branch}${XmaxLogger.localized(" 远端接收 ", " Remote Receive ")}${quality.uid}${XmaxLogger.localized("（下行）", " (Downlink)")}`);
       lines.push(`${indent}${XmaxLogger.localized("├─ 质量：", "├─ Quality: ")}${qualityText}`);
       lines.push(`${indent}└─ ${metricsText}`);
     });
 
-    XmaxLogger.debug(lines.join('\n'), VOLC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
+    XmaxLogger.debug(
+      lines.join('\n'),
+      VOLC_LOG_CATEGORY,
+      XmaxLoggerOption.PERFORMANCE
+    );
   }
 
   /**
-   * 输出 RTC 原生设备性能告警和建议视频格式。
+   * Logs native RTC performance alarms and recommended formats.
    *
-   * @param reason 操作结束原因或平台告警原因。
-   * @param data 当前帧的有效媒体数据。
-   * @returns 无返回值。
+   * @param reason The termination reason or platform alarm reason.
+   * @param data The capture dimensions and frame rate recommended by the RTC performance alarm.
    */
   static logPerformanceAlarm(
     reason: PerformanceAlarmReason,
@@ -93,15 +98,20 @@ export class VolcRtcStatsLogger {
       lines.push(`${XmaxLogger.localized("└─ 状态：", "└─ Status: ")}${state}`);
     }
 
-    XmaxLogger.debug(lines.join('\n'), VOLC_LOG_CATEGORY, XmaxLoggerOption.PERFORMANCE);
+    XmaxLogger.debug(
+      lines.join('\n'),
+      VOLC_LOG_CATEGORY,
+      XmaxLoggerOption.PERFORMANCE
+    );
   }
 
   /**
-   * 组合网络质量等级与可用的原生网络指标。
+   * Combines network quality with available native metrics.
    *
-   * @param quality 当前方向或上下行的网络质量采样。
-   * @param includesRtt 是否在日志中包含往返时延。
-   * @returns 包含带宽、丢包及可选 RTT 的文本。
+   * @param quality The uplink, downlink, or combined network quality sample.
+   * @param includesRtt Whether to include round-trip latency.
+   *
+   * @returns The bandwidth, packet loss, and optional RTT text.
    */
   private static formatNetworkMetrics(
     quality: NetworkQualityStats,
@@ -125,58 +135,103 @@ export class VolcRtcStatsLogger {
   }
 
   /**
-   * 为原生网络质量等级生成可读名称。
+   * Returns a readable native network quality name.
    *
-   * @param quality 当前方向或上下行的网络质量采样。
-   * @returns 用于日志显示的网络质量名称。
+   * @param quality The uplink, downlink, or combined network quality sample.
+   *
+   * @returns The network quality name for logging.
    */
-  private static networkQualityName(quality: NetworkQuality): string {
+  private static networkQualityName(
+    quality: NetworkQuality
+  ): string {
     switch (quality) {
       case NetworkQuality.kNetworkQualityExcellent:
-        return XmaxLogger.localized("极好", "Excellent");
+        return XmaxLogger.localized(
+          "极好",
+          "Excellent"
+        );
       case NetworkQuality.kNetworkQualityGood:
-        return XmaxLogger.localized("良好", "Good");
+        return XmaxLogger.localized(
+          "良好",
+          "Good"
+        );
       case NetworkQuality.kNetworkQualityPoor:
-        return XmaxLogger.localized("较差", "Fair");
+        return XmaxLogger.localized(
+          "较差",
+          "Fair"
+        );
       case NetworkQuality.kNetworkQualityBad:
-        return XmaxLogger.localized("差", "Poor");
+        return XmaxLogger.localized(
+          "差",
+          "Poor"
+        );
       case NetworkQuality.kNetworkQualityVbad:
-        return XmaxLogger.localized("极差", "Very Poor");
+        return XmaxLogger.localized(
+          "极差",
+          "Very Poor"
+        );
       case NetworkQuality.kNetworkQualityDown:
-        return XmaxLogger.localized("断网", "Disconnected");
+        return XmaxLogger.localized(
+          "断网",
+          "Disconnected"
+        );
       default:
-        return XmaxLogger.localized("未知", "Unknown");
+        return XmaxLogger.localized(
+          "未知",
+          "Unknown"
+        );
     }
   }
 
   /**
-   * 为设备性能告警原因生成可读名称。
+   * Returns a readable performance alarm name.
    *
-   * @param reason 操作结束原因或平台告警原因。
-   * @returns 用于日志显示的告警名称。
+   * @param reason The termination reason or platform alarm reason.
+   *
+   * @returns The alarm name for logging.
    */
-  private static performanceAlarmName(reason: PerformanceAlarmReason): string {
+  private static performanceAlarmName(
+    reason: PerformanceAlarmReason
+  ): string {
     switch (reason) {
       case PerformanceAlarmReason.kPerformanceAlarmReasonBandwidthFallbacked:
-        return XmaxLogger.localized("网络受限", "Network Constrained");
+        return XmaxLogger.localized(
+          "网络受限",
+          "Network Constrained"
+        );
       case PerformanceAlarmReason.kPerformanceAlarmReasonBandwidthResumed:
-        return XmaxLogger.localized("网络恢复", "Network Recovered");
+        return XmaxLogger.localized(
+          "网络恢复",
+          "Network Recovered"
+        );
       case PerformanceAlarmReason.kPerformanceAlarmReasonPerformanceFallbacked:
-        return XmaxLogger.localized("设备性能受限", "Device Performance Constrained");
+        return XmaxLogger.localized(
+          "设备性能受限",
+          "Device Performance Constrained"
+        );
       case PerformanceAlarmReason.kPerformanceAlarmReasonPerformanceResumed:
-        return XmaxLogger.localized("设备性能恢复", "Device Performance Recovered");
+        return XmaxLogger.localized(
+          "设备性能恢复",
+          "Device Performance Recovered"
+        );
       default:
-        return XmaxLogger.localized("未知", "Unknown");
+        return XmaxLogger.localized(
+          "未知",
+          "Unknown"
+        );
     }
   }
 
   /**
-   * 格式化设备性能告警附带的建议视频规格。
+   * Formats the video format recommended by a performance alarm.
    *
-   * @param data 当前帧的有效媒体数据。
-   * @returns 建议宽高与帧率的文本。
+   * @param data The capture dimensions and frame rate recommended by the RTC performance alarm.
+   *
+   * @returns The recommended dimensions and frame rate text.
    */
-  private static formatSuggestedVideoFormat(data: SourceWantedData): string {
+  private static formatSuggestedVideoFormat(
+    data: SourceWantedData
+  ): string {
     if (!VolcRtcStatsLogger.isPositiveNumber(data.width) ||
       !VolcRtcStatsLogger.isPositiveNumber(data.heigth) ||
       !VolcRtcStatsLogger.isPositiveNumber(data.frame_rate)) {
@@ -187,22 +242,28 @@ export class VolcRtcStatsLogger {
   }
 
   /**
-   * 将带宽值转换为可读日志文本。
+   * Formats bandwidth for logging.
    *
-   * @param bitsPerSecond 每秒比特数表示的原始带宽。
-   * @returns 以 kbps 表示的带宽文本。
+   * @param bitsPerSecond The raw bandwidth, in bits per second.
+   *
+   * @returns The bandwidth text, in kbps.
    */
-  private static formatBandwidth(bitsPerSecond: number): string {
+  private static formatBandwidth(
+    bitsPerSecond: number
+  ): string {
     return `${(bitsPerSecond / 1000).toFixed(0)} kbps`;
   }
 
   /**
-   * 将丢包率转换为百分比日志文本。
+   * Formats packet loss as a percentage.
    *
-   * @param value 待校验、转换或保存的数值。
-   * @returns 丢包百分比文本；无效值使用缺失标记。
+   * @param value The reported packet loss fraction.
+   *
+   * @returns The percentage text, or a missing-value marker if invalid.
    */
-  private static formatPacketLoss(value: number): string {
+  private static formatPacketLoss(
+    value: number
+  ): string {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return '';
     }
@@ -211,22 +272,28 @@ export class VolcRtcStatsLogger {
   }
 
   /**
-   * 判断输入是否为有限数值。
+   * Checks whether a value is finite.
    *
-   * @param value 待校验、转换或保存的数值。
-   * @returns 数值有限时返回 true。
+   * @param value The reported metric to check.
+   *
+   * @returns True if finite.
    */
-  private static isFiniteNumber(value: number): boolean {
+  private static isFiniteNumber(
+    value: number
+  ): boolean {
     return typeof value === 'number' && Number.isFinite(value);
   }
 
   /**
-   * 判断输入是否为有限正数。
+   * Checks whether a value is finite and positive.
    *
-   * @param value 待检查数值。
-   * @returns 数值有限且大于 0 时返回 true。
+   * @param value The value to check.
+   *
+   * @returns True if finite and greater than zero.
    */
-  private static isPositiveNumber(value: number): boolean {
+  private static isPositiveNumber(
+    value: number
+  ): boolean {
     return VolcRtcStatsLogger.isFiniteNumber(value) && value > 0;
   }
 }

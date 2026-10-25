@@ -1,10 +1,9 @@
 //
 //  native_video_file_decoder.h
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,16 +14,14 @@
 #include "napi/native_api.h"
 
 namespace xmax {
+
 /**
- * 向原生模块导出视频文件解码器的异步创建入口。
+ * Exports asynchronous native video decoder creation.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param exports 需要挂载 SDK 原生入口的模块导出对象。
- * @returns 无返回值。
+ * @param env The current ArkTS N-API environment.
+ * @param exports The module object receiving SDK native exports.
  */
-void DefineNativeVideoFileDecoder(
-    napi_env env,
-    napi_value exports);
-}  /** namespace xmax */
+void DefineNativeVideoFileDecoder(napi_env env, napi_value exports);
+} // namespace xmax
 
 #endif

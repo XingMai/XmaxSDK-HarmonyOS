@@ -1,10 +1,9 @@
 //
 //  XmaxRealtimeConnectionManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -32,78 +31,98 @@ import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 
 /**
- * 判断连接操作是否仍有效，用于忽略连接过程中的过期结果。
+ * Checks connection operation validity to reject obsolete asynchronous results.
  *
- * @returns 当前连接操作仍有效时返回 true，否则返回 false。
+ * @returns True while the connection operation remains valid.
  */
 type ConnectionValidity = () => boolean;
 
 /**
- * 连接心跳失败时接收会话标识和错误的回调。
+ * Receives a session identifier and heartbeat failure.
  *
- * @param sessionId 服务端实时会话标识。
- * @param error 当前操作失败或终止的原因。
- * @returns 操作完成时兑现的 Promise。
+ * @param sessionId The server realtime session identifier.
+ * @param error The failure reported by the server session heartbeat.
  */
 type ConnectionHeartbeatFailureHandler = (
   sessionId: string,
   error: XmaxError
 ) => Promise<void>;
 
-/** 协调服务端会话、RTC 房间、本地发布和远端媒体资源。 */
+/** Coordinates server sessions, RTC rooms, local publishing, and remote media resources. */
 export class XmaxRealtimeConnectionManager {
 
-  /** 连接服务与媒体依赖 */
+  // Connection service and media dependencies
+
+  /** The shared connection and generation startup timing recorder. */
   private readonly timing: RealtimeTiming;
 
-  /** 服务层组件 */
+  // Service components
+
+  /** The service creating, maintaining, and closing server sessions. */
   private readonly sessionService: RealtimeSessionServicing;
 
-  /** 业务层组件 */
+  // Business components
+
+  /** The controller owning local media and its RTC engine lifecycle. */
   private readonly mediaController: MediaControlling;
+
+  /** The controller coordinating RTC rooms, streams, and signaling. */
   private readonly streamController: StreamControlling;
 
-  /** 渲染层组件 */
+  // Rendering components
+
+  /** The controller owning video and trajectory rendering bindings. */
   private readonly renderController: RenderControlling;
 
-  /** 已建立的连接资源 */
+  // Established connection resources
+
+  /** The remote track registered for the current connection. */
   private activeRemoteTrack: RealtimeVideoTrack | null = null;
+
+  /** The established server session, if connected. */
   private activeSession: RealtimeSession | null = null;
 
-  /** 结果流目标尺寸 */
+  // Result stream target dimensions
+
+  /** The requested result stream dimensions. */
   private activeTargetSize: ImageSize | undefined;
 
-  /**
-   * 读取当前会话请求的结果流目标尺寸。
-   *
-   * @returns 已设置的目标尺寸；未设置时返回 undefined。
-   */
-  get currentTargetSize(): ImageSize | undefined { return this.activeTargetSize; }
+  /** The requested result stream dimensions for the current session, or undefined if not configured. */
+  get currentTargetSize(): ImageSize | undefined {
+    return this.activeTargetSize;
+  }
 
   /**
-   * 仅更新预期回传规格，不能改动轨迹的本地媒体基准。
+   * Updates expected return dimensions without changing the trajectory's local media baseline.
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @returns 无返回值。
+   * @param size The expected result stream dimensions, in pixels.
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
    */
-  updateTargetSize(size: ImageSize, baseline: RealtimeVideoFormat): void {
+  updateTargetSize(
+    size: ImageSize,
+    baseline: RealtimeVideoFormat
+  ): void {
     this.activeTargetSize = size;
     if (this.activeRemoteTrack !== null) {
-      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, baseline.resized(size.width, size.height));
+      updateRealtimeVideoTrackFormat(
+        this.activeRemoteTrack,
+        baseline.resized(
+          size.width,
+          size.height
+        )
+      );
       VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
     }
   }
 
   /**
-   * 创建实时连接 Manager。
+   * Creates a realtime connection manager.
    *
-   * @param apiService 创建、心跳和关闭服务端会话的网络服务。
-   * @param mediaController 远端轨迹交互使用的统一媒体组件。
-   * @param renderController 视频轨道、远端画面和轨迹绑定的统一渲染组件。
-   * @param streamController RTC 房间、媒体流和信令的统一流组件。
-   * @param timing 与实时 Manager 共享的启动耗时记录。
-   * @returns 新建的 XmaxRealtimeConnectionManager 实例。
+   * @param apiService The network service for session creation, heartbeats, and closure.
+   * @param mediaController The media controller providing remote trajectory interactions.
+   * @param renderController The controller for tracks, remote video, and trajectory bindings.
+   * @param streamController The controller for RTC rooms, media streams, and signaling.
+   * @param timing The startup timing recorder shared with the realtime manager.
    */
   constructor(
     apiService: ApiServicing,
@@ -113,58 +132,61 @@ export class XmaxRealtimeConnectionManager {
     timing: RealtimeTiming = new RealtimeTiming()
   ) {
     this.timing = timing;
-    // 服务层组件
+    // Service components
     this.sessionService = new RealtimeSessionService(apiService);
 
-    // 业务层组件
+    // Business components
     this.mediaController = mediaController;
     this.streamController = streamController;
 
-    // 渲染层组件
+    // Rendering components
     this.renderController = renderController;
   }
 
-  /**
-   * 读取当前已建立连接的服务端会话标识。
-   *
-   * @returns 会话标识；尚未连接时返回空字符串。
-   */
+  /** The established server session identifier, or an empty string before connection. */
   get currentSessionId(): string {
     return this.activeSession?.id ?? '';
   }
 
-  /**
-   * 读取当前连接对应的远端媒体流。
-   *
-   * @returns 远端媒体流；尚未连接时返回 null。
-   */
+  /** The remote stream for the current connection, or null before connection. */
   get currentRemoteStream(): RealtimeMediaStream | null {
     return this.activeRemoteTrack === null ? null :
-      new RealtimeMediaStream(StreamId.REMOTE, this.activeRemoteTrack);
+      new RealtimeMediaStream(
+        StreamId.REMOTE,
+        this.activeRemoteTrack
+      );
   }
 
   /**
-   * 同步远端轨道的预期格式和交互媒体基准，供本地摄像头方向变化后继续生成。
+   * Updates expected remote format and the interaction baseline after local camera orientation
+   * changes.
    *
-   * @param format 需要使用的视频格式。
-   * @returns 无返回值。
+   * @param format The video format to use.
    */
-  updateVideoFormat(format: RealtimeVideoFormat): void {
+  updateVideoFormat(
+    format: RealtimeVideoFormat
+  ): void {
     if (this.activeRemoteTrack !== null) {
-      updateRealtimeVideoTrackFormat(this.activeRemoteTrack, this.activeTargetSize === undefined ? format :
-        format.resized(this.activeTargetSize.width, this.activeTargetSize.height));
+      updateRealtimeVideoTrackFormat(
+        this.activeRemoteTrack,
+        this.activeTargetSize === undefined ? format :
+          format.resized(
+            this.activeTargetSize.width,
+            this.activeTargetSize.height
+          )
+      );
       VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
-      // 此入口仅由本地相机格式变化触发，不能用回传帧尺寸更新交互基准。
-      TrajectoryRegistry.binding(this.activeRemoteTrack)?.updateResolvedMediaSize(new ImageSize(format.width, format.height));
+      // Only local camera format changes update this baseline; returned frame dimensions must not.
+      TrajectoryRegistry.binding(this.activeRemoteTrack)?.updateResolvedMediaSize(new ImageSize(
+        format.width,
+        format.height
+      ));
     }
   }
 
   /**
-   * 立即停止心跳并解除远端视频渲染绑定。
-   *
-   * 该方法不退出 RTC 房间，也不关闭服务端会话。
-   *
-   * @returns 无返回值。
+   * Stops heartbeats and detaches remote rendering immediately. Does not leave the RTC room or
+   * close the server session.
    */
   prepareForClose(): void {
     this.sessionService.stopHeartbeat();
@@ -180,15 +202,16 @@ export class XmaxRealtimeConnectionManager {
   }
 
   /**
-   * 创建服务端会话、加入 RTC 房间并发布本地媒体流。
+   * Creates a server session, joins the RTC room, and publishes local media.
    *
-   * @param model 生成模型名称，用于隔离各模型的历史档位。
-   * @param videoFormat 本地输入及远端结果使用的视频格式。
-   * @param includeLocalAudio 是否同时发布本地音频流。
-   * @param isCurrent 判断当前连接操作是否仍然有效的回调。
-   * @param onHeartbeatFailure 会话心跳失败时执行的处理回调。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @returns 完成连接并注册渲染能力后的远端媒体流。
+   * @param model The generation model name sent when creating the server session.
+   * @param videoFormat The video format for local input and remote results.
+   * @param includeLocalAudio Whether to publish local audio.
+   * @param isCurrent The callback checking connection operation validity.
+   * @param onHeartbeatFailure The session heartbeat failure handler.
+   * @param targetSize The optional result stream target dimensions.
+   *
+   * @returns The remote stream after connection and rendering registration.
    */
   async connect(
     model: string,
@@ -225,17 +248,26 @@ export class XmaxRealtimeConnectionManager {
       );
       this.ensureCurrent(isCurrent);
 
-      this.sessionService.startHeartbeat(session.id, onHeartbeatFailure);
+      this.sessionService.startHeartbeat(
+        session.id,
+        onHeartbeatFailure
+      );
 
       const resolvedMediaFormat: RealtimeVideoFormat = this.mediaController.currentVideoFormat ?? videoFormat;
       const remoteTrack = new RealtimeVideoTrack(
         connection.botName ?? 'video-remote',
-        targetSize === undefined ? resolvedMediaFormat : resolvedMediaFormat.resized(targetSize.width, targetSize.height)
+        targetSize === undefined ? resolvedMediaFormat : resolvedMediaFormat.resized(
+          targetSize.width,
+          targetSize.height
+        )
       );
       this.renderController.registerRemoteTrack(
         remoteTrack,
         this.mediaController,
-        new ImageSize(resolvedMediaFormat.width, resolvedMediaFormat.height)
+        new ImageSize(
+          resolvedMediaFormat.width,
+          resolvedMediaFormat.height
+        )
       );
 
       this.activeTargetSize = targetSize;
@@ -245,7 +277,10 @@ export class XmaxRealtimeConnectionManager {
       this.ensureCurrent(isCurrent);
 
       this.timing.finishConnection();
-      return new RealtimeMediaStream(StreamId.REMOTE, remoteTrack);
+      return new RealtimeMediaStream(
+        StreamId.REMOTE,
+        remoteTrack
+      );
     } catch (error) {
       if (isCurrent()) {
         await this.rollbackConnection();
@@ -265,7 +300,10 @@ export class XmaxRealtimeConnectionManager {
       }
 
       if (!isCurrent()) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
+        throw new XmaxError(
+          XmaxErrorCode.CANCELLED,
+          'Realtime connection was cancelled'
+        );
       }
 
       throw XmaxError.from(error);
@@ -273,12 +311,15 @@ export class XmaxRealtimeConnectionManager {
   }
 
   /**
-   * 停止心跳、释放远端资源、退出房间并关闭服务端会话。
+   * Stops heartbeats, releases remote resources, leaves the room, and closes the session.
    *
-   * @param fallbackSessionId 当前会话资源已经丢失时使用的会话标识。
-   * @returns 实际完成关闭的会话标识；没有会话时返回空值。
+   * @param fallbackSessionId The session identifier used if current session resources are missing.
+   *
+   * @returns The closed session identifier, or undefined without a session.
    */
-  async disconnect(fallbackSessionId?: string): Promise<string | undefined> {
+  async disconnect(
+    fallbackSessionId?: string
+  ): Promise<string | undefined> {
     const session: RealtimeSession | null = this.activeSession;
     const remoteTrack: RealtimeVideoTrack | null = this.activeRemoteTrack;
 
@@ -324,9 +365,9 @@ export class XmaxRealtimeConnectionManager {
   }
 
   /**
-   * 回滚尚未完成的连接并释放已经创建的房间和远端资源。
+   * Rolls back an incomplete connection and releases created room and remote resources.
    *
-   * @returns 回滚操作完成后的 Promise。
+   * The Promise fulfills after rollback.
    */
   private async rollbackConnection(): Promise<void> {
     const remoteTrack: RealtimeVideoTrack | null = this.activeRemoteTrack;
@@ -346,14 +387,18 @@ export class XmaxRealtimeConnectionManager {
   }
 
   /**
-   * 确保连接操作仍然属于当前生命周期。
+   * Verifies that connection work still belongs to the current lifecycle.
    *
-   * @param isCurrent 判断连接操作是否仍然有效的回调。
-   * @returns 无返回值。
+   * @param isCurrent The callback checking connection validity.
    */
-  private ensureCurrent(isCurrent: ConnectionValidity): void {
+  private ensureCurrent(
+    isCurrent: ConnectionValidity
+  ): void {
     if (!isCurrent()) {
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Realtime connection was cancelled');
+      throw new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'Realtime connection was cancelled'
+      );
     }
   }
 

@@ -1,10 +1,9 @@
 //
 //  RtcVideoConverter.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -36,20 +35,28 @@ import { VideoEncoderPreference } from './VideoEncodingConfiguration';
 
 const EMPTY_SEI_DATA: Uint8Array = new Uint8Array();
 
-/** 在 SDK 视频帧、显示配置与 RTC 平台类型之间转换。 */
+/** Converts SDK frames and display settings into RTC platform types. */
 export class RtcVideoConverter {
+
   /**
-   * 在 RTC 回调返回前复制 I420 有效像素，不让接入方依赖 RTC 缓冲区生命周期。
+   * Copies valid I420 pixels before the RTC callback returns, removing dependence on native buffer
+   * lifetime.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @returns 可交付给接入方的视频帧。
+   * @param frame The native I420 RTC frame whose pixels must be copied before the callback returns.
+   *
+   * @returns The owned video frame for your app.
    */
-  static copyRemoteFrame(frame: IVideoFrame): RealtimeVideoFrame {
+  static copyRemoteFrame(
+    frame: IVideoFrame
+  ): RealtimeVideoFrame {
     if (frame.pixel_format !== RtcVideoPixelFormat.kVideoPixelFormatI420 ||
       !Number.isSafeInteger(frame.width) || !Number.isSafeInteger(frame.height) ||
       frame.width <= 0 || frame.height <= 0 || frame.width > 32768 || frame.height > 32768 ||
       !Number.isFinite(frame.timestamp_us) || frame.timestamp_us < 0 || frame.number_of_planes !== 3) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Invalid remote I420 video frame');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'Invalid remote I420 video frame'
+      );
     }
     let rotation: VideoRotation;
     switch (frame.rotation) {
@@ -58,7 +65,10 @@ export class RtcVideoConverter {
       case 180: rotation = VideoRotation.ROTATION_180; break;
       case 270: rotation = VideoRotation.ROTATION_270; break;
       default:
-        throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Unsupported remote video rotation');
+        throw new XmaxError(
+          XmaxErrorCode.RTC_ERROR,
+          'Unsupported remote video rotation'
+        );
     }
     const planes: VideoFramePlane[] = [];
     for (let index: number = 0; index < 3; index++) {
@@ -68,27 +78,48 @@ export class RtcVideoConverter {
       const stride: number | undefined = frame.plane_stride[index];
       if (source === undefined || stride === undefined || !Number.isSafeInteger(stride) ||
         stride < width || source.byteLength < (height - 1) * stride + width) {
-        throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Invalid remote video plane or stride');
+        throw new XmaxError(
+          XmaxErrorCode.RTC_ERROR,
+          'Invalid remote video plane or stride'
+        );
       }
       const data: ArrayBuffer = new ArrayBuffer(width * height);
       const pixels: Uint8Array = new Uint8Array(data);
       const input: Uint8Array = new Uint8Array(source);
       for (let row: number = 0; row < height; row++) {
-        pixels.set(input.subarray(row * stride, row * stride + width), row * width);
+        pixels.set(
+          input.subarray(
+            row * stride,
+            row * stride + width
+          ),
+          row * width
+        );
       }
-      planes.push(new VideoFramePlane(data, width));
+      planes.push(new VideoFramePlane(
+        data,
+        width
+      ));
     }
-    return new RealtimeVideoFrame(frame.width, frame.height, VideoPixelFormat.I420,
-      planes, frame.timestamp_us, rotation);
+    return new RealtimeVideoFrame(
+      frame.width,
+      frame.height,
+      VideoPixelFormat.I420,
+      planes,
+      frame.timestamp_us,
+      rotation
+    );
   }
 
   /**
-   * 将 SDK 编码偏好映射为 RTC 编码偏好。
+   * Maps SDK encoder preferences into RTC settings.
    *
-   * @param preference 视频编码的优先策略。
-   * @returns RTC 可接受的编码优先策略。
+   * @param preference The video encoder preference.
+   *
+   * @returns The corresponding RTC encoder preference.
    */
-  static convertEncoderPreference(preference: VideoEncoderPreference): VideoEncodePreference {
+  static convertEncoderPreference(
+    preference: VideoEncoderPreference
+  ): VideoEncodePreference {
     switch (preference) {
       case VideoEncoderPreference.AUTO:
         return VideoEncodePreference.kVideoEncodePreferenceBalance;
@@ -97,16 +128,20 @@ export class RtcVideoConverter {
       case VideoEncoderPreference.MAINTAIN_QUALITY:
         return VideoEncodePreference.kVideoEncodePreferenceQuality;
       default:
-        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Unsupported video encoder preference');
+        throw new XmaxError(
+          XmaxErrorCode.INVALID_CONFIGURATION,
+          'Unsupported video encoder preference'
+        );
     }
   }
 
   /**
-   * 将 SDK 视频帧与可选 SEI 数据封装为 RTC 外部视频帧。
+   * Wraps an SDK frame and optional SEI for external RTC video input.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @param seiData 随视频帧提交的可选 SEI 数据。
-   * @returns 可提交到 RTC 的视频帧数据。
+   * @param frame The SDK video frame whose pixel planes are submitted as external RTC input.
+   * @param seiData The optional SEI submitted with the frame.
+   *
+   * @returns The frame data for RTC submission.
    */
   static convertFrame(
     frame: VideoFrame,
@@ -142,22 +177,26 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 根据摄像头位置选择本地视频的镜像策略。
+   * Selects local mirroring for the camera position.
    *
-   * @param position 使用的摄像头位置。
-   * @returns 对应摄像头位置的 RTC 镜像模式。
+   * @param position The active camera position.
+   *
+   * @returns The RTC mirror mode for the camera position.
    */
-  static convertMirrorType(position: CameraPosition): MirrorType {
+  static convertMirrorType(
+    position: CameraPosition
+  ): MirrorType {
     return position === CameraPosition.FRONT ?
       MirrorType.kMirrorTypeRenderAndEncoder : MirrorType.kMirrorTypeNone;
   }
 
   /**
-   * 创建绑定指定视图并使用指定显示模式的 RTC 画布。
+   * Creates an RTC canvas for a view and content mode.
    *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @returns RTC 视频画布配置。
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
+   *
+   * @returns The RTC canvas configuration.
    */
   static createCanvas(
     viewId: string,
@@ -166,26 +205,33 @@ export class RtcVideoConverter {
     const renderMode: RenderMode = contentMode === VideoContentMode.FIT ?
       RenderMode.kRenderModeFit : RenderMode.kRenderModeHidden;
 
-    return RtcVideoConverter.canvas(viewId, renderMode);
+    return RtcVideoConverter.canvas(
+      viewId,
+      renderMode
+    );
   }
 
   /**
-   * 创建用于解绑视频显示的空 RTC 画布。
+   * Creates an empty RTC canvas for detaching rendering.
    *
-   * @returns 无可见视图绑定的画布配置。
+   * @returns A canvas without a visible view binding.
    */
   static createHiddenCanvas(): VideoCanvas {
-    return RtcVideoConverter.canvas('', RenderMode.kRenderModeHidden);
+    return RtcVideoConverter.canvas(
+      '',
+      RenderMode.kRenderModeHidden
+    );
   }
 
   /**
-   * 按像素格式提取 RTC 需要的各图像平面数据。
+   * Extracts RTC pixel planes for the frame format.
    *
-   * @param pixelFormat 媒体数据的像素排列格式。
-   * @param firstPlane 第一图像平面，通常为亮度或打包像素数据。
-   * @param secondPlane 第二图像平面，通常为色度数据。
-   * @param thirdPlane 第三图像平面，供三平面像素格式使用。
-   * @returns 按 RTC 平面顺序排列的数据；不需要的平面为空。
+   * @param pixelFormat The media pixel layout.
+   * @param firstPlane The first plane, usually luma or packed pixels.
+   * @param secondPlane The second plane, usually chroma.
+   * @param thirdPlane The third plane for three-plane pixel formats.
+   *
+   * @returns The planes in RTC order, with unused entries empty.
    */
   private static convertPlaneData(
     pixelFormat: VideoPixelFormat,
@@ -194,13 +240,19 @@ export class RtcVideoConverter {
     thirdPlane?: VideoFramePlane
   ): [Uint8Array?, Uint8Array?, Uint8Array?] {
     const first: Uint8Array = RtcVideoConverter.planeData(
-      RtcVideoConverter.requirePlane(firstPlane, 0)
+      RtcVideoConverter.requirePlane(
+        firstPlane,
+        0
+      )
     );
     if (pixelFormat === VideoPixelFormat.NV12) {
       return [
         first,
         RtcVideoConverter.planeData(
-          RtcVideoConverter.requirePlane(secondPlane, 1)
+          RtcVideoConverter.requirePlane(
+            secondPlane,
+            1
+          )
         )
       ];
     }
@@ -208,10 +260,16 @@ export class RtcVideoConverter {
       return [
         first,
         RtcVideoConverter.planeData(
-          RtcVideoConverter.requirePlane(secondPlane, 1)
+          RtcVideoConverter.requirePlane(
+            secondPlane,
+            1
+          )
         ),
         RtcVideoConverter.planeData(
-          RtcVideoConverter.requirePlane(thirdPlane, 2)
+          RtcVideoConverter.requirePlane(
+            thirdPlane,
+            2
+          )
         )
       ];
     }
@@ -220,13 +278,14 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 按像素格式提取 RTC 需要的各图像平面行跨度。
+   * Extracts RTC row strides for the frame format.
    *
-   * @param pixelFormat 媒体数据的像素排列格式。
-   * @param firstPlane 第一图像平面，通常为亮度或打包像素数据。
-   * @param secondPlane 第二图像平面，通常为色度数据。
-   * @param thirdPlane 第三图像平面，供三平面像素格式使用。
-   * @returns 与 RTC 数据平面一一对应的行跨度。
+   * @param pixelFormat The media pixel layout.
+   * @param firstPlane The first plane, usually luma or packed pixels.
+   * @param secondPlane The second plane, usually chroma.
+   * @param thirdPlane The third plane for three-plane pixel formats.
+   *
+   * @returns The row strides corresponding to RTC data planes.
    */
   private static convertPlaneStride(
     pixelFormat: VideoPixelFormat,
@@ -234,18 +293,30 @@ export class RtcVideoConverter {
     secondPlane?: VideoFramePlane,
     thirdPlane?: VideoFramePlane
   ): [number?, number?, number?] {
-    const first: VideoFramePlane = RtcVideoConverter.requirePlane(firstPlane, 0);
+    const first: VideoFramePlane = RtcVideoConverter.requirePlane(
+      firstPlane,
+      0
+    );
     if (pixelFormat === VideoPixelFormat.NV12) {
       return [
         first.stride,
-        RtcVideoConverter.requirePlane(secondPlane, 1).stride
+        RtcVideoConverter.requirePlane(
+          secondPlane,
+          1
+        ).stride
       ];
     }
     if (pixelFormat === VideoPixelFormat.I420) {
       return [
         first.stride,
-        RtcVideoConverter.requirePlane(secondPlane, 1).stride,
-        RtcVideoConverter.requirePlane(thirdPlane, 2).stride
+        RtcVideoConverter.requirePlane(
+          secondPlane,
+          1
+        ).stride,
+        RtcVideoConverter.requirePlane(
+          thirdPlane,
+          2
+        ).stride
       ];
     }
 
@@ -253,10 +324,11 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 将 SDK 像素格式映射为 RTC 支持的像素格式。
+   * Maps an SDK pixel format into an RTC format.
    *
-   * @param pixelFormat 媒体数据的像素排列格式。
-   * @returns 对应的 RTC 像素格式。
+   * @param pixelFormat The media pixel layout.
+   *
+   * @returns The corresponding RTC pixel format.
    */
   private static convertPixelFormat(
     pixelFormat: VideoPixelFormat
@@ -281,12 +353,15 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 将 SDK 视频旋转方向映射为 RTC 旋转枚举。
+   * Maps an SDK rotation into the RTC rotation enum.
    *
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @returns 对应的 RTC 旋转方向。
+   * @param rotation The rotation to apply to the video image.
+   *
+   * @returns The corresponding RTC rotation.
    */
-  private static convertRotation(rotation: VideoRotation): RtcVideoRotation {
+  private static convertRotation(
+    rotation: VideoRotation
+  ): RtcVideoRotation {
     switch (rotation) {
       case VideoRotation.ROTATION_0:
         return RtcVideoRotation.kVideoRotation0;
@@ -302,12 +377,15 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 从平面缓冲区的有效区间创建字节视图。
+   * Creates a byte view over a plane's valid buffer range.
    *
-   * @param plane 待校验或读取的图像平面。
-   * @returns 覆盖指定偏移与长度的平面数据视图。
+   * @param plane The image plane to validate or read.
+   *
+   * @returns The plane view covering its byte offset and length.
    */
-  private static planeData(plane: VideoFramePlane): Uint8Array {
+  private static planeData(
+    plane: VideoFramePlane
+  ): Uint8Array {
     return new Uint8Array(
       plane.data,
       plane.byteOffset,
@@ -316,11 +394,12 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 取得必须存在的图像平面；缺失时抛出配置错误。
+   * Returns a required image plane, throwing a configuration error if absent.
    *
-   * @param plane 待校验或读取的图像平面。
-   * @param index 图像平面或档位的索引。
-   * @returns 已确认存在的图像平面。
+   * @param plane The image plane to validate or read.
+   * @param index The image plane or quality level index.
+   *
+   * @returns The required image plane.
    */
   private static requirePlane(
     plane: VideoFramePlane | undefined,
@@ -337,11 +416,12 @@ export class RtcVideoConverter {
   }
 
   /**
-   * 创建指定渲染模式与视图标识的 RTC 画布。
+   * Creates an RTC canvas for a render mode and view identifier.
    *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param renderMode RTC 画布的显示填充模式。
-   * @returns 可供 RTC 绑定的视频画布。
+   * @param viewId The native video view identifier.
+   * @param renderMode The RTC canvas content mode.
+   *
+   * @returns The canvas for RTC binding.
    */
   private static canvas(
     viewId: string,

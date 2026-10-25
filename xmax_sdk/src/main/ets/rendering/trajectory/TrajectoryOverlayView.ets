@@ -1,10 +1,9 @@
 //
 //  TrajectoryOverlayView.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -22,85 +21,97 @@ import { TrajectoryId } from './TrajectoryId';
 import { TrajectoryPoint } from './TrajectoryPoint';
 import { TrajectoryRegistry } from './TrajectoryRegistry';
 
-/** 保存活动触点的轨迹标识和视口坐标。 */
+/** An active touch's trajectory identity and viewport coordinates. */
 interface ActiveTouch {
 
-  /** 触点身份与位置 */
+  // Touch identity and position
+
+  /** The touch identity within the current gesture. */
   identifier: TrajectoryId;
+
+  /** The horizontal coordinate. */
   x: number;
+
+  /** The vertical coordinate. */
   y: number;
 }
 
 const INTERACTION_SAMPLE_INTERVAL_MS: number = 30;
 
-/** 覆盖在视频上的触摸与轨迹视图，将有效画面内的触点提交给生成任务。 */
+/** A touch and trajectory overlay submitting points within visible media to generation. */
 @Component
 export struct TrajectoryOverlayView {
 
-  /** 轨道、交互开关与显示模式 */
+  // Track, interaction enablement, and content mode
+
+  /** The SDK video track bound to this view. */
   @Prop @Watch('onTrackChanged')
   track?: RealtimeVideoTrack = undefined;
 
-  /** 是否接收并绘制轨迹交互。 */
+  /** Whether to receive and draw trajectory interactions. */
   @Prop @Watch('onInteractionEnabledChanged')
   isInteractionEnabled: boolean = true;
 
-  /** 松手后继续采样最后触点；由接入方在画面保留结束时关闭。 */
+  /**
+   * Continues sampling the last touch after release; your app disables it when the retained result
+   * ends.
+   */
   @Prop @Watch('onReleaseContinuationChanged')
   continuesInteractionAfterRelease: boolean = false;
 
-  /** 视频内容显示模式。 */
+  /** The video content mode. */
   @Prop @Watch('onContentModeChanged')
   contentMode: VideoContentMode = VideoContentMode.FILL;
 
-  /** 有效交互生命周期；多指交互按整体通知。 */
+  /** The overall interaction lifecycle, combining multiple fingers. */
   onInteractionChanged?: RealtimeInteractionListener;
 
-  /** 轨迹效果绘制依赖 */
-  /** 轨迹效果渲染器。 */
+  /** The trajectory effect renderer. */
   renderer: TrajectoryEffectRendering = new DefaultTrajectoryEffectRenderer();
 
-  /** 活动触点与原始轨道句柄 */
+  // Active touches and original track identity
+
+  /** The active touches in viewport coordinates. */
   private readonly activeTouches: Map<number, ActiveTouch> = new Map();
+
+  /** The last released touch retained for continued sampling. */
   private releasedTouch: ActiveTouch | undefined = undefined;
+
+  /** The original track identity used to detect binding changes. */
   private currentTrack: RealtimeVideoTrack | undefined;
 
-  /** 交互视口尺寸 */
+  // Interaction viewport dimensions
+
+  /** The interaction viewport width, in touch-coordinate units. */
   private viewportWidth: number = 0;
+
+  /** The interaction viewport height, in touch-coordinate units. */
   private viewportHeight: number = 0;
 
-  /** 动画重绘与交互采样调度 */
+  // Animation and interaction sampling schedules
+
+  /** The timer advancing trajectory effects. */
   private tickTimer: number = -1;
+
+  /** The timer sampling interaction points. */
   private sampleTimer: number = -1;
 
-  /**
-   * 缓存当前轨道的原始句柄，供后续轨道更新识别。
-   *
-   * @returns 无返回值。
-   */
+  /** Caches the original track identity for detecting replacements. */
   aboutToAppear(): void {
     this.currentTrack = this.track === undefined ? undefined : RealtimeVideoTrack.resolve(this.track);
   }
 
-  /**
-   * 取消当前触点交互，并停止采样和动画定时器。
-   *
-   * @returns 无返回值。
-   */
+  /** Cancels touch interaction and stops sampling and animation timers. */
   aboutToDisappear(): void {
     this.stopTicking();
     this.cancelInteraction();
   }
 
-  /**
-   * 仅在实际轨道变化时取消触点交互并切换绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Cancels touches and changes bindings only when the underlying track changes. */
   private onTrackChanged(): void {
     const track: RealtimeVideoTrack | undefined = this.track === undefined ? undefined :
       RealtimeVideoTrack.resolve(this.track);
-    // ArkUI @Prop 副本变化不代表换轨；刷新统计或远端格式时保留正在进行的触摸。
+    // An ArkUI @Prop copy is not a track replacement; preserve touches during statistics or remote format updates.
     if (track === this.currentTrack) {
       return;
     }
@@ -108,26 +119,19 @@ export struct TrajectoryOverlayView {
     this.cancelInteraction();
   }
 
-  /**
-   * 显示模式变化时取消旧坐标基准下的触点交互。
-   *
-   * @returns 无返回值。
-   */
+  /** Cancels touches using the old coordinate baseline after content mode changes. */
   private onContentModeChanged(): void {
     this.cancelInteraction();
   }
 
-  /**
-   * 在交互关闭时取消现有触点与轨迹效果。
-   *
-   * @returns 无返回值。
-   */
+  /** Cancels touches and effects when interaction is disabled. */
   private onInteractionEnabledChanged(): void {
     if (!this.isInteractionEnabled) {
       this.cancelInteraction();
     }
   }
 
+  /** Updates sampling of the last released touch when continuation changes. */
   private onReleaseContinuationChanged(): void {
     if (!this.continuesInteractionAfterRelease) {
       this.releasedTouch = undefined;
@@ -135,16 +139,12 @@ export struct TrajectoryOverlayView {
         this.stopSampling();
       }
     } else if (this.activeTouches.size === 0 && this.releasedTouch !== undefined && this.isInteractionEnabled) {
-      // 父视图状态可能在松手事件之后才传到 @Prop，仍接续该次手势。
+      // Parent state may arrive through @Prop after release; continue that gesture when enabled.
       this.startSampling();
     }
   }
 
-  /**
-   * 清空活动触点、停止采样与动画，并重置轨迹效果。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears touches, stops sampling and animation, and resets effects. */
   private cancelInteraction(): void {
     const wasActive: boolean = this.activeTouches.size > 0 ||
       (this.continuesInteractionAfterRelease && this.releasedTouch !== undefined);
@@ -159,42 +159,42 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 通知接入方有效交互的整体阶段；接入方异常不影响轨迹采样与清理。
+   * Notifies your app of overall interaction phases without allowing listener errors to disrupt
+   * sampling or cleanup.
    *
-   * @param phase 有效触点交互的开始、结束或取消阶段。
-   * @returns 无返回值。
+   * @param phase The start, end, or cancellation phase of valid touch interaction.
    */
-  private notifyInteraction(phase: RealtimeInteractionPhase): void {
+  private notifyInteraction(
+    phase: RealtimeInteractionPhase
+  ): void {
     try {
       this.onInteractionChanged?.(phase);
     } catch (error) {
-      XmaxLogger.error('Interaction listener failed: ' + String(error), 'Interaction');
+      XmaxLogger.error(
+        'Interaction listener failed: ' + String(error),
+        'Interaction'
+      );
     }
   }
 
-  /**
-   * 在存在轨迹动画时启动定时重绘。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts redraw timing while trajectory effects exist. */
   private startTicking(): void {
     if (this.tickTimer >= 0) {
       return;
     }
 
-    this.tickTimer = setInterval((): void => {
+    this.tickTimer = setInterval(
+      (): void => {
       this.renderer.tick(Date.now());
       if (this.activeTouches.size === 0 && !this.renderer.isAnimating()) {
         this.stopTicking();
       }
-    }, this.renderer.tickIntervalMs);
+    },
+      this.renderer.tickIntervalMs
+    );
   }
 
-  /**
-   * 停止轨迹重绘定时器。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops trajectory redraw timing. */
   private stopTicking(): void {
     if (this.tickTimer < 0) {
       return;
@@ -204,32 +204,27 @@ export struct TrajectoryOverlayView {
     this.tickTimer = -1;
   }
 
-  /**
-   * 按交互采样周期提交当前活动触点。
-   *
-   * @returns 无返回值。
-   */
+  /** Submits active points at the interaction sampling interval. */
   private startSampling(): void {
     if (this.sampleTimer >= 0) {
       return;
     }
 
     this.submitInteraction();
-    this.sampleTimer = setInterval((): void => {
+    this.sampleTimer = setInterval(
+      (): void => {
       if (!this.isInteractionEnabled) {
         this.stopSampling();
         return;
       }
 
       this.submitInteraction();
-    }, INTERACTION_SAMPLE_INTERVAL_MS);
+    },
+      INTERACTION_SAMPLE_INTERVAL_MS
+    );
   }
 
-  /**
-   * 停止交互采样定时器。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops interaction sampling timing. */
   private stopSampling(): void {
     if (this.sampleTimer < 0) {
       return;
@@ -239,11 +234,7 @@ export struct TrajectoryOverlayView {
     this.sampleTimer = -1;
   }
 
-  /**
-   * 提交当前有效触点；轨道无交互绑定时跳过发送。
-   *
-   * @returns 无返回值。
-   */
+  /** Submits valid touches only when the track has an interaction binding. */
   private submitInteraction(): void {
     const track: RealtimeVideoTrack | undefined = this.track;
     if (track === undefined) {
@@ -257,10 +248,16 @@ export struct TrajectoryOverlayView {
 
     const points: InteractionPoint[] = [];
     this.activeTouches.forEach((touch: ActiveTouch): void => {
-      points.push(new InteractionPoint(touch.x, touch.y));
+      points.push(new InteractionPoint(
+        touch.x,
+        touch.y
+      ));
     });
     if (points.length === 0 && this.continuesInteractionAfterRelease && this.releasedTouch !== undefined) {
-      points.push(new InteractionPoint(this.releasedTouch.x, this.releasedTouch.y));
+      points.push(new InteractionPoint(
+        this.releasedTouch.x,
+        this.releasedTouch.y
+      ));
     }
     if (points.length === 0) {
       return;
@@ -274,11 +271,12 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 将活动触点转换为绘制与交互所需的轨迹采样点。
+   * Converts active touches into rendering and interaction samples.
    *
-   * @param touch 当前活动触点的标识与位置。
-   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
-   * @returns 包含视口坐标、归一化坐标和采样时间的轨迹点。
+   * @param touch The active touch identity and position.
+   * @param timestamp The sampling or animation timestamp, in milliseconds.
+   *
+   * @returns The trajectory point with viewport coordinates, normalized coordinates, and time.
    */
   private trajectoryPoint(
     touch: ActiveTouch,
@@ -299,24 +297,31 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 读取当前轨道在交互视口中的有效媒体矩形。
+   * Returns the track's visible media rectangle in the viewport.
    *
-   * @returns 媒体矩形；轨道或尺寸无效时返回 null。
+   * @returns The media rectangle, or null for an invalid track or dimensions.
    */
   private displayedMediaFrame(): InteractionMediaFrame | null {
     const track: RealtimeVideoTrack | undefined = this.track;
     const binding: TrajectoryBinding | null = track === undefined ? null : TrajectoryRegistry.binding(track);
     return binding === null ? null : InteractionCoordinateMapper.displayedFrame(
-      this.viewportWidth, this.viewportHeight, binding.resolvedMediaSize, this.contentMode);
+      this.viewportWidth,
+      this.viewportHeight,
+      binding.resolvedMediaSize,
+      this.contentMode
+    );
   }
 
   /**
-   * 将触点横坐标限制在有效媒体画面范围内。
+   * Clamps a touch's horizontal coordinate to visible media bounds.
    *
-   * @param value 待校验、转换或保存的数值。
-   * @returns 限制后的视口横坐标。
+   * @param value The horizontal touch coordinate, in viewport units.
+   *
+   * @returns The clamped viewport horizontal coordinate.
    */
-  private clampX(value: number): number {
+  private clampX(
+    value: number
+  ): number {
     const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
     const minimum: number = frame === null ? 0 : Math.max(0, frame.x);
     const maximum: number = frame === null ? this.viewportWidth : Math.min(this.viewportWidth, frame.x + frame.width);
@@ -324,12 +329,15 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 将触点纵坐标限制在有效媒体画面范围内。
+   * Clamps a touch's vertical coordinate to visible media bounds.
    *
-   * @param value 待校验、转换或保存的数值。
-   * @returns 限制后的视口纵坐标。
+   * @param value The vertical touch coordinate, in viewport units.
+   *
+   * @returns The clamped viewport vertical coordinate.
    */
-  private clampY(value: number): number {
+  private clampY(
+    value: number
+  ): number {
     const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
     const minimum: number = frame === null ? 0 : Math.max(0, frame.y);
     const maximum: number = frame === null ? this.viewportHeight : Math.min(this.viewportHeight, frame.y + frame.height);
@@ -337,12 +345,13 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 在有效画面内建立活动触点，开始轨迹绘制和交互采样。
+   * Starts a touch within visible media and begins drawing and sampling.
    *
-   * @param touchObject 平台触摸事件中的单个触点。
-   * @returns 无返回值。
+   * @param touchObject One touch from a platform event.
    */
-  private beginTouch(touchObject: TouchObject): void {
+  private beginTouch(
+    touchObject: TouchObject
+  ): void {
     const frame: InteractionMediaFrame | null = this.displayedMediaFrame();
     if (frame === null || touchObject.x < Math.max(0, frame.x) ||
       touchObject.x > Math.min(this.viewportWidth, frame.x + frame.width) ||
@@ -358,24 +367,31 @@ export struct TrajectoryOverlayView {
     };
     const wasEmpty: boolean = this.activeTouches.size === 0;
     this.releasedTouch = undefined;
-    this.activeTouches.set(touchObject.id, touch);
+    this.activeTouches.set(
+      touchObject.id,
+      touch
+    );
     if (wasEmpty) {
       this.notifyInteraction('began');
     }
     this.renderer.renderBegan([
-      this.trajectoryPoint(touch, timestamp)
+      this.trajectoryPoint(
+        touch,
+        timestamp
+      )
     ]);
     this.startTicking();
     this.startSampling();
   }
 
   /**
-   * 更新活动触点位置，并向渲染器追加移动轨迹。
+   * Updates an active touch and appends movement to its renderer.
    *
-   * @param touchObject 平台触摸事件中的单个触点。
-   * @returns 无返回值。
+   * @param touchObject One touch from a platform event.
    */
-  private moveTouch(touchObject: TouchObject): void {
+  private moveTouch(
+    touchObject: TouchObject
+  ): void {
     const activeTouch: ActiveTouch | undefined =
       this.activeTouches.get(touchObject.id);
     if (activeTouch === undefined) {
@@ -394,17 +410,22 @@ export struct TrajectoryOverlayView {
     activeTouch.x = x;
     activeTouch.y = y;
     this.renderer.renderMoved([
-      this.trajectoryPoint(activeTouch, Date.now())
+      this.trajectoryPoint(
+        activeTouch,
+        Date.now()
+      )
     ]);
   }
 
   /**
-   * 结束触点绘制；按配置续发最后触点，生命周期仍在实际松手时通知。
+   * Ends drawing and optionally continues the last point; lifecycle notification still occurs on
+   * actual release.
    *
-   * @param touchObject 平台触摸事件中的单个触点。
-   * @returns 无返回值。
+   * @param touchObject One touch from a platform event.
    */
-  private endTouch(touchObject: TouchObject): void {
+  private endTouch(
+    touchObject: TouchObject
+  ): void {
     const activeTouch: ActiveTouch | undefined =
       this.activeTouches.get(touchObject.id);
     if (activeTouch === undefined) {
@@ -423,12 +444,13 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 根据触摸阶段分发触点开始、移动、结束或取消事件。
+   * Dispatches touch start, move, end, and cancellation events.
    *
-   * @param event 待处理的触摸事件。
-   * @returns 无返回值。
+   * @param event The touch event to handle.
    */
-  private handleTouch(event: TouchEvent): void {
+  private handleTouch(
+    event: TouchEvent
+  ): void {
     if (!this.isInteractionEnabled) {
       return;
     }
@@ -459,12 +481,13 @@ export struct TrajectoryOverlayView {
   }
 
   /**
-   * 更新交互视口尺寸并同步轨迹画布大小。
+   * Updates viewport and trajectory canvas dimensions.
    *
-   * @param area 组件当前布局区域。
-   * @returns 无返回值。
+   * @param area The component's current layout area.
    */
-  private updateArea(area: Area): void {
+  private updateArea(
+    area: Area
+  ): void {
     const width: number = Number(area.width);
     const height: number = Number(area.height);
     if (width <= 0 || height <= 0 ||
@@ -475,14 +498,13 @@ export struct TrajectoryOverlayView {
     this.viewportWidth = width;
     this.viewportHeight = height;
     this.cancelInteraction();
-    this.renderer.resize(width, height);
+    this.renderer.resize(
+      width,
+      height
+    );
   }
 
-  /**
-   * 构建视频或交互视图的 ArkUI 组件树。
-   *
-   * @returns 由 ArkUI 管理的视图声明，无直接返回值。
-   */
+  /** Builds the video or interaction component tree. */
   build() {
     Stack() {
       Canvas(this.renderer.trailContext)

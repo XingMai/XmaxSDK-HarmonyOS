@@ -1,10 +1,9 @@
 //
 //  RoomHeartbeat.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,58 +14,57 @@ import { RoomEvent } from './RoomEvent';
 
 const HEARTBEAT_INTERVAL_MS: number = 10000;
 
-/** 定期发送房间业务心跳，并在停止时释放定时器。 */
+/** Sends periodic room heartbeats and releases its timer on stopping. */
 export class RoomHeartbeat {
 
-  /** 房间传输依赖 */
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
 
-  /** 心跳调度与用户身份 */
+  /** The active room heartbeat timer. */
   private timerId: number = -1;
+
+  /** The local room user identifier. */
   private userId: string = '';
 
-  /**
-   * 创建RoomHeartbeat。
-   *
-   * @param rtcManager 提供音视频采集、发布和订阅能力的 RTC 组件。
-   * @returns 新建的 RoomHeartbeat 实例。
-   */
-  constructor(rtcManager: RtcManaging) {
+  /** Creates a room heartbeat scheduler. */
+  constructor(
+    rtcManager: RtcManaging
+  ) {
     this.rtcManager = rtcManager;
   }
 
   /**
-   * 为本地用户启动周期性房间心跳。
+   * Starts periodic room heartbeats for the local user.
    *
-   * @param userId RTC 用户标识。
-   * @returns 无返回值。
+   * @param userId The RTC user identifier.
    */
-  start(userId: string): void {
+  start(
+    userId: string
+  ): void {
     this.stop();
     this.userId = userId;
 
-    this.timerId = setInterval((): void => {
-      if (this.userId.length === 0) {
-        return;
-      }
+    this.timerId = setInterval(
+      (): void => {
+        if (this.userId.length === 0) {
+          return;
+        }
 
-      try {
-        this.rtcManager.sendRoomMessage(RoomEvent.heartbeat(this.userId));
-      } catch (error) {
-        const reason: string = error instanceof Error ? error.message : String(error);
-        XmaxLogger.error(
-          `${XmaxLogger.localized("发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ 原因：", "发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ Reason: ")}${reason}`,
-          'Room'
-        );
-      }
-    }, HEARTBEAT_INTERVAL_MS);
+        try {
+          this.rtcManager.sendRoomMessage(RoomEvent.heartbeat(this.userId));
+        } catch (error) {
+          const reason: string = error instanceof Error ? error.message : String(error);
+          XmaxLogger.error(
+            `${XmaxLogger.localized("发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ 原因：", "发送房间心跳失败 (Failed to Send Room Heartbeat)\n└─ Reason: ")}${reason}`,
+            'Room'
+          );
+        }
+      },
+      HEARTBEAT_INTERVAL_MS
+    );
   }
 
-  /**
-   * 停止房间心跳并释放定时器。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops room heartbeats and releases the timer. */
   stop(): void {
     if (this.timerId >= 0) {
       clearInterval(this.timerId);

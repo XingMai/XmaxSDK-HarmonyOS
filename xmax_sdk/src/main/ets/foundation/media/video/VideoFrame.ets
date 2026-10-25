@@ -1,10 +1,9 @@
 //
 //  VideoFrame.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,20 +12,18 @@ import { VideoFormat } from './VideoFormat';
 import { VideoFramePlane } from './VideoFramePlane';
 import { VideoRotation } from './VideoRotation';
 
-/** 表示由视频源持有的中性视频帧。 */
+/** A neutral video frame owned by its source. */
 export interface VideoFrame {
 
-  /** 帧格式与播放时间 */
-  /** 视频帧格式。 */
+  /** The video frame format. */
   readonly format: VideoFormat;
 
-  /** 视频帧时间戳，单位为微秒。 */
+  /** The video timestamp, in microseconds. */
   readonly timestampUs: number;
 
-  /** 视频帧顺时针旋转角度。 */
+  /** The clockwise frame rotation. */
   readonly rotation: VideoRotation;
 
-  /** 像素平面数据 */
-  /** 按像素格式约定排列的数据平面。 */
+  /** The planes in pixel-format order. */
   readonly planes: Array<VideoFramePlane>;
 }

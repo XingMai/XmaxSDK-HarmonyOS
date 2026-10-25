@@ -1,10 +1,9 @@
 //
 //  BufferVideoFrame.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -18,25 +17,28 @@ import { VideoFrame } from './VideoFrame';
 import { VideoFramePlane } from './VideoFramePlane';
 import { VideoRotation } from './VideoRotation';
 
-/** 由 ArrayBuffer 持有像素数据的视频帧。 */
+/** A video frame backed by ArrayBuffer pixel data. */
 export class BufferVideoFrame implements VideoFrame {
 
-  /** 帧格式与播放时间 */
+  /** The frame dimensions and pixel layout. */
   readonly format: VideoFormat;
+
+  /** The frame timestamp, in microseconds. */
   readonly timestampUs: number;
+
+  /** The clockwise video rotation. */
   readonly rotation: VideoRotation;
 
-  /** 像素平面数据 */
+  /** The pixel planes in the order required by the frame format. */
   readonly planes: Array<VideoFramePlane>;
 
   /**
-   * 创建基于缓冲区的视频帧。
+   * Creates a buffer-backed video frame.
    *
-   * @param format 需要使用的视频格式。
-   * @param timestampUs 媒体帧时间戳，单位微秒。
-   * @param planes 按像素格式顺序排列的图像平面。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @returns 新建的 BufferVideoFrame 实例。
+   * @param format The video format to use.
+   * @param timestampUs The media frame timestamp, in microseconds.
+   * @param planes The image planes in pixel-format order.
+   * @param rotation The rotation to apply to the video image.
    */
   constructor(
     format: VideoFormat,

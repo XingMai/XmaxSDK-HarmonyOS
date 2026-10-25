@@ -1,10 +1,9 @@
 //
 //  AudioSourceController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -20,63 +19,77 @@ import { MediaTimeline } from '../MediaTimeline';
 import { AudioSourceControlling } from './AudioSourceControlling';
 
 /**
- * 接收本地音频源解码后的 PCM 音频帧。
+ * Receives PCM decoded by a local audio source.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The decoded 48 kHz mono PCM frame on the local audio playback timeline.
  */
-export type AudioSourceFrameListener = (frame: AudioFrame) => void;
+export type AudioSourceFrameListener = (
+  frame: AudioFrame
+) => void;
 
 /**
- * 接收本地音频源配置或解码失败的错误。
+ * Receives local audio configuration or decoding errors.
  *
- * @param message 日志内容、错误说明或收到的信令文本。
- * @returns 无返回值。
+ * @param message The local audio configuration or decoding failure description.
  */
-export type AudioSourceErrorListener = (message: string) => void;
+export type AudioSourceErrorListener = (
+  message: string
+) => void;
 
-/** 解码本地媒体文件中的音频轨，并按共享时间轴循环输出音频帧。 */
+/** Decodes file audio on a shared timeline with optional looping. */
 export class AudioSourceController implements AudioSourceControlling {
 
-  /** 帧与错误通知 */
+  // Frame and error notifications
+
+  /** The receiver for prepared media frames. */
   private readonly frameListener: AudioSourceFrameListener;
+
+  /** The handler for asynchronous component failures. */
   private readonly errorListener: AudioSourceErrorListener;
 
-  /** 文件解码与循环时间轴 */
+  // File decoding and loop timeline
+
+  /** The native file decoder for the current playback cycle. */
   private decoder: AudioFileFrameDecoder | null = null;
+
+  /** The local media file path. */
   private filePath: string = '';
 
-  /** 播放进度 */
+  // Playback progress
+
+  /** The playback timeline shared by audio and video. */
   private timeline: MediaTimeline | null = null;
+
+  /** The zero-based playback cycle index. */
   private loopIndex: number = 0;
 
-  /** 暂停、循环与文件结束状态 */
+  // Pause, looping, and file completion state
+
+  /** Whether media output is paused. */
   private isPaused: boolean = false;
+
+  /** Whether completion arrived while playback was paused. */
   private pendingEndOfStream: boolean = false;
+
+  /** Whether file playback restarts after natural completion. */
   private loop: boolean = true;
+
+  /** Whether non-looping media output has ended naturally. */
   private hasEnded: boolean = false;
 
-  /** 音频源版本与播放结束通知 */
+  // Audio source revision and playback completion
+
+  /** The revision rejecting output from obsolete file sources. */
   private sourceVersion: number = 0;
-  /**
-   * 通知本地媒体已完成当前播放。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Reports local media playback completion. */
   private readonly endedListener: () => void;
 
-  /**
-   * 创建音频源 Controller。
-   *
-   * @param frameListener 音频帧输出监听器。
-   * @param errorListener 音频源错误监听器。
-   * @param endedListener 当前媒体播放结束时执行的回调。
-   * @returns 新建的 AudioSourceController 实例。
-   */
+  /** Creates an audio source controller. */
   constructor(
     frameListener: AudioSourceFrameListener,
     errorListener: AudioSourceErrorListener,
-    endedListener: () => void = (): void => {}
+    endedListener: () => void = (): void => { }
   ) {
     this.frameListener = frameListener;
     this.errorListener = errorListener;
@@ -84,13 +97,15 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 配置待解码的本地媒体文件。
+   * Configures the local file to decode.
    *
-   * @param filePath 本地媒体文件路径。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 无返回值。
+   * @param filePath The local media file path.
+   * @param loop Whether to loop after file completion.
    */
-  configure(filePath: string, loop: boolean = true): void {
+  configure(
+    filePath: string,
+    loop: boolean = true
+  ): void {
     if (this.decoder !== null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -103,12 +118,13 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 按共享时间轴开始输出音频帧。
+   * Starts audio frame output on the shared timeline.
    *
-   * @param timeline 音视频共享播放时间轴。
-   * @returns 无返回值。
+   * @param timeline The shared audio/video playback timeline.
    */
-  start(timeline: MediaTimeline): void {
+  start(
+    timeline: MediaTimeline
+  ): void {
     if (this.filePath.length === 0) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -131,11 +147,7 @@ export class AudioSourceController implements AudioSourceControlling {
     this.decoder = this.createDecoder();
   }
 
-  /**
-   * 暂停当前解码器，保留媒体位置与资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses the decoder while retaining media position and resources. */
   pause(): void {
     if (this.hasEnded) {
       return;
@@ -155,12 +167,13 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 使用统一的暂停时长恢复当前解码器。
+   * Resumes the decoder with the shared pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void {
+  resume(
+    pausedDurationUs: number
+  ): void {
     if (this.hasEnded) {
       return;
     }
@@ -182,11 +195,7 @@ export class AudioSourceController implements AudioSourceControlling {
     }
   }
 
-  /**
-   * 停止输出并清理音频文件状态。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops output and clears audio file state. */
   stop(): void {
     this.sourceVersion++;
     this.hasEnded = false;
@@ -199,9 +208,9 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 根据当前文件和时间轴创建音频帧解码器。
+   * Creates an audio frame decoder for the current file and timeline.
    *
-   * @returns 已启动的音频帧解码器。
+   * @returns The started audio frame decoder.
    */
   private createDecoder(): AudioFileFrameDecoder {
     const timeline: MediaTimeline | null = this.timeline;
@@ -240,12 +249,13 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 在当前循环结束后创建下一轮音频解码器。
+   * Creates the next audio decoder after a playback cycle ends.
    *
-   * @param loopIndex 结束解码器所属的循环序号。
-   * @returns 无返回值。
+   * @param loopIndex The completed decoder's playback cycle index.
    */
-  private handleEndOfStream(loopIndex: number): void {
+  private handleEndOfStream(
+    loopIndex: number
+  ): void {
     const endedDecoder: AudioFileFrameDecoder | null = this.decoder;
     if (endedDecoder === null || loopIndex !== this.loopIndex || this.hasEnded) {
       return;
@@ -255,38 +265,37 @@ export class AudioSourceController implements AudioSourceControlling {
       return;
     }
 
-    setTimeout((): void => {
-      if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
-        return;
-      }
-      if (this.isPaused) {
-        this.pendingEndOfStream = true;
-        return;
-      }
+    setTimeout(
+      (): void => {
+        if (this.decoder !== endedDecoder || loopIndex !== this.loopIndex) {
+          return;
+        }
+        if (this.isPaused) {
+          this.pendingEndOfStream = true;
+          return;
+        }
 
-      this.decoder = null;
-      this.releaseDecoderInstance(endedDecoder);
-      if (!this.loop) {
-        this.hasEnded = true;
-        this.endedListener();
-        return;
-      }
-      this.loopIndex++;
+        this.decoder = null;
+        this.releaseDecoderInstance(endedDecoder);
+        if (!this.loop) {
+          this.hasEnded = true;
+          this.endedListener();
+          return;
+        }
+        this.loopIndex++;
 
-      try {
-        this.decoder = this.createDecoder();
-      } catch (error) {
-        const reason: string = error instanceof Error ? error.message : String(error);
-        this.errorListener(reason);
-      }
-    }, 0);
+        try {
+          this.decoder = this.createDecoder();
+        } catch (error) {
+          const reason: string = error instanceof Error ? error.message : String(error);
+          this.errorListener(reason);
+        }
+      },
+      0
+    );
   }
 
-  /**
-   * 释放当前音频解码器。
-   *
-   * @returns 无返回值。
-   */
+  /** Releases the current audio decoder. */
   private releaseDecoder(): void {
     const decoder: AudioFileFrameDecoder | null = this.decoder;
     this.decoder = null;
@@ -297,12 +306,13 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 
   /**
-   * 安全释放指定音频解码器并记录释放错误。
+   * Releases an audio decoder and logs release errors.
    *
-   * @param decoder 待释放的音频解码器。
-   * @returns 无返回值。
+   * @param decoder The audio decoder to release.
    */
-  private releaseDecoderInstance(decoder: AudioFileFrameDecoder): void {
+  private releaseDecoderInstance(
+    decoder: AudioFileFrameDecoder
+  ): void {
     try {
       decoder.release();
     } catch (error) {
@@ -315,43 +325,39 @@ export class AudioSourceController implements AudioSourceControlling {
   }
 }
 
-/** 将音频解码器事件转发给音频源 Controller。 */
+/** Forwards audio decoder events to the source controller. */
 class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
 
-  /** 解码帧、结束与错误处理 */
   /**
-   * 交付当前源的解码帧。
+   * Delivers a decoded frame for the current source.
    *
-   * @param frame 当前解码的 PCM 音频帧。
-   * @returns 无返回值。
+   * @param frame The decoded PCM frame.
    */
-  private readonly frameHandler: (frame: AudioFrame) => void;
-  /**
-   * 通知当前源已输出到文件结尾。
-   *
-   * @returns 无返回值。
-   */
+  private readonly frameHandler: (
+    frame: AudioFrame
+  ) => void;
+
+  /** Reports that the source reached the file end. */
   private readonly endHandler: () => void;
-  /**
-   * 交付当前源的解码或输出错误。
-   *
-   * @param message 日志内容、错误说明或收到的信令文本。
-   * @returns 无返回值。
-   */
-  private readonly errorHandler: (message: string) => void;
 
   /**
-   * 创建音频解码事件转发器。
+   * Delivers source decoding or output errors.
    *
-   * @param frameHandler 音频帧处理方法。
-   * @param endHandler 音频流结束处理方法。
-   * @param errorHandler 音频解码错误处理方法。
-   * @returns 新建的 AudioSourceDecoderListener 实例。
+   * @param message The local audio decoding or output failure description.
    */
+  private readonly errorHandler: (
+    message: string
+  ) => void;
+
+  /** Creates an audio decoder event adapter. */
   constructor(
-    frameHandler: (frame: AudioFrame) => void,
+    frameHandler: (
+      frame: AudioFrame
+    ) => void,
     endHandler: () => void,
-    errorHandler: (message: string) => void
+    errorHandler: (
+      message: string
+    ) => void
   ) {
     this.frameHandler = frameHandler;
     this.endHandler = endHandler;
@@ -359,12 +365,13 @@ class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
   }
 
   /**
-   * 转发解码后的音频帧，并将处理异常交给错误处理器。
+   * Forwards decoded audio and reports frame handler exceptions.
    *
-   * @param frame 解码后的音频帧。
-   * @returns 无返回值。
+   * @param frame The decoded audio frame.
    */
-  onFrame(frame: AudioFrame): void {
+  onFrame(
+    frame: AudioFrame
+  ): void {
     try {
       this.frameHandler(frame);
     } catch (error) {
@@ -373,22 +380,19 @@ class AudioSourceDecoderListener implements AudioFileFrameDecoderListener {
     }
   }
 
-  /**
-   * 转发音频流结束事件。
-   *
-   * @returns 无返回值。
-   */
+  /** Forwards audio completion. */
   onEndOfStream(): void {
     this.endHandler();
   }
 
   /**
-   * 转发音频解码错误。
+   * Forwards audio decoding errors.
    *
-   * @param message 错误信息。
-   * @returns 无返回值。
+   * @param message The error message.
    */
-  onError(message: string): void {
+  onError(
+    message: string
+  ): void {
     this.errorHandler(message);
   }
 }

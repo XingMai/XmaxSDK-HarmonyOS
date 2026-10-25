@@ -1,10 +1,9 @@
 //
 //  ImageManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -21,16 +20,19 @@ import {
 } from './DecodedImage';
 import { ImageManaging } from './ImageManaging';
 
-/** 使用 HarmonyOS ImageKit 提供 SDK 内部图片解码能力。 */
+/** An ImageKit-backed image decoder for SDK media. */
 export class ImageManager implements ImageManaging {
 
   /**
-   * 解码图片编码数据。
+   * Decodes encoded image data.
    *
-   * @param data 完整的图片编码数据。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param data The complete encoded image bytes.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  async decode(data: ArrayBuffer | Uint8Array): Promise<DecodedImage> {
+  async decode(
+    data: ArrayBuffer | Uint8Array
+  ): Promise<DecodedImage> {
     let encodedData: ArrayBuffer;
     if (data instanceof Uint8Array) {
       encodedData = new ArrayBuffer(data.byteLength);
@@ -59,12 +61,15 @@ export class ImageManager implements ImageManaging {
   }
 
   /**
-   * 解码本地图片文件。
+   * Decodes a local image file.
    *
-   * @param filePath 可读取的本地图片文件路径。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param filePath The readable local image file path.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  async decodeFile(filePath: string): Promise<DecodedImage> {
+  async decodeFile(
+    filePath: string
+  ): Promise<DecodedImage> {
     if (filePath.trim().length === 0) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -95,12 +100,15 @@ export class ImageManager implements ImageManaging {
   }
 
   /**
-   * 为平台 PixelMap 创建不影响调用方所有权的已解码图片快照。
+   * Snapshots a PixelMap without changing caller ownership.
    *
-   * @param pixelMap 接入方持有的 PixelMap；SDK 不会修改或释放该对象。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param pixelMap The caller-owned PixelMap, which XmaxSDK neither modifies nor releases.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
-  async decodePixelMap(pixelMap: image.PixelMap): Promise<DecodedImage> {
+  async decodePixelMap(
+    pixelMap: image.PixelMap
+  ): Promise<DecodedImage> {
     let snapshot: image.PixelMap | null = null;
 
     try {
@@ -109,13 +117,16 @@ export class ImageManager implements ImageManaging {
         pixelMap.getPixelBytesNumber()
       );
       await pixelMap.readPixelsToBuffer(pixelData);
-      snapshot = await image.createPixelMap(pixelData, {
-        size: info.size,
-        srcPixelFormat: info.pixelFormat,
-        pixelFormat: image.PixelMapFormat.RGBA_8888,
-        editable: true,
-        alphaType: info.alphaType
-      });
+      snapshot = await image.createPixelMap(
+        pixelData,
+        {
+          size: info.size,
+          srcPixelFormat: info.pixelFormat,
+          pixelFormat: image.PixelMapFormat.RGBA_8888,
+          editable: true,
+          alphaType: info.alphaType
+        }
+      );
 
       const normalizedInfo: image.ImageInfo = await snapshot.getImageInfo();
       const decodedImage: DecodedImage = new PixelMapDecodedImage(
@@ -135,10 +146,11 @@ export class ImageManager implements ImageManaging {
   }
 
   /**
-   * 将 ImageSource 解码为 SDK 自有的 RGBA PixelMap。
+   * Decodes an ImageSource into an SDK-owned RGBA PixelMap.
    *
-   * @param imageSource 待解码的 ImageKit 图片源。
-   * @returns 由 SDK 持有的已解码图片。
+   * @param imageSource The ImageKit source to decode.
+   *
+   * @returns The decoded image owned by XmaxSDK.
    */
   private async decodeSource(
     imageSource: image.ImageSource

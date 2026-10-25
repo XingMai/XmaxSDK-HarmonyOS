@@ -1,10 +1,9 @@
 //
 //  QualityController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -33,219 +32,321 @@ import {
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { QualityControlling } from './QualityControlling';
 
-/** 管理上下行传输档位、历史和 RTC 质量事件，独立通知业务监听器。 */
+/** Manages quality levels, history, and RTC events with independent application notifications. */
 export class QualityController implements QualityControlling, RtcQualityListener {
 
-  /** 上下行统计监听器 */
+  // Uplink and downlink statistics listeners
+
+  /** The handler for published uplink video statistics. */
   private uplinkStatisticsListener: UplinkVideoStatisticsListener | null = null;
+
+  /** The current result-stream statistics handler. */
   private downlinkStatisticsListener: DownlinkVideoStatisticsListener | null = null;
 
-  /** 统计交付的发布状态与远端用户 */
+  // Statistics publication state and remote user
+
+  /** Whether current publication enables uplink statistics delivery. */
   private uplinkStatisticsEnabled: boolean = false;
+
+  /** The result user selected for downlink statistics. */
   private downlinkStatisticsUser: string | undefined;
 
-  /** 异步统计通知版本 */
+  // Asynchronous statistics delivery revision
+
+  /** The revision rejecting obsolete uplink statistics. */
   private uplinkStatisticsVersion: number = 0;
+
+  /** The revision rejecting obsolete downlink statistics delivery. */
   private downlinkStatisticsVersion: number = 0;
 
-  /**
-   * 设置上行视频统计监听器；传入 null 清除，停止发布或断开时以 undefined 清空统计。
-   *
-   * @param listener 异步接收上行统计或 undefined 清空通知的监听器；null 表示移除。
-   * @returns 无返回值。
-   */
-  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void {
+  /** Replaces the uplink statistics listener and invalidates queued notifications. */
+  setUplinkVideoStatisticsListener(
+    listener: UplinkVideoStatisticsListener | null
+  ): void {
     this.uplinkStatisticsVersion++;
     this.uplinkStatisticsListener = listener;
   }
 
-  /**
-   * 设置当前生成流的下行视频统计监听器；传入 null 清除，流清理时以 undefined 清空统计。
-   *
-   * @param listener 异步接收当前生成流下行统计或 undefined 清空通知的监听器；null 表示移除。
-   * @returns 无返回值。
-   */
-  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void {
+  /** Replaces the downlink statistics listener and invalidates queued notifications. */
+  setDownlinkVideoStatisticsListener(
+    listener: DownlinkVideoStatisticsListener | null
+  ): void {
     this.downlinkStatisticsVersion++;
     this.downlinkStatisticsListener = listener;
   }
 
   /**
-   * 开启或关闭上行统计交付，并通知监听器清空旧统计。
+   * Enables uplink statistics and notifies listeners to clear previous values.
    *
-   * @param enabled 是否开启该能力。
-   * @returns 无返回值。
+   * @param enabled Whether to enable this capability.
    */
-  setUplinkVideoStatisticsEnabled(enabled: boolean): void {
+  setUplinkVideoStatisticsEnabled(
+    enabled: boolean
+  ): void {
     this.uplinkStatisticsEnabled = enabled;
-    this.deliverUplink(undefined, ++this.uplinkStatisticsVersion);
+    this.deliverUplink(
+      undefined,
+      ++this.uplinkStatisticsVersion
+    );
   }
 
   /**
-   * 切换需要交付统计的远端用户，并通知监听器清空旧统计。
+   * Selects the observed remote user and notifies listeners to clear previous values.
    *
-   * @param userId 需要监听的远端用户标识；undefined 表示停止交付下行统计。
-   * @returns 无返回值。
+   * @param userId The remote user to observe; undefined stops downlink statistics delivery.
    */
-  setDownlinkVideoStatisticsUser(userId: string | undefined): void {
+  setDownlinkVideoStatisticsUser(
+    userId: string | undefined
+  ): void {
     this.downlinkStatisticsUser = userId;
-    this.deliverDownlink(undefined, ++this.downlinkStatisticsVersion);
+    this.deliverDownlink(
+      undefined,
+      ++this.downlinkStatisticsVersion
+    );
   }
 
   /**
-   * 接收 RTC 当前上行视频统计，供日志或业务监听使用。
+   * Receives current uplink statistics for logs or application listeners.
    *
-   * @param statistics 当前发布的上行视频统计。
-   * @returns 无返回值。
+   * @param statistics The published uplink video statistics.
    */
-  onUplinkVideoStatistics(statistics: UplinkVideoStatistics): void {
-    if (this.uplinkStatisticsEnabled) { this.deliverUplink(statistics, this.uplinkStatisticsVersion); }
+  onUplinkVideoStatistics(
+    statistics: UplinkVideoStatistics
+  ): void {
+    if (this.uplinkStatisticsEnabled) {
+      this.deliverUplink(
+        statistics,
+        this.uplinkStatisticsVersion
+      );
+    }
   }
 
   /**
-   * 接收 RTC 指定远端用户的下行视频统计。
+   * Receives a remote user's downlink video statistics.
    *
-   * @param statistics 对应远端用户的下行视频统计。
-   * @returns 无返回值。
+   * @param statistics The remote user's downlink video statistics.
    */
-  onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics): void {
-    if (statistics.userId === this.downlinkStatisticsUser) { this.deliverDownlink(statistics, this.downlinkStatisticsVersion); }
+  onDownlinkVideoStatistics(
+    statistics: DownlinkVideoStatistics
+  ): void {
+    if (statistics.userId === this.downlinkStatisticsUser) {
+      this.deliverDownlink(
+        statistics,
+        this.downlinkStatisticsVersion
+      );
+    }
   }
 
   /**
-   * 异步交付当前版本的上行统计，丢弃监听器替换或流停用后的旧通知。
+   * Delivers current-revision uplink statistics, rejecting events after listener or publication
+   * changes.
    *
-   * @param statistics 统一视频统计；undefined 表示清除旧统计。
-   * @param version 排除过期异步通知的版本号。
-   * @returns 无返回值。
+   * @param statistics The normalized statistics, or undefined to clear prior values.
+   * @param version The revision rejecting obsolete asynchronous notifications.
    */
-  private deliverUplink(statistics: UplinkVideoStatistics | undefined, version: number): void {
+  private deliverUplink(
+    statistics: UplinkVideoStatistics | undefined,
+    version: number
+  ): void {
     if (this.uplinkStatisticsListener === null) { return; }
     void Promise.resolve().then((): void => {
       if (version !== this.uplinkStatisticsVersion || (statistics !== undefined && !this.uplinkStatisticsEnabled)) { return; }
       try { this.uplinkStatisticsListener?.(statistics); }
-      catch (error) { XmaxLogger.error('Uplink statistics listener failed: ' + String(error), 'Quality'); }
+      catch (error) {
+        XmaxLogger.error(
+          'Uplink statistics listener failed: ' + String(error),
+          'Quality'
+        );
+      }
     });
   }
 
   /**
-   * 异步交付当前用户与版本的下行统计，丢弃过期通知。
+   * Delivers current-user, current-revision downlink statistics, rejecting obsolete events.
    *
-   * @param statistics 统一视频统计；undefined 表示清除旧统计。
-   * @param version 排除过期异步通知的版本号。
-   * @returns 无返回值。
+   * @param statistics The normalized statistics, or undefined to clear prior values.
+   * @param version The revision rejecting obsolete asynchronous notifications.
    */
-  private deliverDownlink(statistics: DownlinkVideoStatistics | undefined, version: number): void {
+  private deliverDownlink(
+    statistics: DownlinkVideoStatistics | undefined,
+    version: number
+  ): void {
     if (this.downlinkStatisticsListener === null) { return; }
     void Promise.resolve().then((): void => {
       if (version !== this.downlinkStatisticsVersion ||
         (statistics !== undefined && statistics.userId !== this.downlinkStatisticsUser)) { return; }
       try { this.downlinkStatisticsListener?.(statistics); }
-      catch (error) { XmaxLogger.error('Downlink statistics listener failed: ' + String(error), 'Quality'); }
+      catch (error) {
+        XmaxLogger.error(
+          'Downlink statistics listener failed: ' + String(error),
+          'Quality'
+        );
+      }
     });
   }
 
-  /** 调档历史存储依赖 */
+  // Quality history storage dependency
+
+  /** The numeric store backing adaptive quality history. */
   private readonly historyStore: QualityHistoryStore;
 
-  /** 各方向调档状态与历史 */
+  // Per-direction quality state and history
+
+  /** The adaptive state for uplink transmission. */
   private uplinkQuality: QualityDirection | undefined;
+
+  /** The adaptive state for downlink transmission. */
   private downlinkQuality: QualityDirection | undefined;
+
+  /** The model-specific record of successfully applied quality levels. */
   private history: QualityHistory | undefined;
 
-  /** 自动调档事件通知 */
+  // Adaptive quality notification
+
+  /** The handler scheduling adaptive changes from quality samples. */
   private adaptiveListener: AdaptiveQualityListener | null = null;
 
-  /**
-   * 读取当前上下行传输基准与档位。
-   *
-   * @returns 调档配置；尚未准备时返回 undefined。
-   */
+  /** The current media baseline and transmission levels, or undefined before preparation. */
   get qualityConfiguration(): QualityConfiguration | undefined {
     return this.uplinkQuality === undefined || this.downlinkQuality === undefined ? undefined :
-      new QualityConfiguration(this.uplinkQuality.baseline, this.uplinkQuality.level, this.downlinkQuality.level);
+      new QualityConfiguration(
+        this.uplinkQuality.baseline,
+        this.uplinkQuality.level,
+        this.downlinkQuality.level
+      );
   }
 
   /**
-   * 根据媒体基准和有效历史档位初始化上下行自动调档。
+   * Initializes uplink/downlink adaptation from the media baseline and valid quality history.
    *
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @param model 生成模型名称，用于隔离各模型的历史档位。
-   * @returns 初始化后的上下行档位配置。
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
+   * @param model The model name separating quality history by model.
+   *
+   * @returns The initialized uplink/downlink quality configuration.
    */
-  prepareQuality(baseline: RealtimeVideoFormat, model: string): QualityConfiguration {
+  prepareQuality(
+    baseline: RealtimeVideoFormat,
+    model: string
+  ): QualityConfiguration {
     baseline.validate();
-    this.history = new QualityHistory(model, this.historyStore);
-    this.uplinkQuality = new QualityDirection(baseline, this.history.read(false), false);
-    this.downlinkQuality = new QualityDirection(baseline, this.history.read(true), true);
-    return new QualityConfiguration(baseline, this.uplinkQuality.level, this.downlinkQuality.level);
+    this.history = new QualityHistory(
+      model,
+      this.historyStore
+    );
+    this.uplinkQuality = new QualityDirection(
+      baseline,
+      this.history.read(false),
+      false
+    );
+    this.downlinkQuality = new QualityDirection(
+      baseline,
+      this.history.read(true),
+      true
+    );
+    return new QualityConfiguration(
+      baseline,
+      this.uplinkQuality.level,
+      this.downlinkQuality.level
+    );
   }
 
   /**
-   * 保留上下行档位并替换媒体基准，重置各方向的采样窗口。
+   * Replaces the media baseline while retaining quality levels and resetting sample windows.
    *
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @returns 更新后的配置；尚未准备时返回 undefined。
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
+   *
+   * @returns The updated configuration, or undefined before preparation.
    */
-  rebaseQuality(baseline: RealtimeVideoFormat): QualityConfiguration | undefined {
+  rebaseQuality(
+    baseline: RealtimeVideoFormat
+  ): QualityConfiguration | undefined {
     const configuration: QualityConfiguration | undefined = this.qualityConfiguration;
     if (configuration === undefined) { return undefined; }
-    this.uplinkQuality = new QualityDirection(baseline, configuration.uplinkLevel, false);
-    this.downlinkQuality = new QualityDirection(baseline, configuration.downlinkLevel, true);
+    this.uplinkQuality = new QualityDirection(
+      baseline,
+      configuration.uplinkLevel,
+      false
+    );
+    this.downlinkQuality = new QualityDirection(
+      baseline,
+      configuration.downlinkLevel,
+      true
+    );
     return this.qualityConfiguration;
   }
 
   /**
-   * 设置自动调档事件监听器；传入 null 清除监听器。
+   * Sets the adaptive quality handler; null removes it.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setAdaptiveQualityListener(listener: AdaptiveQualityListener | null): void { this.adaptiveListener = listener; }
-
-  /**
-   * 根据连续网络采样计算上下行建议档位，不直接修改当前档位。
-   *
-   * @param quality 当前方向或上下行的网络质量采样。
-   * @param sampledAt 网络采样的单调时间，单位秒。
-   * @returns 各方向的候选档位；无调整建议的方向为 undefined。
-   */
-  proposeQuality(quality: RealtimeNetworkQuality, sampledAt: number): QualityChange {
-    const now: number = QualityClock.now();
-    return new QualityChange(this.uplinkQuality?.observe(quality.uplink, sampledAt, now),
-      this.downlinkQuality?.observe(quality.downlink, sampledAt, now));
+  setAdaptiveQualityListener(
+    listener: AdaptiveQualityListener | null
+  ): void {
+    this.adaptiveListener = listener;
   }
 
   /**
-   * 记录一次调档提交的结果，仅成功时更新档位和历史。
+   * Resolves quality recommendations from consecutive samples without changing current levels.
    *
-   * @param downlink 是否为下行方向；false 表示上行。
-   * @param level 传输档位，范围 1～5，数值越小质量越高。
-   * @param success 此次配置是否已成功提交。
-   * @returns 无返回值。
+   * @param quality The uplink, downlink, or combined network quality sample.
+   * @param sampledAt The monotonic network sample time, in seconds.
+   *
+   * @returns The candidate levels, with undefined for directions not requiring adjustment.
    */
-  completeQuality(downlink: boolean, level: number, success: boolean): void {
+  proposeQuality(
+    quality: RealtimeNetworkQuality,
+    sampledAt: number
+  ): QualityChange {
+    const now: number = QualityClock.now();
+    return new QualityChange(
+      this.uplinkQuality?.observe(
+        quality.uplink,
+        sampledAt,
+        now
+      ),
+      this.downlinkQuality?.observe(
+        quality.downlink,
+        sampledAt,
+        now
+      )
+    );
+  }
+
+  /**
+   * Records a quality submission, updating levels and history only on success.
+   *
+   * @param downlink Whether this is downlink; false selects uplink.
+   * @param level The quality level, from 1 to 5; lower values mean higher quality.
+   * @param success Whether the configuration was submitted successfully.
+   */
+  completeQuality(
+    downlink: boolean,
+    level: number,
+    success: boolean
+  ): void {
     const direction: QualityDirection | undefined = downlink ? this.downlinkQuality : this.uplinkQuality;
     if (direction === undefined) { return; }
-    direction.complete(level, success, QualityClock.now());
-    if (success) { this.history?.write(direction.level, downlink); }
+    direction.complete(
+      level,
+      success,
+      QualityClock.now()
+    );
+    if (success) {
+      this.history?.write(
+        direction.level,
+        downlink
+      );
+    }
   }
 
-  /**
-   * 清空上下行连续采样计数，保留当前档位。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears consecutive samples while retaining quality levels. */
   resetQualitySamples(): void {
     this.uplinkQuality?.resetSamples();
     this.downlinkQuality?.resetSamples();
   }
 
-  /**
-   * 释放上下行调档状态与历史引用，清除自动调档监听器。
-   *
-   * @returns 无返回值。
-   */
+  /** Releases quality state and history references and removes the adaptive listener. */
   resetQuality(): void {
     this.uplinkQuality = undefined;
     this.downlinkQuality = undefined;
@@ -253,48 +354,55 @@ export class QualityController implements QualityControlling, RtcQualityListener
     this.adaptiveListener = null;
   }
 
-  /** 网络质量与性能告警通知 */
+  // Network quality and performance notifications
+
+  /** The handler receiving normalized network quality. */
   private networkQualityListener: RealtimeNetworkQualityListener | null = null;
+
+  /** The device performance alarm handler. */
   private performanceAlarmListener: RealtimePerformanceAlarmListener | null = null;
 
   /**
-   * 创建质量监控 Controller。
+   * Creates a quality controller.
    *
-   * @param rtcManager 提供质量事件的 RTC Manager。
-   * @param historyStore 保存自动调档历史的数值存储；默认使用内存。
-   * @returns 新建的 QualityController 实例。
+   * @param rtcManager The RTC manager providing quality events.
+   * @param historyStore The numeric history store, defaulting to memory.
    */
-  constructor(rtcManager: RtcManaging, historyStore: QualityHistoryStore = new MemoryQualityHistoryStore()) {
+  constructor(
+    rtcManager: RtcManaging,
+    historyStore: QualityHistoryStore = new MemoryQualityHistoryStore()
+  ) {
     this.historyStore = historyStore;
     rtcManager.setQualityListener(this);
   }
 
   /**
-   * 设置网络质量监听器。
+   * Sets the network quality listener.
    *
-   * @param listener 网络质量监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The network quality handler, or null to remove it.
    */
-  setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void {
+  setNetworkQualityListener(
+    listener: RealtimeNetworkQualityListener | null
+  ): void {
     this.networkQualityListener = listener;
   }
 
   /**
-   * 设置设备性能告警监听器。
+   * Sets the device performance listener.
    *
-   * @param listener 性能告警监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The performance alarm handler, or null to remove it.
    */
-  setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void {
+  setPerformanceAlarmListener(
+    listener: RealtimePerformanceAlarmListener | null
+  ): void {
     this.performanceAlarmListener = listener;
   }
 
   /**
-   * 接收并转换 RTC 上下行网络质量事件。
+   * Receives and normalizes uplink/downlink RTC quality events.
    *
-   * @param uplink 本地上行网络质量等级。
-   * @param downlink 本地下行网络质量等级。
-   * @returns 无返回值。
+   * @param uplink The local uplink quality level.
+   * @param downlink The local downlink quality level.
    */
   onNetworkQuality(
     uplink: RtcQualityLevel,
@@ -308,9 +416,15 @@ export class QualityController implements QualityControlling, RtcQualityListener
     );
 
     try {
-      this.adaptiveListener?.(quality, QualityClock.now());
+      this.adaptiveListener?.(
+        quality,
+        QualityClock.now()
+      );
     } catch (error) {
-      XmaxLogger.warn('Adaptive quality listener failed: ' + String(error), 'Quality');
+      XmaxLogger.warn(
+        'Adaptive quality listener failed: ' + String(error),
+        'Quality'
+      );
     }
     try {
       listener?.(quality);
@@ -324,13 +438,12 @@ export class QualityController implements QualityControlling, RtcQualityListener
   }
 
   /**
-   * 接收 RTC 性能告警并转换建议的视频格式。
+   * Converts RTC performance alarms and recommended video formats.
    *
-   * @param limited 当前设备性能是否受限。
-   * @param suggestedWidth 建议的视频宽度。
-   * @param suggestedHeight 建议的视频高度。
-   * @param suggestedFrameRate 建议的视频帧率。
-   * @returns 无返回值。
+   * @param limited Whether device performance is limited.
+   * @param suggestedWidth The recommended video width.
+   * @param suggestedHeight The recommended video height.
+   * @param suggestedFrameRate The recommended video frame rate.
    */
   onPerformanceAlarm(
     limited: boolean,
@@ -367,10 +480,11 @@ export class QualityController implements QualityControlling, RtcQualityListener
   }
 
   /**
-   * 将 RTC 网络质量等级转换为服务层公开等级。
+   * Maps an RTC network quality level into a public service level.
    *
-   * @param level RTC 网络质量等级。
-   * @returns 对应的实时生成网络质量等级。
+   * @param level The RTC network quality level.
+   *
+   * @returns The corresponding realtime network quality level.
    */
   private static networkQualityLevel(
     level: RtcQualityLevel
@@ -394,12 +508,13 @@ export class QualityController implements QualityControlling, RtcQualityListener
   }
 
   /**
-   * 根据 RTC 建议参数创建可用的视频格式。
+   * Creates a valid video format from RTC recommendations.
    *
-   * @param width 建议的视频宽度。
-   * @param height 建议的视频高度。
-   * @param frameRate 建议的视频帧率。
-   * @returns 参数有效时返回视频格式，否则返回空值。
+   * @param width The recommended video width.
+   * @param height The recommended video height.
+   * @param frameRate The recommended video frame rate.
+   *
+   * @returns The video format, or undefined for invalid recommendations.
    */
   private static suggestedVideoFormat(
     width: number,
@@ -412,16 +527,23 @@ export class QualityController implements QualityControlling, RtcQualityListener
       return undefined;
     }
 
-    return new RealtimeVideoFormat(width, height, frameRate);
+    return new RealtimeVideoFormat(
+      width,
+      height,
+      frameRate
+    );
   }
 
   /**
-   * 判断数值是否为有限正数。
+   * Checks whether a value is finite and positive.
    *
-   * @param value 待检查数值。
-   * @returns 数值为有限正数时返回 true，否则返回 false。
+   * @param value The value to check.
+   *
+   * @returns True for a finite positive value.
    */
-  private static isPositiveNumber(value: number): boolean {
+  private static isPositiveNumber(
+    value: number
+  ): boolean {
     return typeof value === 'number' && Number.isFinite(value) && value > 0;
   }
 }

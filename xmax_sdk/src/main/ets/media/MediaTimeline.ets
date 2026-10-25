@@ -1,10 +1,9 @@
 //
 //  MediaTimeline.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,24 +13,29 @@ import systemDateTime from '@ohos.systemDateTime';
 const PLAYBACK_START_DELAY_US: number = 100000;
 const AUDIO_PACKET_DURATION_US: number = 10000;
 
-/** 音频和视频文件采集共享的单调播放时间轴。 */
+/** A monotonic playback timeline shared by file audio and video. */
 export class MediaTimeline {
 
-  /** 媒体时间轴基准 */
+  /** The source media timeline origin, in microseconds. */
   readonly mediaStartUs: number;
+
+  /** The duration of one playback cycle, in microseconds. */
   readonly cycleDurationUs: number;
 
-  /** 单调播放锚点与暂停补偿 */
+  /** The monotonic playback anchor, in microseconds. */
   private readonly playbackAnchorUs: number;
+
+  /** The accumulated pause duration, in microseconds. */
   private accumulatedPauseUs: number = 0;
+
+  /** The monotonic pause start time, in microseconds. */
   private pausedAtUs: number = -1;
 
   /**
-   * 创建媒体播放时间轴。
+   * Creates a media playback timeline.
    *
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param mediaDurationUs 媒体有效播放时长，单位微秒。
-   * @returns 新建的 MediaTimeline 实例。
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param mediaDurationUs The effective playback duration, in microseconds.
    */
   constructor(
     mediaStartUs: number,
@@ -46,9 +50,9 @@ export class MediaTimeline {
   }
 
   /**
-   * 读取媒体播放使用的单调时间。
+   * Returns monotonic playback time.
    *
-   * @returns 以微秒为单位的当前单调时间。
+   * @returns The current monotonic time, in microseconds.
    */
   static currentTimestampUs(): number {
     const uptimeNs: number = systemDateTime.getUptime(
@@ -60,21 +64,20 @@ export class MediaTimeline {
   }
 
   /**
-   * 计算指定循环轮次的播放锚点，计入累计暂停时长。
+   * Resolves a playback cycle anchor including accumulated pauses.
    *
-   * @param loopIndex 从 0 开始的媒体循环轮次。
-   * @returns 该轮播放对应的单调时间锚点，单位微秒。
+   * @param loopIndex The zero-based playback cycle index.
+   *
+   * @returns The cycle's monotonic playback anchor, in microseconds.
    */
-  playbackAnchorForLoop(loopIndex: number): number {
+  playbackAnchorForLoop(
+    loopIndex: number
+  ): number {
     return this.playbackAnchorUs + this.accumulatedPauseUs +
       loopIndex * this.cycleDurationUs;
   }
 
-  /**
-   * 冻结共享媒体时间轴。
-   *
-   * @returns 无返回值。
-   */
+  /** Freezes the shared media timeline. */
   pause(): void {
     if (this.pausedAtUs < 0) {
       this.pausedAtUs = MediaTimeline.currentTimestampUs();
@@ -82,9 +85,9 @@ export class MediaTimeline {
   }
 
   /**
-   * 恢复共享媒体时间轴。
+   * Resumes the shared media timeline.
    *
-   * @returns 本次暂停持续时间，供已创建的音视频解码器同步平移播放锚点。
+   * @returns The pause duration used to shift existing audio/video decoder anchors.
    */
   resume(): number {
     if (this.pausedAtUs < 0) {

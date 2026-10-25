@@ -1,26 +1,30 @@
 //
 //  LocalVideoPlaybackState.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 本地视频文件流的播放状态。 */
+/** The playback state of a local video file stream. */
 export enum LocalVideoPlaybackState {
+
+  /** The local video file is playing. */
   PLAYING = 'playing',
+
+  /** The local video file is paused. */
   PAUSE = 'pause',
+
+  /** The non-looping local video file has ended. */
   ENDED = 'ended'
 }
 
 /**
- * 本地视频文件流播放状态监听器。
+ * A local video file playback state handler.
  *
- * @param state 需要通知的业务状态。
- * @returns 无返回值。
+ * @param state The lifecycle or playback state to deliver.
  */
 export type LocalVideoPlaybackStateListener = (
   state: LocalVideoPlaybackState

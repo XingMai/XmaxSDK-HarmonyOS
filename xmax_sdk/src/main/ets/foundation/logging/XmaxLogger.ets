@@ -1,10 +1,9 @@
 //
 //  XmaxLogger.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -17,56 +16,66 @@ const LOG_DOMAIN: number = 0x584D;
 const LOG_TAG: string = 'XmaxSDK';
 const LOG_PREFIX: string = '[Xmax]';
 
-/** 日志文本或延迟构造文本的函数；关闭对应日志时无需构造内容。 */
+/** Log text or a lazy text provider, evaluated only for enabled categories. */
 type LogMessage = string | (() => string);
 
-/** SDK 内部日志入口；调用方不应传入认证信息或完整敏感响应。 */
+/** The SDK logging entry point. Callers must not supply credentials or complete sensitive responses. */
 export class XmaxLogger {
 
-  /** 全局日志筛选与语言配置 */
+  /** The realtime model and business configuration. */
   private static options: XmaxLoggerOption = XmaxLoggerOption.NONE;
+
+  /** The environment selecting localized log details. */
   private static environment: XmaxEnvironment = XmaxEnvironment.CHINA;
 
   /**
-   * 配置 SDK 全局日志；新客户端的配置会覆盖之前的配置。
+   * Configures global SDK logs; the newest client replaces prior settings.
    *
-   * @param options 组件使用的初始化选项。
-   * @param environment SDK 连接的服务环境。
-   * @returns 无返回值。
+   * @param options The component initialization options.
+   * @param environment The service environment.
    */
-  static configure(options: XmaxLoggerOption, environment: XmaxEnvironment = XmaxEnvironment.CHINA): void {
+  static configure(
+    options: XmaxLoggerOption,
+    environment: XmaxEnvironment = XmaxEnvironment.CHINA
+  ): void {
     XmaxLogger.options = options;
     XmaxLogger.environment = environment;
   }
 
   /**
-   * 日志标题保留中英双语，细项跟随最后创建的 Client 的服务环境。
+   * Keep bilingual titles; details use the latest client's environment language.
    *
-   * @param chinese 面向中国服务环境使用的中文文本。
-   * @param english 其他服务环境使用的英文文本。
-   * @returns 中国服务环境返回中文文本，其他环境返回英文文本。
+   * @param chinese The text for the China environment.
+   * @param english The text for other environments.
+   *
+   * @returns Chinese text for China; English text otherwise.
    */
-  static localized(chinese: string, english: string): string {
+  static localized(
+    chinese: string,
+    english: string
+  ): string {
     return XmaxLogger.environment === XmaxEnvironment.CHINA ? chinese : english;
   }
 
   /**
-   * 判断指定日志类别是否已启用。
+   * Returns whether a log category is enabled.
    *
-   * @param option 决定是否输出此日志的日志选项。
-   * @returns 类别与当前日志配置匹配时返回 true。
+   * @param option The log category controlling output.
+   *
+   * @returns True if the category matches the current log configuration.
    */
-  static isEnabled(option: XmaxLoggerOption): boolean {
+  static isEnabled(
+    option: XmaxLoggerOption
+  ): boolean {
     return option !== XmaxLoggerOption.NONE && (XmaxLogger.options & option) === option;
   }
 
   /**
-   * 输出调试级别日志；对应类别关闭时跳过延迟文本构造。
+   * Writes a debug log, skipping lazy text construction for disabled categories.
    *
-   * @param message 直接日志文本或按需构造日志文本的函数。
-   * @param category 可选的日志业务分类。
-   * @param option 决定是否输出此日志的日志选项。
-   * @returns 无返回值。
+   * @param message The log text or lazy text provider.
+   * @param category The optional log category.
+   * @param option The log category controlling output.
    */
   static debug(
     message: LogMessage,
@@ -80,17 +89,19 @@ export class XmaxLogger {
       LOG_DOMAIN,
       LOG_TAG,
       '%{public}s',
-      XmaxLogger.format(message, category)
+      XmaxLogger.format(
+        message,
+        category
+      )
     );
   }
 
   /**
-   * 输出信息级别日志；对应类别关闭时跳过延迟文本构造。
+   * Writes an informational log, skipping lazy text construction for disabled categories.
    *
-   * @param message 直接日志文本或按需构造日志文本的函数。
-   * @param category 可选的日志业务分类。
-   * @param option 决定是否输出此日志的日志选项。
-   * @returns 无返回值。
+   * @param message The log text or lazy text provider.
+   * @param category The optional log category.
+   * @param option The log category controlling output.
    */
   static info(
     message: LogMessage,
@@ -104,17 +115,19 @@ export class XmaxLogger {
       LOG_DOMAIN,
       LOG_TAG,
       '%{public}s',
-      XmaxLogger.format(message, category)
+      XmaxLogger.format(
+        message,
+        category
+      )
     );
   }
 
   /**
-   * 输出警告级别日志；对应类别关闭时跳过延迟文本构造。
+   * Writes a warning log, skipping lazy text construction for disabled categories.
    *
-   * @param message 直接日志文本或按需构造日志文本的函数。
-   * @param category 可选的日志业务分类。
-   * @param option 决定是否输出此日志的日志选项。
-   * @returns 无返回值。
+   * @param message The log text or lazy text provider.
+   * @param category The optional log category.
+   * @param option The log category controlling output.
    */
   static warn(
     message: LogMessage,
@@ -128,17 +141,19 @@ export class XmaxLogger {
       LOG_DOMAIN,
       LOG_TAG,
       '%{public}s',
-      XmaxLogger.format(message, category)
+      XmaxLogger.format(
+        message,
+        category
+      )
     );
   }
 
   /**
-   * 输出错误级别日志；对应类别关闭时跳过延迟文本构造。
+   * Writes an error log, skipping lazy text construction for disabled categories.
    *
-   * @param message 直接日志文本或按需构造日志文本的函数。
-   * @param category 可选的日志业务分类。
-   * @param option 决定是否输出此日志的日志选项。
-   * @returns 无返回值。
+   * @param message The log text or lazy text provider.
+   * @param category The optional log category.
+   * @param option The log category controlling output.
    */
   static error(
     message: LogMessage,
@@ -152,16 +167,20 @@ export class XmaxLogger {
       LOG_DOMAIN,
       LOG_TAG,
       '%{public}s',
-      XmaxLogger.format(message, category)
+      XmaxLogger.format(
+        message,
+        category
+      )
     );
   }
 
   /**
-   * 构造日志文本，添加 SDK 分类标记、遮蔽敏感字段，并在末尾保留一行空白。
+   * Prefixes log text, redacts sensitive fields, and preserves a trailing visual blank line.
    *
-   * @param message 直接日志文本或按需构造日志文本的函数。
-   * @param category 可选的日志业务分类。
-   * @returns 可直接交给系统日志输出的文本。
+   * @param message The log text or lazy text provider.
+   * @param category The optional log category.
+   *
+   * @returns The text for system logging.
    */
   private static format(
     message: LogMessage,
@@ -171,24 +190,33 @@ export class XmaxLogger {
     const normalizedCategory: string = category?.trim() ?? '';
     const categoryPrefix: string = normalizedCategory.length === 0 ? '' : `[${normalizedCategory}]`;
     const prefix: string = `${LOG_PREFIX}${categoryPrefix}`;
-    const prefixed: string = redacted.replace(/[\r\n\u200B]+$/, '').replace(
+    const prefixed: string = redacted.replace(
+      /[\r\n\u200B]+$/,
+      ''
+    ).replace(
       /\r\n|\r|\n/g,
       `\n${prefix} `
     );
 
-    // DevEco 会忽略纯空行；用零宽空格保留日志之间的视觉空行。
+    // DevEco omits empty log lines; a zero-width space preserves a visual separator.
     return `${prefix} ${prefixed}\n\u200B`;
   }
 
   /**
-   * 遮蔽日志中的 API 密钥、令牌和授权信息。
+   * Redacts API keys, tokens, and authorization values from logs.
    *
-   * @param message 日志内容、错误说明或收到的信令文本。
-   * @returns 已完成敏感信息脱敏的日志文本。
+   * @param message The log text to redact before delivery.
+   *
+   * @returns The redacted log text.
    */
-  private static redact(message: string): string {
+  private static redact(
+    message: string
+  ): string {
     return message
-      .replace(/(authorization\s*[:=]\s*)(?:Bearer|Basic)\s+[^\s,;]+/gi, '$1[REDACTED]')
+      .replace(
+        /(authorization\s*[:=]\s*)(?:Bearer|Basic)\s+[^\s,;]+/gi,
+        '$1[REDACTED]'
+      )
       .replace(
         /("[^"]*(?:api[_-]?key|token|secret|authorization|access[_-]?key)[^"]*"\s*:\s*)("[^"]*"|[^,}\s]+)/gi,
         '$1"[REDACTED]"'

@@ -1,10 +1,9 @@
 //
 //  CameraFrameOutput.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -29,47 +28,57 @@ import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
 /**
- * 接收经过尺寸和方向处理的摄像头视频帧。
+ * Receives resized and oriented camera frames.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The NV12 camera frame resized and rotated for the configured output.
  */
-export type CameraFrameListener = (frame: VideoFrame) => void;
+export type CameraFrameListener = (
+  frame: VideoFrame
+) => void;
 
-/** 管理相机原始视频帧输出。 */
+/** Manages raw camera frame output. */
 export class CameraFrameOutput {
 
-  /** 平台输出与原生接收资源 */
+  // Platform output and native receiving resources
+
+  /** The platform camera output bound to the capture session. */
   readonly output: camera.PreviewOutput;
+
+  /** The native camera frame receiver. */
   private readonly receiver: NativeFrameReceiver;
 
-  /** 摄像头位置与输出格式 */
+  // Camera position and output format
+
+  /** The track's camera position, absent for non-camera media. */
   private readonly position: camera.CameraPosition;
+
+  /** The current video dimensions, frame rate, and encoding settings. */
   private videoFormat: RealtimeVideoFormat | null = null;
+
+  /** The camera capture frame rate, in fps. */
   private captureFrameRate: number = 0;
+
+  /** The clockwise video rotation. */
   private rotation: VideoRotation = VideoRotation.ROTATION_0;
 
-  /** 显示监听与资源释放状态 */
+  // Display observation and resource release state
+
+  /** Whether display orientation observation is installed. */
   private isListeningForDisplayChanges: boolean = false;
+
+  /** Whether the owned resource has been released. */
   private isReleased: boolean = false;
+
   /**
-   * 接收系统显示变化并更新摄像头输出方向。
+   * Updates camera output orientation after a display change.
    *
-   * @param displayId 发生变化的显示设备标识。
-   * @returns 无返回值。
+   * @param displayId The changed display identifier.
    */
   private readonly displayChangeListener = (displayId: number): void => {
     this.handleDisplayChange(displayId);
   };
 
-  /**
-   * 创建摄像头原始帧输出组件。
-   *
-   * @param output 平台摄像头输出资源。
-   * @param receiver 负责接收和转换摄像头帧的原生资源。
-   * @param position 使用的摄像头位置。
-   * @returns 新建的 CameraFrameOutput 实例。
-   */
+  /** Creates raw camera frame output. */
   private constructor(
     output: camera.PreviewOutput,
     receiver: NativeFrameReceiver,
@@ -81,21 +90,22 @@ export class CameraFrameOutput {
   }
 
   /**
-   * 创建摄像头输出与原生帧接收器，将帧和错误交付给监听器。
+   * Creates camera output and a native receiver delivering frames and errors.
    *
-   * @param manager 用于创建摄像头输出的平台 CameraManager。
-   * @param profile 摄像头采集规格。
-   * @param position 使用的摄像头位置。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @param errorListener 接收组件错误的监听器。
-   * @returns 可连接到摄像头会话的帧输出组件。
+   * @param manager The platform manager creating camera output.
+   * @param profile The camera capture profile.
+   * @param position The active camera position.
+   * @param listener The handler for resized and oriented NV12 camera frames.
+   * @param errorListener The component error handler.
+   *
+   * @returns The frame output for camera session binding.
    */
   static create(
     manager: camera.CameraManager,
     profile: camera.Profile,
     position: camera.CameraPosition,
     listener: CameraFrameListener,
-    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => { }
   ): CameraFrameOutput {
     const receiver: NativeFrameReceiver = xmaxVideoNative.createFrameReceiver(
       profile.size.width,
@@ -137,12 +147,11 @@ export class CameraFrameOutput {
   }
 
   /**
-   * 配置摄像头目标格式、采集帧率和显示方向监听。
+   * Configures camera output, capture rate, and display observation.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param captureFrameRate 采集帧率，单位 fps。
-   * @param observeDisplayChange 是否跟随设备显示方向更新输出格式。
-   * @returns 无返回值。
+   * @param videoFormat The media output or transport format.
+   * @param captureFrameRate The capture frame rate, in fps.
+   * @param observeDisplayChange Whether output format follows display orientation.
    */
   configure(
     videoFormat: RealtimeVideoFormat,
@@ -153,47 +162,62 @@ export class CameraFrameOutput {
       return;
     }
     if (observeDisplayChange && !this.isListeningForDisplayChanges) {
-      display.on('change', this.displayChangeListener);
+      display.on(
+        'change',
+        this.displayChangeListener
+      );
       this.isListeningForDisplayChanges = true;
     }
     const currentDisplay: display.Display = display.getDefaultDisplaySync();
     const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
-    this.configureNative(this.formatForDisplay(videoFormat, currentDisplay), captureFrameRate, rotation);
+    this.configureNative(
+      this.formatForDisplay(
+        videoFormat,
+        currentDisplay
+      ),
+      captureFrameRate,
+      rotation
+    );
   }
 
-  /**
-   * 读取已配置的摄像头输出格式。
-   *
-   * @returns 当前输出格式；尚未配置时返回 null。
-   */
+  /** The configured camera output format, or null before configuration. */
   get currentVideoFormat(): RealtimeVideoFormat | null {
     return this.videoFormat;
   }
 
   /**
-   * 根据显示方向调整目标格式的宽高方向。
+   * Adjusts output width and height for display orientation.
    *
-   * @param format 需要使用的视频格式。
-   * @param currentDisplay 提供当前设备显示方向的信息。
-   * @returns 适合当前显示方向的视频格式。
+   * @param format The video format to use.
+   * @param currentDisplay The current display orientation information.
+   *
+   * @returns The video format for current display orientation.
    */
-  private formatForDisplay(format: RealtimeVideoFormat, currentDisplay: display.Display): RealtimeVideoFormat {
+  private formatForDisplay(
+    format: RealtimeVideoFormat,
+    currentDisplay: display.Display
+  ): RealtimeVideoFormat {
     const shortSide: number = Math.min(format.width, format.height);
     const longSide: number = Math.max(format.width, format.height);
     const isLandscape: boolean = currentDisplay.orientation === display.Orientation.LANDSCAPE ||
       currentDisplay.orientation === display.Orientation.LANDSCAPE_INVERTED;
     return isLandscape ?
-      format.resized(longSide, shortSide) :
-      format.resized(shortSide, longSide);
+      format.resized(
+        longSide,
+        shortSide
+      ) :
+      format.resized(
+        shortSide,
+        longSide
+      );
   }
 
   /**
-   * 将目标尺寸、旋转角度与采集帧率提交给原生帧接收器。
+   * Submits dimensions, rotation, and capture rate to the native receiver.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param captureFrameRate 采集帧率，单位 fps。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @returns 无返回值。
+   * @param videoFormat The media output or transport format.
+   * @param captureFrameRate The capture frame rate, in fps.
+   * @param rotation The rotation to apply to the video image.
    */
   private configureNative(
     videoFormat: RealtimeVideoFormat,
@@ -213,12 +237,13 @@ export class CameraFrameOutput {
   }
 
   /**
-   * 在显示设备方向变化时更新摄像头输出规格。
+   * Updates camera output after display rotation.
    *
-   * @param displayId 发生变化的显示设备标识。
-   * @returns 无返回值。
+   * @param displayId The changed display identifier.
    */
-  private handleDisplayChange(displayId: number): void {
+  private handleDisplayChange(
+    displayId: number
+  ): void {
     const videoFormat: RealtimeVideoFormat | null = this.videoFormat;
     if (this.isReleased || videoFormat === null) {
       return;
@@ -229,21 +254,30 @@ export class CameraFrameOutput {
         return;
       }
       const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
-      const outputFormat: RealtimeVideoFormat = this.formatForDisplay(videoFormat, currentDisplay);
+      const outputFormat: RealtimeVideoFormat = this.formatForDisplay(
+        videoFormat,
+        currentDisplay
+      );
       if (rotation !== this.rotation || outputFormat.width !== videoFormat.width ||
         outputFormat.height !== videoFormat.height) {
-        this.configureNative(outputFormat, this.captureFrameRate, rotation);
+        this.configureNative(
+          outputFormat,
+          this.captureFrameRate,
+          rotation
+        );
       }
     } catch (error) {
-      this.logError(XmaxLogger.localized("更新相机帧旋转角度", "Update Camera Frame Rotation"), error);
+      this.logError(
+        XmaxLogger.localized(
+          "更新相机帧旋转角度",
+          "Update Camera Frame Rotation"
+        ),
+        error
+      );
     }
   }
 
-  /**
-   * 停止显示方向监听与帧回调，释放摄像头输出和原生接收器。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops display and frame callbacks and releases camera output and the native receiver. */
   async release(): Promise<void> {
     if (this.isReleased) {
       return;
@@ -253,35 +287,55 @@ export class CameraFrameOutput {
     if (this.isListeningForDisplayChanges) {
       this.isListeningForDisplayChanges = false;
       try {
-        display.off('change', this.displayChangeListener);
+        display.off(
+          'change',
+          this.displayChangeListener
+        );
       } catch (error) {
-        this.logError(XmaxLogger.localized("移除相机屏幕变化监听", "Remove Camera Display Change Listener"), error);
+        this.logError(
+          XmaxLogger.localized(
+            "移除相机屏幕变化监听",
+            "Remove Camera Display Change Listener"
+          ),
+          error
+        );
       }
     }
     try {
       await this.output.release();
     } catch (error) {
-      this.logError(XmaxLogger.localized("释放相机视频帧输出", "Release Camera Frame Output"), error);
+      this.logError(
+        XmaxLogger.localized(
+          "释放相机视频帧输出",
+          "Release Camera Frame Output"
+        ),
+        error
+      );
     }
 
     try {
       this.receiver.release();
     } catch (error) {
-      this.logError(XmaxLogger.localized("释放 Native 相机视频帧接收器", "Release Native Camera Frame Receiver"), error);
+      this.logError(
+        XmaxLogger.localized(
+          "释放 Native 相机视频帧接收器",
+          "Release Native Camera Frame Receiver"
+        ),
+        error
+      );
     }
   }
 
   /**
-   * 验证原生回调并交付 NV12 帧；处理失败时通知错误监听器。
+   * Validates native output and delivers NV12 frames, reporting processing failures.
    *
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @param errorListener 接收组件错误的监听器。
-   * @param data 当前帧的有效媒体数据。
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param timestampUs 媒体帧时间戳，单位微秒。
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param listener The handler for resized and oriented NV12 camera frames.
+   * @param errorListener The component error handler.
+   * @param data The converted NV12 pixel buffer; undefined is ignored when no error is reported.
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   * @param timestampUs The media frame timestamp, in microseconds.
+   * @param error The native camera processing failure description, when present.
    */
   private static handleNativeFrame(
     listener: CameraFrameListener,
@@ -305,7 +359,10 @@ export class CameraFrameOutput {
       } catch (listenerError) {
         const reason: string = listenerError instanceof Error ?
           listenerError.message : String(listenerError);
-        XmaxLogger.error(`${XmaxLogger.localized("相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ 原因：", "相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ Reason: ")}${reason}`, 'Camera');
+        XmaxLogger.error(
+          `${XmaxLogger.localized("相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ 原因：", "相机错误监听器执行失败 (Camera Error Listener Failed)\n└─ Reason: ")}${reason}`,
+          'Camera'
+        );
       }
       return;
     }
@@ -315,10 +372,19 @@ export class CameraFrameOutput {
 
     const lumaLength: number = width * height;
     const frame: VideoFrame = new BufferVideoFrame(
-      new VideoFormat(width, height, VideoPixelFormat.NV12),
+      new VideoFormat(
+        width,
+        height,
+        VideoPixelFormat.NV12
+      ),
       timestampUs,
       [
-        new VideoFramePlane(data, width, 0, lumaLength),
+        new VideoFramePlane(
+          data,
+          width,
+          0,
+          lumaLength
+        ),
         new VideoFramePlane(
           data,
           width,
@@ -341,16 +407,19 @@ export class CameraFrameOutput {
   }
 
   /**
-   * 根据显示方向和摄像头位置计算帧旋转方向。
+   * Resolves frame rotation from display orientation and camera position.
    *
-   * @param displayRotation 系统显示方向枚举值。
-   * @returns 用于原生视频转换的旋转方向。
+   * @param displayRotation The system display rotation value.
+   *
+   * @returns The rotation for native frame conversion.
    */
-  private rotationForDisplay(displayRotation: number): VideoRotation {
+  private rotationForDisplay(
+    displayRotation: number
+  ): VideoRotation {
     let rotation: number = this.output.getPreviewRotation(
       displayRotation
     );
-    // 原始前置帧在横屏时需补偿 180°，使后续 RTC 水平镜像保持正确方向。
+    // Raw front-camera landscape frames need 180-degree compensation before RTC horizontal mirroring.
     if (this.position === camera.CameraPosition.CAMERA_POSITION_FRONT &&
       (displayRotation === 90 || displayRotation === 270)) {
       rotation = (rotation + 180) % 360;
@@ -369,11 +438,10 @@ export class CameraFrameOutput {
   }
 
   /**
-   * 记录摄像头帧输出操作失败的原因。
+   * Logs camera frame output failures.
    *
-   * @param action 正在执行的资源操作名称或操作函数。
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param action The resource operation name or function.
+   * @param error The exception raised while managing camera frame output.
    */
   private logError(
     action: string,
@@ -381,7 +449,10 @@ export class CameraFrameOutput {
   ): void {
     const errorMessage: string = error instanceof Error ? error.message : String(error);
     const reason: string = errorMessage.length > 0 && errorMessage !== 'undefined' ?
-      errorMessage : XmaxLogger.localized("未知错误", "Unknown Error");
+      errorMessage : XmaxLogger.localized(
+        "未知错误",
+        "Unknown Error"
+      );
     XmaxLogger.error(
       `${action}${XmaxLogger.localized("失败\n└─ 原因：", " Failed\n└─ Reason: ")}${reason}`,
       'Camera'

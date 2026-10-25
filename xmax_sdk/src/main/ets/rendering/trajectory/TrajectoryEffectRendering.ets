@@ -1,10 +1,9 @@
 //
 //  TrajectoryEffectRendering.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,26 +11,23 @@
 import { TrajectoryId } from './TrajectoryId';
 import { TrajectoryPoint } from './TrajectoryPoint';
 
-/** 自定义轨迹效果的绘制接口，由轨迹视图驱动触摸事件和动画更新。 */
+/** An interface for custom trajectory effects driven by touch and animation events. */
 export interface TrajectoryEffectRendering {
 
-  /** 动画刷新节奏 */
-  /** 动态效果刷新间隔，单位为毫秒。 */
+  /** The animation refresh interval, in milliseconds. */
   readonly tickIntervalMs: number;
 
-  /** 轨迹与动态效果画布 */
-  /** 轨迹画布上下文。 */
+  /** The trajectory drawing context. */
   readonly trailContext: CanvasRenderingContext2D;
 
-  /** 动态效果画布上下文。 */
+  /** The animated effect drawing context. */
   readonly effectContext: CanvasRenderingContext2D;
 
   /**
-   * 更新渲染区域尺寸。
+   * Updates rendering area dimensions.
    *
-   * @param width 渲染区域宽度。
-   * @param height 渲染区域高度。
-   * @returns 无返回值。
+   * @param width The rendering area width.
+   * @param height The rendering area height.
    */
   resize(
     width: number,
@@ -39,54 +35,48 @@ export interface TrajectoryEffectRendering {
   ): void;
 
   /**
-   * 渲染轨迹起点。
+   * Renders new trajectory points.
    *
-   * @param points 新开始的轨迹点。
-   * @returns 无返回值。
+   * @param points The starting trajectory points.
    */
   renderBegan(
     points: TrajectoryPoint[]
   ): void;
 
   /**
-   * 渲染移动中的轨迹点。
+   * Renders moving trajectory points.
    *
-   * @param points 发生移动的轨迹点。
-   * @returns 无返回值。
+   * @param points The moved trajectory points.
    */
   renderMoved(
     points: TrajectoryPoint[]
   ): void;
 
   /**
-   * 结束指定轨迹。
+   * Ends the specified trajectories.
    *
-   * @param identifiers 已结束的轨迹标识。
-   * @returns 无返回值。
+   * @param identifiers The completed trajectory identifiers.
    */
   renderEnded(
     identifiers: TrajectoryId[]
   ): void;
 
   /**
-   * 推进一帧动态轨迹效果。
+   * Advances one animation frame.
    *
-   * @param timestamp 当前时间戳，单位为毫秒。
-   * @returns 无返回值。
+   * @param timestamp The current timestamp, in milliseconds.
    */
-  tick(timestamp: number): void;
+  tick(
+    timestamp: number
+  ): void;
 
   /**
-   * 判断是否仍有需要持续刷新的轨迹效果。
+   * Returns whether trajectory effects need continued refreshing.
    *
-   * @returns 仍有活动触点或残留轨迹需要消退时返回 true。
+   * @returns True while active touches or residual trajectories need animation.
    */
   isAnimating(): boolean;
 
-  /**
-   * 清理全部轨迹效果。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears all trajectory effects. */
   reset(): void;
 }

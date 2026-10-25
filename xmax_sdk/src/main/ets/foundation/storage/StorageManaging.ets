@@ -1,10 +1,9 @@
 //
 //  StorageManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,18 +13,19 @@ import { StorageConfiguration } from './StorageConfiguration';
 import { StorageProgressListener } from './StorageProgressListener';
 import { StoredFile } from './StoredFile';
 
-/** 定义基础文件上传和下载能力。 */
+/** An interface for file uploads and downloads. */
 export interface StorageManaging {
 
   /**
-   * 上传二进制数据或本地文件到存储服务。
+   * Uploads encoded data or a local file to storage.
    *
-   * @param source 文件二进制数据或本地文件路径。
-   * @param objectKey 存储对象标识。
-   * @param contentType 内容类型。
-   * @param configuration 存储配置。
-   * @param progress 上传进度回调。
-   * @returns 上传后的文件信息。
+   * @param source The file bytes or local path.
+   * @param objectKey The storage object key.
+   * @param contentType The content MIME type.
+   * @param configuration The storage configuration.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file information.
    */
   upload(
     source: ArrayBuffer | string,
@@ -36,12 +36,13 @@ export interface StorageManaging {
   ): Promise<StoredFile>;
 
   /**
-   * 下载远端文件到本地路径。
+   * Downloads a remote file to a local path.
    *
-   * @param remoteUrl 远端文件地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度回调。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote file URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress callback.
+   *
+   * @returns The downloaded file information.
    */
   download(
     remoteUrl: string,

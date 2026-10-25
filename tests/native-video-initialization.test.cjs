@@ -11,7 +11,7 @@ test('native video initialization and failure cleanup execute on the worker, not
   const worker = source.slice(source.indexOf('void ExecuteCreateDecoder('),
     source.indexOf('void CompleteCreateDecoder('));
   const entry = source.slice(source.indexOf('napi_value CreateVideoFileDecoder('));
-  assert.match(entry, /napi_create_async_work\(env, nullptr, resourceName, ExecuteCreateDecoder/);
+  assert.match(entry, /napi_create_async_work\(\s*env,\s*nullptr,\s*resourceName,\s*ExecuteCreateDecoder/);
   assert.doesNotMatch(entry, /decoder->Initialize\(/);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'xmax-video-init-'));
   try {

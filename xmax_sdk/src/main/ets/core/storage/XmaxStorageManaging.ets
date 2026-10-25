@@ -1,10 +1,9 @@
 //
 //  XmaxStorageManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,17 +14,18 @@ import {
   XmaxUploadedFile
 } from './XmaxStorageModel';
 
-/** 定义 SDK 对接入方提供的文件上传和下载能力。 */
+/** An interface for uploading and downloading media files. */
 export interface XmaxStorageManaging {
 
   /**
-   * 上传图片数据。
+   * Uploads encoded image data.
    *
-   * @param data 图片数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param data The image data.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadImage(
     data: ArrayBuffer,
@@ -35,12 +35,13 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 上传本地图片文件。
+   * Uploads a local image file.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadImageFile(
     filePath: string,
@@ -49,13 +50,14 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 上传图片数据并执行内容安全检查。
+   * Uploads encoded image data and checks its content.
    *
-   * @param data 图片数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param data The image data.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadImageWithSafetyCheck(
     data: ArrayBuffer,
@@ -65,12 +67,13 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 上传本地图片文件并执行内容安全检查。
+   * Uploads a local image file and checks its content.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadImageFileWithSafetyCheck(
     filePath: string,
@@ -79,13 +82,14 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 上传视频数据。
+   * Uploads encoded video data.
    *
-   * @param data 视频数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param data The video data.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadVideo(
     data: ArrayBuffer,
@@ -95,12 +99,13 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 上传本地视频文件。
+   * Uploads a local video file.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 文件传输进度监听器。
-   * @returns 上传成功后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The uploaded file information.
    */
   uploadVideoFile(
     filePath: string,
@@ -109,12 +114,13 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxUploadedFile>;
 
   /**
-   * 下载图片到本地文件。
+   * Downloads an image to a local file.
    *
-   * @param remoteUrl 远端文件地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 文件传输进度监听器。
-   * @returns 下载成功后的文件信息。
+   * @param remoteUrl The remote file URL.
+   * @param destinationPath The destination file path.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The downloaded file information.
    */
   downloadImage(
     remoteUrl: string,
@@ -123,12 +129,13 @@ export interface XmaxStorageManaging {
   ): Promise<XmaxDownloadedFile>;
 
   /**
-   * 下载视频到本地文件。
+   * Downloads a video to a local file.
    *
-   * @param remoteUrl 远端文件地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 文件传输进度监听器。
-   * @returns 下载成功后的文件信息。
+   * @param remoteUrl The remote file URL.
+   * @param destinationPath The destination file path.
+   * @param progress The transfer progress handler.
+   *
+   * @returns The downloaded file information.
    */
   downloadVideo(
     remoteUrl: string,

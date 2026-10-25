@@ -1,19 +1,20 @@
 //
 //  StorageProgressListener.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 /**
- * 接收已传输字节数和总字节数的进度回调。
+ * Receives transferred and total byte counts.
  *
- * @param completedBytes 已传输的字节数。
- * @param totalBytes 此次传输的总字节数。
- * @returns 无返回值。
+ * @param completedBytes The number of transferred bytes.
+ * @param totalBytes The total transfer byte count.
  */
-export type StorageProgressListener = (completedBytes: number, totalBytes: number) => void;
+export type StorageProgressListener = (
+  completedBytes: number,
+  totalBytes: number
+) => void;

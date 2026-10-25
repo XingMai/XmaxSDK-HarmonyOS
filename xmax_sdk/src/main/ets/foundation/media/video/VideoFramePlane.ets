@@ -1,10 +1,9 @@
 //
 //  VideoFramePlane.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,23 +13,28 @@ import {
   XmaxErrorCode
 } from '../../errors/XmaxError';
 
-/** 表示视频帧中的一个像素数据平面。 */
+/** A pixel data plane in a video frame. */
 export class VideoFramePlane {
 
-  /** 平面缓冲区与有效字节范围 */
+  /** The buffer containing this plane's pixel bytes. */
   readonly data: ArrayBuffer;
+
+  /** The plane row stride, in bytes. */
   readonly stride: number;
+
+  /** The plane's starting byte offset within its buffer. */
   readonly byteOffset: number;
+
+  /** The plane's valid byte count. */
   readonly byteLength: number;
 
   /**
-   * 创建图像平面数据视图。
+   * Creates an image plane view.
    *
-   * @param data 当前帧的有效媒体数据。
-   * @param stride 相邻图像行之间的字节跨度。
-   * @param byteOffset 平面数据在缓冲区中的起始字节偏移。
-   * @param byteLength 平面有效数据的字节长度。
-   * @returns 新建的 VideoFramePlane 实例。
+   * @param data The pixel buffer backing this plane, retained without copying.
+   * @param stride The image row stride, in bytes.
+   * @param byteOffset The plane's starting byte offset within the buffer.
+   * @param byteLength The plane's valid byte length.
    */
   constructor(
     data: ArrayBuffer,

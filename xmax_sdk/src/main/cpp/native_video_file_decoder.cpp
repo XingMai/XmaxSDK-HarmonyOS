@@ -1,10 +1,9 @@
 //
 //  native_video_file_decoder.cpp
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -42,69 +41,83 @@
 #include "native_window/external_window.h"
 
 namespace {
-/**
- * 携带 NV12 视频帧、图像布局、时间戳和结束或错误通知。
- */
+
+/** An NV12 video packet with layout, timestamp, and end or error notifications. */
 struct DecodedFramePacket {
 
-  /** NV12 像素数据与布局 */
+  // NV12 pixel data and layout
+
+  /** The owned media bytes. */
   std::vector<uint8_t> data;
+
+  /** The image or frame width. */
   int32_t width = 0;
+
+  /** The image or frame height. */
   int32_t height = 0;
+
+  /** The plane row stride, in bytes. */
   int32_t stride = 0;
 
-  /** 播放时间与结束、错误通知 */
+  // Playback time and end or error notifications
+
+  /** The frame timestamp, in microseconds. */
   int64_t timestampUs = 0;
+
+  /** Whether the packet marks media completion. */
   bool endOfStream = false;
+
+  /** The media processing failure description, if any. */
   std::string error;
 };
 
-/**
- * 记录待消费的解码 Surface 缓冲区、同步栅栏和时间戳。
- */
+/** A pending decoded Surface buffer, synchronization fence, and timestamp. */
 struct SurfaceBufferPacket {
 
-  /** Surface 缓冲区所有权 */
-  OHNativeWindowBuffer* windowBuffer = nullptr;
+  // Surface buffer ownership
 
-  /** 读写同步与播放时间 */
+  /** The native window buffer owned until returned to its Surface. */
+  OHNativeWindowBuffer *windowBuffer = nullptr;
+
+  // Read/write synchronization and playback time
+
+  /** The synchronization fence descriptor owned by this buffer packet. */
   int fenceFd = -1;
+
+  /** The frame timestamp, in microseconds. */
   int64_t timestampUs = 0;
 };
 
 /**
- * 检查旋转角度是否为受支持的四分之一周整数倍。
+ * Checks whether a rotation is a supported quarter-turn multiple.
  *
- * @param rotation 旋转角度，支持 0、90、180 或 270。
- * @returns 角度为 0、90、180 或 270 时返回 true。
+ * @param rotation The rotation, in degrees: 0, 90, 180, or 270.
+ * @return True for 0, 90, 180, or 270 degrees.
  */
 bool IsSupportedRotation(int32_t rotation) {
-  return rotation == 0 || rotation == 90 ||
-      rotation == 180 || rotation == 270;
+  return rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270;
 }
 
 /**
- * 按指定旋转方向复制 NV12 平面，并输出紧凑排列的像素数据。
+ * Copies and rotates NV12 planes into tightly packed pixel data.
  *
- * @param sourceLuma 源图像 Y 亮度平面首地址。
- * @param sourceLumaStride 源亮度平面每行的字节跨度。
- * @param sourceChroma 源图像交错色度平面首地址。
- * @param sourceChromaStride 源色度平面每行的字节跨度。
- * @param width 画面宽度，单位像素。
- * @param height 画面高度，单位像素。
- * @param rotation 旋转角度，支持 0、90、180 或 270。
- * @param output 写入转换结果或提取值的目标地址。
- * @returns 无返回值。
+ * @param sourceLuma The source Y plane address.
+ * @param sourceLumaStride The source luma row stride, in bytes.
+ * @param sourceChroma The source interleaved chroma plane address.
+ * @param sourceChromaStride The source chroma row stride, in bytes.
+ * @param width The frame width, in pixels.
+ * @param height The frame height, in pixels.
+ * @param rotation The rotation, in degrees: 0, 90, 180, or 270.
+ * @param output Receives the converted or extracted value.
  */
-void CopyOrRotateNv12(
-    const uint8_t* sourceLuma,
+void CopyOrRotateNv12(const uint8_t *sourceLuma,
     int32_t sourceLumaStride,
-    const uint8_t* sourceChroma,
+    const uint8_t *sourceChroma,
     int32_t sourceChromaStride,
     int32_t width,
     int32_t height,
     int32_t rotation,
-    std::vector<uint8_t>* output) {
+    std::vector<uint8_t> *output) {
   const bool swapsDimensions = rotation == 90 || rotation == 270;
   const int32_t targetWidth = swapsDimensions ? height : width;
   const int32_t targetHeight = swapsDimensions ? width : height;
@@ -112,28 +125,22 @@ void CopyOrRotateNv12(
       static_cast<size_t>(targetWidth) * static_cast<size_t>(targetHeight);
   output->resize(targetLumaLength + targetLumaLength / 2);
 
-  uint8_t* targetLuma = output->data();
+  uint8_t *targetLuma = output->data();
   if (rotation == 0) {
-    const size_t lumaLength =
-        static_cast<size_t>(width) * height;
+    const size_t lumaLength = static_cast<size_t>(width) * height;
     if (sourceLumaStride == width && sourceChromaStride == width) {
       std::memcpy(output->data(), sourceLuma, lumaLength);
-      std::memcpy(
-          output->data() + lumaLength,
-          sourceChroma,
-          lumaLength / 2);
+      std::memcpy(output->data() + lumaLength, sourceChroma, lumaLength / 2);
       return;
     }
     for (int32_t y = 0; y < height; ++y) {
-      std::memcpy(
-          targetLuma + static_cast<size_t>(y) * width,
+      std::memcpy(targetLuma + static_cast<size_t>(y) * width,
           sourceLuma + static_cast<size_t>(y) * sourceLumaStride,
           width);
     }
-    uint8_t* targetChroma = output->data() + targetLumaLength;
+    uint8_t *targetChroma = output->data() + targetLumaLength;
     for (int32_t y = 0; y < height / 2; ++y) {
-      std::memcpy(
-          targetChroma + static_cast<size_t>(y) * width,
+      std::memcpy(targetChroma + static_cast<size_t>(y) * width,
           sourceChroma + static_cast<size_t>(y) * sourceChromaStride,
           width);
     }
@@ -141,10 +148,8 @@ void CopyOrRotateNv12(
   }
 
   constexpr int32_t LUMA_TILE_SIZE = 32;
-  for (int32_t blockY = 0; blockY < height;
-       blockY += LUMA_TILE_SIZE) {
-    for (int32_t blockX = 0; blockX < width;
-         blockX += LUMA_TILE_SIZE) {
+  for (int32_t blockY = 0; blockY < height; blockY += LUMA_TILE_SIZE) {
+    for (int32_t blockX = 0; blockX < width; blockX += LUMA_TILE_SIZE) {
       const int32_t endY = std::min(blockY + LUMA_TILE_SIZE, height);
       const int32_t endX = std::min(blockX + LUMA_TILE_SIZE, width);
       for (int32_t y = blockY; y < endY; ++y) {
@@ -161,28 +166,22 @@ void CopyOrRotateNv12(
             targetX = y;
             targetY = width - 1 - x;
           }
-          targetLuma[
-              static_cast<size_t>(targetY) * targetWidth + targetX] =
-              sourceLuma[
-                  static_cast<size_t>(y) * sourceLumaStride + x];
+          targetLuma[static_cast<size_t>(targetY) * targetWidth + targetX] =
+              sourceLuma[static_cast<size_t>(y) * sourceLumaStride + x];
         }
       }
     }
   }
 
-  uint8_t* targetChroma = output->data() + targetLumaLength;
+  uint8_t *targetChroma = output->data() + targetLumaLength;
   const int32_t sourceChromaWidth = width / 2;
   const int32_t sourceChromaHeight = height / 2;
   const int32_t targetChromaStride = targetWidth;
   constexpr int32_t CHROMA_TILE_SIZE = 16;
-  for (int32_t blockY = 0; blockY < sourceChromaHeight;
-       blockY += CHROMA_TILE_SIZE) {
-    for (int32_t blockX = 0; blockX < sourceChromaWidth;
-         blockX += CHROMA_TILE_SIZE) {
-      const int32_t endY = std::min(
-          blockY + CHROMA_TILE_SIZE, sourceChromaHeight);
-      const int32_t endX = std::min(
-          blockX + CHROMA_TILE_SIZE, sourceChromaWidth);
+  for (int32_t blockY = 0; blockY < sourceChromaHeight; blockY += CHROMA_TILE_SIZE) {
+    for (int32_t blockX = 0; blockX < sourceChromaWidth; blockX += CHROMA_TILE_SIZE) {
+      const int32_t endY = std::min(blockY + CHROMA_TILE_SIZE, sourceChromaHeight);
+      const int32_t endX = std::min(blockX + CHROMA_TILE_SIZE, sourceChromaWidth);
       for (int32_t y = blockY; y < endY; ++y) {
         for (int32_t x = blockX; x < endX; ++x) {
           int32_t targetX = 0;
@@ -197,14 +196,11 @@ void CopyOrRotateNv12(
             targetX = y;
             targetY = sourceChromaWidth - 1 - x;
           }
-          const size_t sourceOffset =
-              static_cast<size_t>(y) * sourceChromaStride + x * 2;
+          const size_t sourceOffset = static_cast<size_t>(y) * sourceChromaStride + x * 2;
           const size_t targetOffset =
-              static_cast<size_t>(targetY) * targetChromaStride +
-              targetX * 2;
+              static_cast<size_t>(targetY) * targetChromaStride + targetX * 2;
           targetChroma[targetOffset] = sourceChroma[sourceOffset];
-          targetChroma[targetOffset + 1] =
-              sourceChroma[sourceOffset + 1];
+          targetChroma[targetOffset + 1] = sourceChroma[sourceOffset + 1];
         }
       }
     }
@@ -212,44 +208,37 @@ void CopyOrRotateNv12(
 }
 
 /**
- * 将目标平面坐标映射到源平面坐标，确保不越过源边界。
+ * Maps a target plane coordinate into source bounds.
  *
- * @param targetIndex 目标平面中的采样索引。
- * @param sourceSize 源平面对应维度的采样数。
- * @param targetSize 目标平面对应维度的采样数。
- * @returns 对应的源平面采样索引。
+ * @param targetIndex The target plane sample index.
+ * @param sourceSize The source plane dimension, in samples.
+ * @param targetSize The target plane dimension, in samples.
+ * @return The corresponding source sample index.
  */
-int32_t ScaledIndex(
-    int32_t targetIndex,
-    int32_t sourceSize,
-    int32_t targetSize) {
+int32_t ScaledIndex(int32_t targetIndex, int32_t sourceSize, int32_t targetSize) {
   return std::min(
-      static_cast<int32_t>(
-          (static_cast<int64_t>(targetIndex) * sourceSize) /
-          targetSize),
+      static_cast<int32_t>((static_cast<int64_t>(targetIndex) * sourceSize) / targetSize),
       sourceSize - 1);
 }
 
 /**
- * 按目标平面尺寸缩放源像素平面，支持单字节和双字节采样。
+ * Scales a pixel plane with one-byte or two-byte samples.
  *
- * @param source 源平面首地址。
- * @param sourceStride 源平面每行的字节跨度。
- * @param sourceWidth 源图像宽度，单位像素。
- * @param sourceHeight 源图像高度，单位像素。
- * @param target 目标平面首地址。
- * @param targetStride 目标平面每行的字节跨度。
- * @param targetWidth 目标图像或平面宽度。
- * @param targetHeight 目标图像或平面高度。
- * @param bytesPerSample 单个采样占用的字节数，支持 1 或 2。
- * @returns 无返回值。
+ * @param source The source plane address.
+ * @param sourceStride The source plane row stride, in bytes.
+ * @param sourceWidth The source image width, in pixels.
+ * @param sourceHeight The source image height, in pixels.
+ * @param target The target plane address.
+ * @param targetStride The target plane row stride, in bytes.
+ * @param targetWidth The target image or plane width.
+ * @param targetHeight The target image or plane height.
+ * @param bytesPerSample The bytes per sample: 1 or 2.
  */
-void ScalePlane(
-    const uint8_t* source,
+void ScalePlane(const uint8_t *source,
     int32_t sourceStride,
     int32_t sourceWidth,
     int32_t sourceHeight,
-    uint8_t* target,
+    uint8_t *target,
     int32_t targetStride,
     int32_t targetWidth,
     int32_t targetHeight,
@@ -261,15 +250,11 @@ void ScalePlane(
 
   for (int32_t y = 0; y < targetHeight; ++y) {
     const int32_t sourceY = ScaledIndex(y, sourceHeight, targetHeight);
-    const uint8_t* sourceRow =
-        source + static_cast<size_t>(sourceY) * sourceStride;
-    uint8_t* targetRow =
-        target + static_cast<size_t>(y) * targetStride;
+    const uint8_t *sourceRow = source + static_cast<size_t>(sourceY) * sourceStride;
+    uint8_t *targetRow = target + static_cast<size_t>(y) * targetStride;
     for (int32_t x = 0; x < targetWidth; ++x) {
-      const uint8_t* sourceSample =
-          sourceRow + static_cast<size_t>(sourceX[x]) * bytesPerSample;
-      uint8_t* targetSample =
-          targetRow + static_cast<size_t>(x) * bytesPerSample;
+      const uint8_t *sourceSample = sourceRow + static_cast<size_t>(sourceX[x]) * bytesPerSample;
+      uint8_t *targetSample = targetRow + static_cast<size_t>(x) * bytesPerSample;
       targetSample[0] = sourceSample[0];
       if (bytesPerSample == 2) {
         targetSample[1] = sourceSample[1];
@@ -279,32 +264,29 @@ void ScalePlane(
 }
 
 /**
- * 将源 NV12 图像缩放为指定目标尺寸，保持紧凑平面布局。
+ * Scales NV12 into tightly packed target planes.
  *
- * @param sourceLuma 源图像 Y 亮度平面首地址。
- * @param sourceLumaStride 源亮度平面每行的字节跨度。
- * @param sourceChroma 源图像交错色度平面首地址。
- * @param sourceChromaStride 源色度平面每行的字节跨度。
- * @param sourceWidth 源图像宽度，单位像素。
- * @param sourceHeight 源图像高度，单位像素。
- * @param targetWidth 目标图像或平面宽度。
- * @param targetHeight 目标图像或平面高度。
- * @param output 写入转换结果或提取值的目标地址。
- * @returns 无返回值。
+ * @param sourceLuma The source Y plane address.
+ * @param sourceLumaStride The source luma row stride, in bytes.
+ * @param sourceChroma The source interleaved chroma plane address.
+ * @param sourceChromaStride The source chroma row stride, in bytes.
+ * @param sourceWidth The source image width, in pixels.
+ * @param sourceHeight The source image height, in pixels.
+ * @param targetWidth The target image or plane width.
+ * @param targetHeight The target image or plane height.
+ * @param output Receives the converted or extracted value.
  */
-void ScaleNv12(
-    const uint8_t* sourceLuma,
+void ScaleNv12(const uint8_t *sourceLuma,
     int32_t sourceLumaStride,
-    const uint8_t* sourceChroma,
+    const uint8_t *sourceChroma,
     int32_t sourceChromaStride,
     int32_t sourceWidth,
     int32_t sourceHeight,
     int32_t targetWidth,
     int32_t targetHeight,
-    std::vector<uint8_t>* output) {
+    std::vector<uint8_t> *output) {
   if (sourceWidth == targetWidth && sourceHeight == targetHeight) {
-    CopyOrRotateNv12(
-        sourceLuma,
+    CopyOrRotateNv12(sourceLuma,
         sourceLumaStride,
         sourceChroma,
         sourceChromaStride,
@@ -315,11 +297,9 @@ void ScaleNv12(
     return;
   }
 
-  const size_t lumaLength =
-      static_cast<size_t>(targetWidth) * targetHeight;
+  const size_t lumaLength = static_cast<size_t>(targetWidth) * targetHeight;
   output->resize(lumaLength + lumaLength / 2);
-  ScalePlane(
-      sourceLuma,
+  ScalePlane(sourceLuma,
       sourceLumaStride,
       sourceWidth,
       sourceHeight,
@@ -328,8 +308,7 @@ void ScaleNv12(
       targetWidth,
       targetHeight,
       1);
-  ScalePlane(
-      sourceChroma,
+  ScalePlane(sourceChroma,
       sourceChromaStride,
       sourceWidth / 2,
       sourceHeight / 2,
@@ -341,39 +320,34 @@ void ScaleNv12(
 }
 
 /**
- * 将 NV12 图像缩放并旋转为指定输出尺寸。
+ * Scales and rotates an NV12 image to the output dimensions.
  *
- * @param sourceLuma 源图像 Y 亮度平面首地址。
- * @param sourceLumaStride 源亮度平面每行的字节跨度。
- * @param sourceChroma 源图像交错色度平面首地址。
- * @param sourceChromaStride 源色度平面每行的字节跨度。
- * @param sourceWidth 源图像宽度，单位像素。
- * @param sourceHeight 源图像高度，单位像素。
- * @param rotation 旋转角度，支持 0、90、180 或 270。
- * @param targetWidth 目标图像或平面宽度。
- * @param targetHeight 目标图像或平面高度。
- * @param output 写入转换结果或提取值的目标地址。
- * @returns 无返回值。
+ * @param sourceLuma The source Y plane address.
+ * @param sourceLumaStride The source luma row stride, in bytes.
+ * @param sourceChroma The source interleaved chroma plane address.
+ * @param sourceChromaStride The source chroma row stride, in bytes.
+ * @param sourceWidth The source image width, in pixels.
+ * @param sourceHeight The source image height, in pixels.
+ * @param rotation The rotation, in degrees: 0, 90, 180, or 270.
+ * @param targetWidth The target image or plane width.
+ * @param targetHeight The target image or plane height.
+ * @param output Receives the converted or extracted value.
  */
-void ScaleAndRotateNv12(
-    const uint8_t* sourceLuma,
+void ScaleAndRotateNv12(const uint8_t *sourceLuma,
     int32_t sourceLumaStride,
-    const uint8_t* sourceChroma,
+    const uint8_t *sourceChroma,
     int32_t sourceChromaStride,
     int32_t sourceWidth,
     int32_t sourceHeight,
     int32_t rotation,
     int32_t targetWidth,
     int32_t targetHeight,
-    std::vector<uint8_t>* output) {
+    std::vector<uint8_t> *output) {
   const bool swapsDimensions = rotation == 90 || rotation == 270;
-  const int32_t scaledWidth =
-      swapsDimensions ? targetHeight : targetWidth;
-  const int32_t scaledHeight =
-      swapsDimensions ? targetWidth : targetHeight;
+  const int32_t scaledWidth = swapsDimensions ? targetHeight : targetWidth;
+  const int32_t scaledHeight = swapsDimensions ? targetWidth : targetHeight;
   std::vector<uint8_t> scaledData;
-  ScaleNv12(
-      sourceLuma,
+  ScaleNv12(sourceLuma,
       sourceLumaStride,
       sourceChroma,
       sourceChromaStride,
@@ -386,10 +360,8 @@ void ScaleAndRotateNv12(
     *output = std::move(scaledData);
     return;
   }
-  const size_t scaledLumaLength =
-      static_cast<size_t>(scaledWidth) * scaledHeight;
-  CopyOrRotateNv12(
-      scaledData.data(),
+  const size_t scaledLumaLength = static_cast<size_t>(scaledWidth) * scaledHeight;
+  CopyOrRotateNv12(scaledData.data(),
       scaledWidth,
       scaledData.data() + scaledLumaLength,
       scaledWidth,
@@ -399,48 +371,51 @@ void ScaleAndRotateNv12(
       output);
 }
 
-/**
- * 连续解码本地视频，处理 Surface 或字节缓冲输出并按媒体时间轴交付 NV12 帧。
- */
+/** Decodes local video through Surface or buffer output into paced NV12 frames. */
 class NativeVideoFileDecoder {
- public:
-  /**
-   * 创建视频文件解码器。
-   *
-   * @returns 无返回值；完成实例初始化。
-   */
+public:
+  /** Creates a video file decoder. */
   NativeVideoFileDecoder() = default;
 
-  /**
-   * 停止媒体输出并释放实例持有的原生资源与缓存。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops media output and releases owned native resources and caches. */
   ~NativeVideoFileDecoder() {
     Stop();
   }
 
   /** Only JS binding and fd ownership are established on the calling thread. */
+
   /**
-   * 复制文件描述符并绑定 ArkTS 监听器，供后台解码初始化使用。
+   * Duplicates the file descriptor and binds the ArkTS listener for background initialization.
    *
-   * @param env 当前 ArkTS N-API 执行环境。
-   * @param listener 用于交付媒体帧、结束或错误通知的 ArkTS 函数。
-   * @param sourceFd 由调用方打开的文件描述符；解码器会复制描述符以独立管理生命周期。
-   * @param error 写入失败原因的字符串指针。
-   * @returns 文件与监听器绑定成功时返回 true，否则返回 false 并写入错误。
+   * @param env The current ArkTS N-API environment.
+   * @param listener The ArkTS receiver for frames, end notifications, and errors.
+   * @param sourceFd The caller-owned file descriptor, duplicated by the decoder for independent
+   * ownership.
+   * @param error Receives the failure description.
+   * @return True if file and listener binding succeeds; false with an error otherwise.
    */
-  bool Bind(napi_env env, napi_value listener, int32_t sourceFd, std::string* error) {
+  bool Bind(napi_env env, napi_value listener, int32_t sourceFd, std::string *error) {
     fd_ = dup(sourceFd);
     if (fd_ < 0) {
       *error = "复制视频文件描述符失败";
       return false;
     }
     napi_value resourceName = nullptr;
-    if (napi_create_string_utf8(env, "XmaxNativeVideoFileDecoder", NAPI_AUTO_LENGTH,
+    if (napi_create_string_utf8(env,
+            "XmaxNativeVideoFileDecoder",
+            NAPI_AUTO_LENGTH,
             &resourceName) != napi_ok ||
-        napi_create_threadsafe_function(env, listener, nullptr, resourceName, 4, 1,
-            nullptr, nullptr, nullptr, CallListener, &listener_) != napi_ok) {
+        napi_create_threadsafe_function(env,
+            listener,
+            nullptr,
+            resourceName,
+            4,
+            1,
+            nullptr,
+            nullptr,
+            nullptr,
+            CallListener,
+            &listener_) != napi_ok) {
       *error = "创建视频解码回调失败";
       return false;
     }
@@ -448,22 +423,22 @@ class NativeVideoFileDecoder {
   }
 
   /** Codec, demuxer and Surface setup run in a native async worker, without JS APIs. */
+
   /**
-   * 创建并配置原生媒体资源，准备按目标规格输出媒体数据。
+   * Creates native media resources for the requested output format.
    *
-   * @param sourceSize 源文件的字节长度。
-   * @param playbackAnchorUs 媒体起点对应的单调播放锚点，单位微秒。
-   * @param mediaStartUs 源媒体时间轴起点，单位微秒。
-   * @param rotation 旋转角度，支持 0、90、180 或 270。
-   * @param targetWidth 目标图像或平面宽度。
-   * @param targetHeight 目标图像或平面高度。
-   * @param frameIntervalUs 目标视频帧输出间隔，单位微秒。
-   * @param cycleDurationUs 一轮媒体播放时长，单位微秒。
-   * @param error 写入失败原因的字符串指针。
-   * @returns 初始化成功时返回 true；失败返回 false 并写入错误说明。
+   * @param sourceSize The source file length, in bytes.
+   * @param playbackAnchorUs The monotonic playback anchor for the media origin, in microseconds.
+   * @param mediaStartUs The source media timeline origin, in microseconds.
+   * @param rotation The rotation, in degrees: 0, 90, 180, or 270.
+   * @param targetWidth The target image or plane width.
+   * @param targetHeight The target image or plane height.
+   * @param frameIntervalUs The target video output interval, in microseconds.
+   * @param cycleDurationUs The duration of one playback cycle, in microseconds.
+   * @param error Receives the failure description.
+   * @return True on successful initialization; false with an error description otherwise.
    */
-  bool Initialize(
-      int64_t sourceSize,
+  bool Initialize(int64_t sourceSize,
       int64_t playbackAnchorUs,
       int64_t mediaStartUs,
       int32_t rotation,
@@ -471,7 +446,7 @@ class NativeVideoFileDecoder {
       int32_t targetHeight,
       int64_t frameIntervalUs,
       int64_t cycleDurationUs,
-      std::string* error) {
+      std::string *error) {
     playbackAnchorUs_ = playbackAnchorUs;
     mediaStartUs_ = mediaStartUs;
     rotation_ = rotation;
@@ -486,11 +461,10 @@ class NativeVideoFileDecoder {
       return false;
     }
 
-    OH_AVFormat* sourceFormat = OH_AVSource_GetSourceFormat(source_);
+    OH_AVFormat *sourceFormat = OH_AVSource_GetSourceFormat(source_);
     int32_t trackCount = 0;
     if (sourceFormat == nullptr ||
-        !OH_AVFormat_GetIntValue(
-            sourceFormat, OH_MD_KEY_TRACK_COUNT, &trackCount) ||
+        !OH_AVFormat_GetIntValue(sourceFormat, OH_MD_KEY_TRACK_COUNT, &trackCount) ||
         trackCount <= 0) {
       if (sourceFormat != nullptr) {
         OH_AVFormat_Destroy(sourceFormat);
@@ -501,11 +475,10 @@ class NativeVideoFileDecoder {
     OH_AVFormat_Destroy(sourceFormat);
 
     for (int32_t index = 0; index < trackCount; ++index) {
-      OH_AVFormat* candidate = OH_AVSource_GetTrackFormat(source_, index);
+      OH_AVFormat *candidate = OH_AVSource_GetTrackFormat(source_, index);
       int32_t trackType = -1;
       if (candidate != nullptr &&
-          OH_AVFormat_GetIntValue(
-              candidate, OH_MD_KEY_TRACK_TYPE, &trackType) &&
+          OH_AVFormat_GetIntValue(candidate, OH_MD_KEY_TRACK_TYPE, &trackType) &&
           trackType == MEDIA_TYPE_VID) {
         trackIndex_ = static_cast<uint32_t>(index);
         trackFormat_ = candidate;
@@ -520,15 +493,11 @@ class NativeVideoFileDecoder {
       return false;
     }
 
-    const char* mime = nullptr;
-    if (!OH_AVFormat_GetStringValue(
-            trackFormat_, OH_MD_KEY_CODEC_MIME, &mime) ||
-        mime == nullptr ||
-        !OH_AVFormat_GetIntValue(
-            trackFormat_, OH_MD_KEY_WIDTH, &width_) ||
-        !OH_AVFormat_GetIntValue(
-            trackFormat_, OH_MD_KEY_HEIGHT, &height_) ||
-        width_ <= 0 || height_ <= 0) {
+    const char *mime = nullptr;
+    if (!OH_AVFormat_GetStringValue(trackFormat_, OH_MD_KEY_CODEC_MIME, &mime) || mime == nullptr ||
+        !OH_AVFormat_GetIntValue(trackFormat_, OH_MD_KEY_WIDTH, &width_) ||
+        !OH_AVFormat_GetIntValue(trackFormat_, OH_MD_KEY_HEIGHT, &height_) || width_ <= 0 ||
+        height_ <= 0) {
       *error = "读取视频轨道格式失败";
       return false;
     }
@@ -537,22 +506,17 @@ class NativeVideoFileDecoder {
     pixelFormat_ = AV_PIXEL_FORMAT_NV12;
     int32_t isHdrVivid = 0;
     isHdrVivid_ =
-        OH_AVFormat_GetIntValue(
-            trackFormat_, OH_MD_KEY_VIDEO_IS_HDR_VIVID, &isHdrVivid) &&
+        OH_AVFormat_GetIntValue(trackFormat_, OH_MD_KEY_VIDEO_IS_HDR_VIVID, &isHdrVivid) &&
         isHdrVivid == 1;
-    OH_AVFormat_SetIntValue(
-        trackFormat_, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
+    OH_AVFormat_SetIntValue(trackFormat_, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
     if (isHdrVivid_) {
-      OH_AVFormat_SetIntValue(
-          trackFormat_,
+      OH_AVFormat_SetIntValue(trackFormat_,
           OH_MD_KEY_VIDEO_DECODER_OUTPUT_COLOR_SPACE,
           OH_COLORSPACE_BT709_LIMIT);
     }
 
     demuxer_ = OH_AVDemuxer_CreateWithSource(source_);
-    if (demuxer_ == nullptr ||
-        OH_AVDemuxer_SelectTrackByID(
-            demuxer_, trackIndex_) != AV_ERR_OK) {
+    if (demuxer_ == nullptr || OH_AVDemuxer_SelectTrackByID(demuxer_, trackIndex_) != AV_ERR_OK) {
       *error = "创建视频解封装器失败";
       return false;
     }
@@ -567,8 +531,7 @@ class NativeVideoFileDecoder {
     running_.store(true);
     if (useSurfaceOutput_) {
       surfaceWorkerRunning_.store(true);
-      surfaceWorker_ =
-          std::thread(&NativeVideoFileDecoder::SurfaceWorkerLoop, this);
+      surfaceWorker_ = std::thread(&NativeVideoFileDecoder::SurfaceWorkerLoop, this);
     }
     if (OH_VideoDecoder_Start(decoder_) != AV_ERR_OK) {
       *error = "启动视频连续解码失败";
@@ -579,15 +542,13 @@ class NativeVideoFileDecoder {
         std::lock_guard<std::mutex> lock(surfaceProcessingStateMutex_);
         videoProcessorStopped_ = false;
       }
-      const VideoProcessing_ErrorCode processingResult =
-          OH_VideoProcessing_Start(videoProcessor_);
+      const VideoProcessing_ErrorCode processingResult = OH_VideoProcessing_Start(videoProcessor_);
       if (processingResult != VIDEO_PROCESSING_SUCCESS) {
         {
           std::lock_guard<std::mutex> lock(surfaceProcessingStateMutex_);
           videoProcessorStopped_ = true;
         }
-        *error = "启动视频缩放失败：" +
-            std::to_string(processingResult);
+        *error = "启动视频缩放失败：" + std::to_string(processingResult);
         return false;
       }
       videoProcessorStarted_ = true;
@@ -595,11 +556,7 @@ class NativeVideoFileDecoder {
     return true;
   }
 
-  /**
-   * 暂停连续媒体输出并唤醒节奏等待，使工作线程响应暂停状态。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses media output and wakes pacing waits so workers observe the pause. */
   void Pause() {
     if (!running_.load()) {
       return;
@@ -609,10 +566,9 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 按暂停时长平移播放锚点，恢复连续媒体输出。
+   * Resumes output with the playback anchor shifted by the pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
   void Resume(int64_t pausedDurationUs) {
     if (!running_.load()) {
@@ -625,19 +581,13 @@ class NativeVideoFileDecoder {
     pacingCondition_.notify_all();
   }
 
-  /**
-   * 停止媒体输出与相关线程，并释放文件、系统媒体资源和回调引用。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops output and workers, then releases the file, media resources, and callback references. */
   void Stop() {
     const bool wasRunning = running_.exchange(false);
     paused_.store(false);
     pacingCondition_.notify_all();
 
-    {
-      std::lock_guard<std::mutex> lock(demuxerMutex_);
-    }
+    { std::lock_guard<std::mutex> lock(demuxerMutex_); }
 
     if (decoder_ != nullptr) {
       if (wasRunning) {
@@ -673,15 +623,15 @@ class NativeVideoFileDecoder {
     ReleaseOutputSurface();
   }
 
- private:
+private:
   /**
-   * 根据解码格式选择字节缓冲或 Surface 输出，并准备视频解码器。
+   * Selects buffer or Surface output and prepares the video decoder.
    *
-   * @param mime 源轨道的媒体编码 MIME 类型。
-   * @param error 写入失败原因的字符串指针。
-   * @returns 输出链路准备成功时返回 true，否则返回 false 并写入错误。
+   * @param mime The source track MIME type.
+   * @param error Receives the failure description.
+   * @return True if output setup succeeds; false with an error otherwise.
    */
-  bool PrepareOutput(const char* mime, std::string* error) {
+  bool PrepareOutput(const char *mime, std::string *error) {
     // HDR requires Surface output for tone mapping. SDR only needs the extra
     // processing stage when both axes can be downscaled before CPU readback.
     useSurfaceOutput_ = ShouldUseSurfaceOutput();
@@ -689,7 +639,10 @@ class NativeVideoFileDecoder {
       if (isHdrVivid_) {
         return false;
       }
-      OH_LOG_Print(LOG_APP, LOG_WARN, 0xA000, "XmaxSDK",
+      OH_LOG_Print(LOG_APP,
+          LOG_WARN,
+          0xA000,
+          "XmaxSDK",
           "[Xmax][VideoDecoder] Surface scaling unavailable; using buffer output: %{public}s",
           error->c_str());
       useSurfaceOutput_ = false;
@@ -702,7 +655,10 @@ class NativeVideoFileDecoder {
       return false;
     }
     // Never switch a configured codec in place: recreate it in buffer mode.
-    OH_LOG_Print(LOG_APP, LOG_WARN, 0xA000, "XmaxSDK",
+    OH_LOG_Print(LOG_APP,
+        LOG_WARN,
+        0xA000,
+        "XmaxSDK",
         "[Xmax][VideoDecoder] Surface decoder unavailable; using buffer output: %{public}s",
         error->c_str());
     if (decoder_ != nullptr) {
@@ -716,9 +672,9 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 判断当前视频格式是否需要使用 Surface 解码输出。
+   * Determines whether the current video format requires Surface output.
    *
-   * @returns 应使用 Surface 输出时返回 true。
+   * @return True if Surface output should be used.
    */
   bool ShouldUseSurfaceOutput() const {
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
@@ -726,32 +682,33 @@ class NativeVideoFileDecoder {
     const int32_t outputHeight = swapsDimensions ? targetWidth_ : targetHeight_;
     return isHdrVivid_ ||
         (width_ >= outputWidth && height_ >= outputHeight &&
-         (width_ > outputWidth || height_ > outputHeight));
+            (width_ > outputWidth || height_ > outputHeight));
   }
 
   /**
-   * 按源编码类型创建并配置系统视频解码器。
+   * Creates and configures the system decoder for the source codec.
    *
-   * @param mime 源轨道的媒体编码 MIME 类型。
-   * @param error 写入失败原因的字符串指针。
-   * @returns 系统解码器准备成功时返回 true，否则返回 false 并写入错误。
+   * @param mime The source track MIME type.
+   * @param error Receives the failure description.
+   * @return True if decoder setup succeeds; false with an error otherwise.
    */
-  bool PrepareDecoder(const char* mime, std::string* error) {
+  bool PrepareDecoder(const char *mime, std::string *error) {
     decoder_ = OH_VideoDecoder_CreateByMime(mime);
     if (decoder_ == nullptr) {
       *error = "当前设备不支持所选视频编码";
       return false;
     }
-    const OH_AVCodecCallback callbacks{
-        OnError, OnStreamChanged, OnNeedInputBuffer, OnNewOutputBuffer
-    };
+    const OH_AVCodecCallback callbacks{OnError,
+        OnStreamChanged,
+        OnNeedInputBuffer,
+        OnNewOutputBuffer};
     if (OH_VideoDecoder_RegisterCallback(decoder_, callbacks, this) != AV_ERR_OK ||
         OH_VideoDecoder_Configure(decoder_, trackFormat_) != AV_ERR_OK) {
       *error = "配置 NV12 视频连续解码失败";
       return false;
     }
-    if (useSurfaceOutput_ && OH_VideoDecoder_SetSurface(
-            decoder_, surfaceProcessorInputWindow_) != AV_ERR_OK) {
+    if (useSurfaceOutput_ &&
+        OH_VideoDecoder_SetSurface(decoder_, surfaceProcessorInputWindow_) != AV_ERR_OK) {
       *error = "绑定视频缩放 Surface 失败";
       return false;
     }
@@ -762,11 +719,7 @@ class NativeVideoFileDecoder {
     return true;
   }
 
-  /**
-   * 停止 Surface 消费线程并唤醒等待中的工作循环。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops the Surface consumer and wakes its wait loop. */
   void StopSurfaceWorker() {
     {
       // Use the wait predicate's mutex so stop cannot notify between the
@@ -781,12 +734,12 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 创建视频处理与 Surface 输出资源，供解码器交付原生帧。
+   * Creates video processing and Surface resources for native decoded frames.
    *
-   * @param error 写入失败原因的字符串指针。
-   * @returns 输出 Surface 初始化成功时返回 true，否则返回 false 并写入错误。
+   * @param error Receives the failure description.
+   * @return True if output Surface initialization succeeds; false with an error otherwise.
    */
-  bool InitializeOutputSurface(std::string* error) {
+  bool InitializeOutputSurface(std::string *error) {
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
     const int32_t surfaceWidth = swapsDimensions ? targetHeight_ : targetWidth_;
     const int32_t surfaceHeight = swapsDimensions ? targetWidth_ : targetHeight_;
@@ -795,44 +748,35 @@ class NativeVideoFileDecoder {
       *error = "创建视频输出 Surface 失败";
       return false;
     }
-    if (OH_ConsumerSurface_SetDefaultUsage(
-        surfaceOutputSurface_,
-        NATIVEBUFFER_USAGE_CPU_READ |
-            NATIVEBUFFER_USAGE_CPU_READ_OFTEN) != 0 ||
-        OH_ConsumerSurface_SetDefaultSize(
-            surfaceOutputSurface_, surfaceWidth, surfaceHeight) != 0) {
+    if (OH_ConsumerSurface_SetDefaultUsage(surfaceOutputSurface_,
+            NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_READ_OFTEN) != 0 ||
+        OH_ConsumerSurface_SetDefaultSize(surfaceOutputSurface_, surfaceWidth, surfaceHeight) !=
+            0) {
       *error = "配置视频输出 Surface 失败";
       ReleaseOutputSurface();
       return false;
     }
-    surfaceOutputWindow_ = OH_NativeImage_AcquireNativeWindow(
-        surfaceOutputSurface_);
+    surfaceOutputWindow_ = OH_NativeImage_AcquireNativeWindow(surfaceOutputSurface_);
     if (surfaceOutputWindow_ == nullptr ||
-        OH_NativeWindow_NativeWindowHandleOpt(
-            surfaceOutputWindow_,
+        OH_NativeWindow_NativeWindowHandleOpt(surfaceOutputWindow_,
             SET_FORMAT,
             NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) != 0 ||
-        (isHdrVivid_ && OH_NativeWindow_SetColorSpace(
-            surfaceOutputWindow_, OH_COLORSPACE_BT709_LIMIT) != 0)) {
+        (isHdrVivid_ &&
+            OH_NativeWindow_SetColorSpace(surfaceOutputWindow_, OH_COLORSPACE_BT709_LIMIT) != 0)) {
       *error = "配置视频输出格式失败";
       ReleaseOutputSurface();
       return false;
     }
     VideoProcessing_ErrorCode processingResult =
-        OH_VideoProcessing_Create(
-            &videoProcessor_,
-            VIDEO_PROCESSING_TYPE_DETAIL_ENHANCER);
-    if (processingResult != VIDEO_PROCESSING_SUCCESS ||
-        videoProcessor_ == nullptr) {
-      *error = "创建视频缩放器失败：" +
-          std::to_string(processingResult);
+        OH_VideoProcessing_Create(&videoProcessor_, VIDEO_PROCESSING_TYPE_DETAIL_ENHANCER);
+    if (processingResult != VIDEO_PROCESSING_SUCCESS || videoProcessor_ == nullptr) {
+      *error = "创建视频缩放器失败：" + std::to_string(processingResult);
       ReleaseOutputSurface();
       return false;
     }
-    OH_AVFormat* processingParameter = OH_AVFormat_Create();
+    OH_AVFormat *processingParameter = OH_AVFormat_Create();
     if (processingParameter == nullptr ||
-        !OH_AVFormat_SetIntValue(
-            processingParameter,
+        !OH_AVFormat_SetIntValue(processingParameter,
             VIDEO_DETAIL_ENHANCER_PARAMETER_KEY_QUALITY_LEVEL,
             VIDEO_DETAIL_ENHANCER_QUALITY_LEVEL_NONE)) {
       if (processingParameter != nullptr) {
@@ -842,77 +786,56 @@ class NativeVideoFileDecoder {
       ReleaseOutputSurface();
       return false;
     }
-    processingResult = OH_VideoProcessing_SetParameter(
-        videoProcessor_, processingParameter);
+    processingResult = OH_VideoProcessing_SetParameter(videoProcessor_, processingParameter);
     OH_AVFormat_Destroy(processingParameter);
     if (processingResult != VIDEO_PROCESSING_SUCCESS ||
-        OH_VideoProcessing_GetSurface(
-            videoProcessor_, &surfaceProcessorInputWindow_) !=
+        OH_VideoProcessing_GetSurface(videoProcessor_, &surfaceProcessorInputWindow_) !=
             VIDEO_PROCESSING_SUCCESS ||
         surfaceProcessorInputWindow_ == nullptr ||
-        OH_NativeWindow_NativeWindowHandleOpt(
-            surfaceProcessorInputWindow_,
+        OH_NativeWindow_NativeWindowHandleOpt(surfaceProcessorInputWindow_,
             SET_FORMAT,
             NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP) != 0 ||
-        (isHdrVivid_ && OH_NativeWindow_SetColorSpace(
-            surfaceProcessorInputWindow_, OH_COLORSPACE_BT709_LIMIT) != 0) ||
-        OH_VideoProcessing_SetSurface(
-            videoProcessor_, surfaceOutputWindow_) !=
+        (isHdrVivid_ &&
+            OH_NativeWindow_SetColorSpace(surfaceProcessorInputWindow_,
+                OH_COLORSPACE_BT709_LIMIT) != 0) ||
+        OH_VideoProcessing_SetSurface(videoProcessor_, surfaceOutputWindow_) !=
             VIDEO_PROCESSING_SUCCESS) {
-      *error = "连接视频缩放 Surface 失败：" +
-          std::to_string(processingResult);
+      *error = "连接视频缩放 Surface 失败：" + std::to_string(processingResult);
       ReleaseOutputSurface();
       return false;
     }
 
-    processingResult =
-        OH_VideoProcessingCallback_Create(&surfaceProcessingCallback_);
-    if (processingResult != VIDEO_PROCESSING_SUCCESS ||
-        surfaceProcessingCallback_ == nullptr ||
-        OH_VideoProcessingCallback_BindOnError(
-            surfaceProcessingCallback_, OnSurfaceProcessingError) !=
-            VIDEO_PROCESSING_SUCCESS ||
-        OH_VideoProcessingCallback_BindOnState(
-            surfaceProcessingCallback_, OnSurfaceProcessingState) !=
-            VIDEO_PROCESSING_SUCCESS ||
-        OH_VideoProcessingCallback_BindOnNewOutputBuffer(
-            surfaceProcessingCallback_, OnSurfaceProcessingOutputBuffer) !=
-            VIDEO_PROCESSING_SUCCESS ||
-        OH_VideoProcessing_RegisterCallback(
-            videoProcessor_, surfaceProcessingCallback_, this) !=
+    processingResult = OH_VideoProcessingCallback_Create(&surfaceProcessingCallback_);
+    if (processingResult != VIDEO_PROCESSING_SUCCESS || surfaceProcessingCallback_ == nullptr ||
+        OH_VideoProcessingCallback_BindOnError(surfaceProcessingCallback_,
+            OnSurfaceProcessingError) != VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessingCallback_BindOnState(surfaceProcessingCallback_,
+            OnSurfaceProcessingState) != VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessingCallback_BindOnNewOutputBuffer(surfaceProcessingCallback_,
+            OnSurfaceProcessingOutputBuffer) != VIDEO_PROCESSING_SUCCESS ||
+        OH_VideoProcessing_RegisterCallback(videoProcessor_, surfaceProcessingCallback_, this) !=
             VIDEO_PROCESSING_SUCCESS) {
-      *error = "注册视频缩放回调失败：" +
-          std::to_string(processingResult);
+      *error = "注册视频缩放回调失败：" + std::to_string(processingResult);
       ReleaseOutputSurface();
       return false;
     }
     return true;
   }
 
-  /**
-   * 停止视频处理器并等待其停止状态通知。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops the video processor and waits for its stopped-state notification. */
   void StopVideoProcessor() {
     if (!videoProcessorStarted_ || videoProcessor_ == nullptr) {
       return;
     }
-    const VideoProcessing_ErrorCode stopResult =
-        OH_VideoProcessing_Stop(videoProcessor_);
+    const VideoProcessing_ErrorCode stopResult = OH_VideoProcessing_Stop(videoProcessor_);
     if (stopResult == VIDEO_PROCESSING_SUCCESS) {
       std::unique_lock<std::mutex> lock(surfaceProcessingStateMutex_);
-      surfaceProcessingStateCondition_.wait(
-          lock, [this] { return videoProcessorStopped_; });
+      surfaceProcessingStateCondition_.wait(lock, [this] { return videoProcessorStopped_; });
     }
     videoProcessorStarted_ = false;
   }
 
-  /**
-   * 归还待消费 Surface 缓冲区并释放视频处理器、窗口及图像资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Returns pending Surface buffers and releases processing, window, and image resources. */
   void ReleaseOutputSurface() {
     StopVideoProcessor();
     std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
@@ -939,67 +862,57 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 接收视频处理器的输出索引，并登记可消费的 Surface 帧。
+   * Registers a video processor output index as a consumable Surface frame.
    *
-   * @param index 需要提交或归还的系统缓冲区索引。
-   * @param context 注册视频处理回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param index The system buffer index to submit or release.
+   * @param context The native decoder bound when registering the processor callback.
    */
-  static void OnSurfaceProcessingOutputBuffer(
-      OH_VideoProcessing*, uint32_t index, void* context) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
+  static void OnSurfaceProcessingOutputBuffer(OH_VideoProcessing *, uint32_t index, void *context) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(context);
     if (decoder != nullptr) {
       decoder->EnqueueSurfaceFrame(index);
     }
   }
 
   /**
-   * 将视频处理器错误转为解码失败通知。
+   * Converts a processor error into a decoding failure notification.
    *
-   * @param error 原生视频处理器错误码。
-   * @param context 注册视频处理回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param error The native video processor error code.
+   * @param context The native decoder bound when registering the processor callback.
    */
-  static void OnSurfaceProcessingError(
-      OH_VideoProcessing*,
+  static void OnSurfaceProcessingError(OH_VideoProcessing *,
       VideoProcessing_ErrorCode error,
-      void* context) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
+      void *context) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(context);
     if (decoder != nullptr) {
-      decoder->ReportError(
-          "视频缩放失败：" + std::to_string(error));
+      decoder->ReportError("视频缩放失败：" + std::to_string(error));
     }
   }
 
   /**
-   * 保存视频处理器运行状态并唤醒等待停止的线程。
+   * Records processor state and wakes threads waiting for it to stop.
    *
-   * @param state 系统视频处理器的运行状态。
-   * @param context 注册视频处理回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param state The system video processor state.
+   * @param context The native decoder bound when registering the processor callback.
    */
-  static void OnSurfaceProcessingState(
-      OH_VideoProcessing*,
+  static void OnSurfaceProcessingState(OH_VideoProcessing *,
       VideoProcessing_State state,
-      void* context) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(context);
-    if (decoder == nullptr ||
-        state != VIDEO_PROCESSING_STATE_STOPPED) {
+      void *context) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(context);
+    if (decoder == nullptr || state != VIDEO_PROCESSING_STATE_STOPPED) {
       return;
     }
     {
-      std::lock_guard<std::mutex> lock(
-          decoder->surfaceProcessingStateMutex_);
+      std::lock_guard<std::mutex> lock(decoder->surfaceProcessingStateMutex_);
       decoder->videoProcessorStopped_ = true;
     }
     decoder->surfaceProcessingStateCondition_.notify_all();
   }
 
   /**
-   * 将视频处理器输出索引交回 Surface，并唤醒帧消费线程。
+   * Returns a processor output index to the Surface and wakes the frame consumer.
    *
-   * @param index 需要提交或归还的系统缓冲区索引。
-   * @returns 无返回值。
+   * @param index The system buffer index to submit or release.
    */
   void EnqueueSurfaceFrame(uint32_t index) {
     // Explicit output callbacks disable VPE's automatic rendering. The worker
@@ -1016,20 +929,20 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 取得待消费的 Surface 缓冲区并关联媒体时间戳。
+   * Acquires a pending Surface buffer and associates its media timestamp.
    *
-   * @param packet 需要消费、交付或释放的媒体数据包。
-   * @returns 取得可处理缓冲区时返回 true；无帧或已停止时返回 false。
+   * @param packet The packet to consume, deliver, or release.
+   * @return True if a buffer was acquired; false if no frame exists or processing stopped.
    */
-  bool AcquireSurfaceFrame(SurfaceBufferPacket& packet) {
+  bool AcquireSurfaceFrame(SurfaceBufferPacket &packet) {
     std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
     if (surfaceOutputSurface_ == nullptr) {
       return false;
     }
-    OHNativeWindowBuffer* windowBuffer = nullptr;
+    OHNativeWindowBuffer *windowBuffer = nullptr;
     int fenceFd = -1;
-    if (OH_NativeImage_AcquireNativeWindowBuffer(
-            surfaceOutputSurface_, &windowBuffer, &fenceFd) != 0 ||
+    if (OH_NativeImage_AcquireNativeWindowBuffer(surfaceOutputSurface_, &windowBuffer, &fenceFd) !=
+            0 ||
         windowBuffer == nullptr) {
       if (fenceFd >= 0) {
         close(fenceFd);
@@ -1038,8 +951,7 @@ class NativeVideoFileDecoder {
       return false;
     }
     if (OH_NativeWindow_NativeObjectReference(windowBuffer) != 0) {
-      OH_NativeImage_ReleaseNativeWindowBuffer(
-          surfaceOutputSurface_, windowBuffer, fenceFd);
+      OH_NativeImage_ReleaseNativeWindowBuffer(surfaceOutputSurface_, windowBuffer, fenceFd);
       ReportError("持有视频 Surface 帧失败");
       return false;
     }
@@ -1056,8 +968,7 @@ class NativeVideoFileDecoder {
     }
     if (!hasTimestamp) {
       OH_NativeWindow_NativeObjectUnreference(windowBuffer);
-      OH_NativeImage_ReleaseNativeWindowBuffer(
-          surfaceOutputSurface_, windowBuffer, fenceFd);
+      OH_NativeImage_ReleaseNativeWindowBuffer(surfaceOutputSurface_, windowBuffer, fenceFd);
       ReportError("视频 Surface 帧缺少时间戳");
       return false;
     }
@@ -1066,13 +977,11 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 在持有 Surface 访问锁时归还缓冲区及其同步栅栏。
+   * Returns a Surface buffer and its fence while holding the Surface access lock.
    *
-   * @param packet 需要消费、交付或释放的媒体数据包。
-   * @returns 无返回值。
+   * @param packet The packet to consume, deliver, or release.
    */
-  void ReleaseSurfaceBufferLocked(
-      const SurfaceBufferPacket& packet) {
+  void ReleaseSurfaceBufferLocked(const SurfaceBufferPacket &packet) {
     if (packet.windowBuffer == nullptr) {
       if (packet.fenceFd >= 0) {
         close(packet.fenceFd);
@@ -1081,21 +990,21 @@ class NativeVideoFileDecoder {
     }
     OH_NativeWindow_NativeObjectUnreference(packet.windowBuffer);
     if (surfaceOutputSurface_ != nullptr) {
-      OH_NativeImage_ReleaseNativeWindowBuffer(
-          surfaceOutputSurface_, packet.windowBuffer, packet.fenceFd);
+      OH_NativeImage_ReleaseNativeWindowBuffer(surfaceOutputSurface_,
+          packet.windowBuffer,
+          packet.fenceFd);
     } else if (packet.fenceFd >= 0) {
       close(packet.fenceFd);
     }
   }
 
   /**
-   * 在已结束输入且所有 Surface 帧处理完毕时消费结束标记。
+   * Consumes the end marker once input and all Surface frames have completed.
    *
-   * @returns 可以发送本轮结束通知时返回 true。
+   * @return True if the cycle's completion notification can be sent.
    */
   bool ConsumeSurfaceEndOfStreamIfReadyLocked() {
-    if (!running_.load() || !surfaceEndOfStreamPending_ ||
-        !pendingSurfaceTimestamps_.empty() ||
+    if (!running_.load() || !surfaceEndOfStreamPending_ || !pendingSurfaceTimestamps_.empty() ||
         surfaceFramesInFlight_ != 0) {
       return false;
     }
@@ -1103,11 +1012,7 @@ class NativeVideoFileDecoder {
     return true;
   }
 
-  /**
-   * 减少正在处理的 Surface 帧计数，并在全部完成后交付结束通知。
-   *
-   * @returns 无返回值。
-   */
+  /** Decrements in-flight Surface work and notifies completion when all frames finish. */
   void CompleteSurfaceFrame() {
     bool dispatchEndOfStream = false;
     {
@@ -1122,22 +1027,14 @@ class NativeVideoFileDecoder {
     }
   }
 
-  /**
-   * 向 ArkTS 交付文件解码输出结束通知。
-   *
-   * @returns 无返回值。
-   */
+  /** Delivers file decoding completion to ArkTS. */
   void DispatchEndOfStream() {
-    auto* packet = new DecodedFramePacket();
+    auto *packet = new DecodedFramePacket();
     packet->endOfStream = true;
     Dispatch(packet);
   }
 
-  /**
-   * 在独立线程等待并消费 Surface 帧，将图像转换后按播放节奏交付。
-   *
-   * @returns 无返回值。
-   */
+  /** Consumes Surface frames on a dedicated thread, converting and pacing delivery. */
   void SurfaceWorkerLoop() {
     while (true) {
       SurfaceBufferPacket packet;
@@ -1146,8 +1043,7 @@ class NativeVideoFileDecoder {
       {
         std::unique_lock<std::mutex> lock(surfaceQueueMutex_);
         surfaceCondition_.wait(lock, [this] {
-          return !surfaceWorkerRunning_.load() ||
-              !surfacePendingOutputBuffers_.empty();
+          return !surfaceWorkerRunning_.load() || !surfacePendingOutputBuffers_.empty();
         });
         if (!surfaceWorkerRunning_.load()) {
           // These buffers still belong to VPE and are reclaimed by its Stop.
@@ -1158,8 +1054,8 @@ class NativeVideoFileDecoder {
         surfacePendingOutputBuffers_.pop_front();
         dropFrame = !surfacePendingOutputBuffers_.empty();
       }
-      if (OH_VideoProcessing_RenderOutputBuffer(
-              videoProcessor_, outputIndex) != VIDEO_PROCESSING_SUCCESS) {
+      if (OH_VideoProcessing_RenderOutputBuffer(videoProcessor_, outputIndex) !=
+          VIDEO_PROCESSING_SUCCESS) {
         ReportError("输出视频 Surface 帧失败");
         continue;
       }
@@ -1177,21 +1073,18 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 等待同步栅栏并映射 Surface 缓冲，转换目标 NV12 帧后归还原生资源。
+   * Waits for the fence, maps and converts a Surface buffer, then returns native resources.
    *
-   * @param packet 需要消费、交付或释放的媒体数据包。
-   * @returns 无返回值。
+   * @param packet The packet to consume, deliver, or release.
    */
-  void HandleSurfaceFrame(const SurfaceBufferPacket& packet) {
-    OHNativeWindowBuffer* windowBuffer = packet.windowBuffer;
+  void HandleSurfaceFrame(const SurfaceBufferPacket &packet) {
+    OHNativeWindowBuffer *windowBuffer = packet.windowBuffer;
     int fenceFd = packet.fenceFd;
-    OH_NativeImage* outputSurface = surfaceOutputSurface_;
-    const auto releaseWindowBuffer =
-        [this, outputSurface, windowBuffer](int releaseFenceFd) {
+    OH_NativeImage *outputSurface = surfaceOutputSurface_;
+    const auto releaseWindowBuffer = [this, outputSurface, windowBuffer](int releaseFenceFd) {
       std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
       OH_NativeWindow_NativeObjectUnreference(windowBuffer);
-      OH_NativeImage_ReleaseNativeWindowBuffer(
-          outputSurface, windowBuffer, releaseFenceFd);
+      OH_NativeImage_ReleaseNativeWindowBuffer(outputSurface, windowBuffer, releaseFenceFd);
     };
     if (!running_.load() || outputSurface == nullptr) {
       if (outputSurface != nullptr) {
@@ -1207,8 +1100,7 @@ class NativeVideoFileDecoder {
     if (fenceFd >= 0) {
       pollfd descriptor{fenceFd, POLLIN, 0};
       int waitResult = 0;
-      for (int32_t attempt = 0;
-           attempt < 60 && running_.load(); ++attempt) {
+      for (int32_t attempt = 0; attempt < 60 && running_.load(); ++attempt) {
         waitResult = poll(&descriptor, 1, 50);
         if (waitResult > 0) {
           break;
@@ -1225,24 +1117,18 @@ class NativeVideoFileDecoder {
         return;
       }
     }
-    OH_NativeBuffer* nativeBuffer = nullptr;
-    void* address = nullptr;
+    OH_NativeBuffer *nativeBuffer = nullptr;
+    void *address = nullptr;
     OH_NativeBuffer_Planes planes{};
     OH_NativeBuffer_Config config{};
-    const bool mapped =
-        OH_NativeBuffer_FromNativeWindowBuffer(
-            windowBuffer, &nativeBuffer) == 0 &&
+    const bool mapped = OH_NativeBuffer_FromNativeWindowBuffer(windowBuffer, &nativeBuffer) == 0 &&
         nativeBuffer != nullptr &&
-        OH_NativeBuffer_MapPlanes(
-            nativeBuffer, &address, &planes) == 0 &&
-        address != nullptr;
+        OH_NativeBuffer_MapPlanes(nativeBuffer, &address, &planes) == 0 && address != nullptr;
     if (nativeBuffer != nullptr) {
       OH_NativeBuffer_GetConfig(nativeBuffer, &config);
     }
-    if (!mapped || planes.planeCount < 2 ||
-        config.format != NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP ||
-        config.width <= 0 || config.height <= 0 ||
-        config.stride < config.width) {
+    if (!mapped || planes.planeCount < 2 || config.format != NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP ||
+        config.width <= 0 || config.height <= 0 || config.stride < config.width) {
       if (mapped) {
         OH_NativeBuffer_Unmap(nativeBuffer);
       }
@@ -1250,9 +1136,8 @@ class NativeVideoFileDecoder {
       ReportError("访问视频 NV12 帧失败");
       return;
     }
-    const auto* bytes = static_cast<const uint8_t*>(address);
-    CopyOrRotateNv12(
-        bytes + planes.planes[0].offset,
+    const auto *bytes = static_cast<const uint8_t *>(address);
+    CopyOrRotateNv12(bytes + planes.planes[0].offset,
         config.stride,
         bytes + planes.planes[1].offset,
         config.stride,
@@ -1264,18 +1149,14 @@ class NativeVideoFileDecoder {
     releaseWindowBuffer(-1);
 
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
-    const int32_t scaledWidth =
-        swapsDimensions ? targetHeight_ : targetWidth_;
-    const int32_t scaledHeight =
-        swapsDimensions ? targetWidth_ : targetHeight_;
-    const size_t sourceLumaLength =
-        static_cast<size_t>(config.width) * config.height;
+    const int32_t scaledWidth = swapsDimensions ? targetHeight_ : targetWidth_;
+    const int32_t scaledHeight = swapsDimensions ? targetWidth_ : targetHeight_;
+    const size_t sourceLumaLength = static_cast<size_t>(config.width) * config.height;
     // Usually VPE has already produced the requested size. Only fall back to
     // CPU scaling if the device returns a different actual buffer size.
-    std::vector<uint8_t>* scaledData = &surfaceSourceData_;
+    std::vector<uint8_t> *scaledData = &surfaceSourceData_;
     if (config.width != scaledWidth || config.height != scaledHeight) {
-      ScaleNv12(
-          surfaceSourceData_.data(),
+      ScaleNv12(surfaceSourceData_.data(),
           config.width,
           surfaceSourceData_.data() + sourceLumaLength,
           config.width,
@@ -1291,10 +1172,8 @@ class NativeVideoFileDecoder {
     if (rotation_ == 0) {
       frameData = std::move(*scaledData);
     } else {
-      const size_t scaledLumaLength =
-          static_cast<size_t>(scaledWidth) * scaledHeight;
-      CopyOrRotateNv12(
-          scaledData->data(),
+      const size_t scaledLumaLength = static_cast<size_t>(scaledWidth) * scaledHeight;
+      CopyOrRotateNv12(scaledData->data(),
           scaledWidth,
           scaledData->data() + scaledLumaLength,
           scaledWidth,
@@ -1304,7 +1183,7 @@ class NativeVideoFileDecoder {
           &frameData);
     }
 
-    auto* outputPacket = new DecodedFramePacket();
+    auto *outputPacket = new DecodedFramePacket();
     outputPacket->width = targetWidth_;
     outputPacket->height = targetHeight_;
     outputPacket->stride = outputPacket->width;
@@ -1314,81 +1193,64 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 接收系统解码错误，将错误码转换为媒体失败通知。
+   * Converts a system decoder error into a media failure notification.
    *
-   * @param errorCode 系统解码器返回的错误码。
-   * @param userData 注册系统回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param errorCode The system decoder error code.
+   * @param userData The native decoder bound when registering the callback.
    */
-  static void OnError(
-      OH_AVCodec*,
-      int32_t errorCode,
-      void* userData) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(userData);
+  static void OnError(OH_AVCodec *, int32_t errorCode, void *userData) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(userData);
     if (decoder != nullptr) {
-      decoder->ReportError(
-          "视频解码器错误：" + std::to_string(errorCode));
+      decoder->ReportError("视频解码器错误：" + std::to_string(errorCode));
     }
   }
 
   /**
-   * 同步系统解码器报告的输出格式，供后续帧读取和转换使用。
+   * Updates the output format used to read and convert subsequent frames.
    *
-   * @param format 系统解码器报告的媒体格式。
-   * @param userData 注册系统回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param format The format reported by the system decoder.
+   * @param userData The native decoder bound when registering the callback.
    */
-  static void OnStreamChanged(
-      OH_AVCodec*,
-      OH_AVFormat* format,
-      void* userData) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(userData);
+  static void OnStreamChanged(OH_AVCodec *, OH_AVFormat *format, void *userData) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(userData);
     if (decoder == nullptr || format == nullptr) {
       return;
     }
     std::lock_guard<std::mutex> lock(decoder->formatMutex_);
     int32_t value = 0;
-    if (OH_AVFormat_GetIntValue(
-            format, OH_MD_KEY_VIDEO_PIC_WIDTH, &value) ||
+    if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_PIC_WIDTH, &value) ||
         OH_AVFormat_GetIntValue(format, OH_MD_KEY_WIDTH, &value)) {
       decoder->width_ = value;
     }
-    if (OH_AVFormat_GetIntValue(
-            format, OH_MD_KEY_VIDEO_PIC_HEIGHT, &value) ||
+    if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_PIC_HEIGHT, &value) ||
         OH_AVFormat_GetIntValue(format, OH_MD_KEY_HEIGHT, &value)) {
       decoder->height_ = value;
     }
-    if (OH_AVFormat_GetIntValue(
-            format, OH_MD_KEY_VIDEO_STRIDE, &value)) {
+    if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_STRIDE, &value)) {
       decoder->stride_ = value;
     }
-    if (OH_AVFormat_GetIntValue(
-            format, OH_MD_KEY_VIDEO_SLICE_HEIGHT, &value)) {
+    if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_SLICE_HEIGHT, &value)) {
       decoder->sliceHeight_ = value;
     }
-    if (OH_AVFormat_GetIntValue(
-            format, OH_MD_KEY_PIXEL_FORMAT, &value)) {
+    if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_PIXEL_FORMAT, &value)) {
       decoder->pixelFormat_ = value;
     }
   }
 
   /**
-   * 从选中媒体轨道读取压缩数据，填入解码器请求的输入缓冲区。
+   * Reads compressed track data into the requested decoder input buffer.
    *
-   * @param codec 请求或交付缓冲区的系统解码器。
-   * @param index 需要提交或归还的系统缓冲区索引。
-   * @param buffer 系统解码器提供的媒体缓冲区。
-   * @param userData 注册系统回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param codec The system decoder requesting or delivering buffers.
+   * @param index The system buffer index to submit or release.
+   * @param buffer The media buffer supplied by the system decoder.
+   * @param userData The native decoder bound when registering the callback.
    */
-  static void OnNeedInputBuffer(
-      OH_AVCodec* codec,
+  static void OnNeedInputBuffer(OH_AVCodec *codec,
       uint32_t index,
-      OH_AVBuffer* buffer,
-      void* userData) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(userData);
-    if (decoder == nullptr || !decoder->running_.load() ||
-        buffer == nullptr) {
+      OH_AVBuffer *buffer,
+      void *userData) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(userData);
+    if (decoder == nullptr || !decoder->running_.load() || buffer == nullptr) {
       return;
     }
     if (!decoder->WaitUntilPlaying()) {
@@ -1404,25 +1266,20 @@ class NativeVideoFileDecoder {
       if (!decoder->running_.load() || decoder->inputEnded_) {
         return;
       }
-      readResult = OH_AVDemuxer_ReadSampleBuffer(
-          decoder->demuxer_, decoder->trackIndex_, buffer);
+      readResult = OH_AVDemuxer_ReadSampleBuffer(decoder->demuxer_, decoder->trackIndex_, buffer);
       if (readResult == AV_ERR_OK) {
         OH_AVCodecBufferAttr attr{};
         attributeResult = OH_AVBuffer_GetBufferAttr(buffer, &attr);
-        bool endOfStream = attributeResult == AV_ERR_OK &&
-            (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
-        if (decoder->isHdrVivid_ && endOfStream &&
-            decoder->cycleDurationUs_ > 0 &&
-            OH_AVDemuxer_SeekToTime(
-                decoder->demuxer_,
-                0,
-                SEEK_MODE_PREVIOUS_SYNC) == AV_ERR_OK) {
-          readResult = OH_AVDemuxer_ReadSampleBuffer(
-              decoder->demuxer_, decoder->trackIndex_, buffer);
+        bool endOfStream =
+            attributeResult == AV_ERR_OK && (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
+        if (decoder->isHdrVivid_ && endOfStream && decoder->cycleDurationUs_ > 0 &&
+            OH_AVDemuxer_SeekToTime(decoder->demuxer_, 0, SEEK_MODE_PREVIOUS_SYNC) == AV_ERR_OK) {
+          readResult =
+              OH_AVDemuxer_ReadSampleBuffer(decoder->demuxer_, decoder->trackIndex_, buffer);
           if (readResult == AV_ERR_OK) {
             attributeResult = OH_AVBuffer_GetBufferAttr(buffer, &attr);
-            endOfStream = attributeResult == AV_ERR_OK &&
-                (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
+            endOfStream =
+                attributeResult == AV_ERR_OK && (attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0;
             if (attributeResult == AV_ERR_OK && !endOfStream) {
               ++decoder->inputLoopIndex_;
             }
@@ -1430,8 +1287,8 @@ class NativeVideoFileDecoder {
         }
         if (readResult == AV_ERR_OK) {
           loopIndex = decoder->inputLoopIndex_;
-          if (decoder->isHdrVivid_ && attributeResult == AV_ERR_OK &&
-              !endOfStream && loopIndex > 0) {
+          if (decoder->isHdrVivid_ && attributeResult == AV_ERR_OK && !endOfStream &&
+              loopIndex > 0) {
             attr.pts += loopIndex * decoder->cycleDurationUs_;
             attributeResult = OH_AVBuffer_SetBufferAttr(buffer, &attr);
           }
@@ -1443,37 +1300,31 @@ class NativeVideoFileDecoder {
       }
     }
     if (readResult != AV_ERR_OK) {
-      decoder->ReportError(
-          "读取视频压缩帧失败：" + std::to_string(readResult));
+      decoder->ReportError("读取视频压缩帧失败：" + std::to_string(readResult));
       return;
     }
     if (attributeResult != AV_ERR_OK) {
-      decoder->ReportError(
-          "更新 HDR Vivid 循环帧时间戳失败：" +
-          std::to_string(attributeResult));
+      decoder->ReportError("更新 HDR Vivid 循环帧时间戳失败：" + std::to_string(attributeResult));
       return;
     }
     if (pushResult != AV_ERR_OK) {
-      decoder->ReportError(
-          "提交视频压缩帧失败：" + std::to_string(pushResult));
+      decoder->ReportError("提交视频压缩帧失败：" + std::to_string(pushResult));
     }
   }
 
   /**
-   * 处理系统解码器输出的媒体缓冲区，并在完成后归还缓冲区索引。
+   * Processes a decoded buffer and releases its output index afterward.
    *
-   * @param codec 请求或交付缓冲区的系统解码器。
-   * @param index 需要提交或归还的系统缓冲区索引。
-   * @param buffer 系统解码器提供的媒体缓冲区。
-   * @param userData 注册系统回调时绑定的原生解码器实例。
-   * @returns 无返回值。
+   * @param codec The system decoder requesting or delivering buffers.
+   * @param index The system buffer index to submit or release.
+   * @param buffer The media buffer supplied by the system decoder.
+   * @param userData The native decoder bound when registering the callback.
    */
-  static void OnNewOutputBuffer(
-      OH_AVCodec* codec,
+  static void OnNewOutputBuffer(OH_AVCodec *codec,
       uint32_t index,
-      OH_AVBuffer* buffer,
-      void* userData) {
-    auto* decoder = static_cast<NativeVideoFileDecoder*>(userData);
+      OH_AVBuffer *buffer,
+      void *userData) {
+    auto *decoder = static_cast<NativeVideoFileDecoder *>(userData);
     if (decoder == nullptr) {
       if (codec != nullptr) {
         OH_VideoDecoder_FreeOutputBuffer(codec, index);
@@ -1493,17 +1344,13 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 将解码器输出交给 Surface 处理链路，并关联帧时间与文件结束标记。
+   * Submits decoded output to Surface processing with frame time and end markers.
    *
-   * @param codec 请求或交付缓冲区的系统解码器。
-   * @param index 需要提交或归还的系统缓冲区索引。
-   * @param buffer 系统解码器提供的媒体缓冲区。
-   * @returns 无返回值。
+   * @param codec The system decoder requesting or delivering buffers.
+   * @param index The system buffer index to submit or release.
+   * @param buffer The media buffer supplied by the system decoder.
    */
-  void HandleSurfaceOutputBuffer(
-      OH_AVCodec* codec,
-      uint32_t index,
-      OH_AVBuffer* buffer) {
+  void HandleSurfaceOutputBuffer(OH_AVCodec *codec, uint32_t index, OH_AVBuffer *buffer) {
     if (!running_.load() || codec == nullptr || buffer == nullptr) {
       if (codec != nullptr) {
         OH_VideoDecoder_FreeOutputBuffer(codec, index);
@@ -1547,8 +1394,7 @@ class NativeVideoFileDecoder {
     if (OH_VideoDecoder_RenderOutputBuffer(codec, index) != AV_ERR_OK) {
       {
         std::lock_guard<std::mutex> lock(surfaceTimestampMutex_);
-        if (!pendingSurfaceTimestamps_.empty() &&
-            pendingSurfaceTimestamps_.back() == timestampUs) {
+        if (!pendingSurfaceTimestamps_.empty() && pendingSurfaceTimestamps_.back() == timestampUs) {
           pendingSurfaceTimestamps_.pop_back();
         }
       }
@@ -1557,12 +1403,11 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 读取解码缓冲数据及时间戳，转换并按播放时间轴交付媒体帧。
+   * Reads decoded data and timestamps, then converts and delivers paced media frames.
    *
-   * @param buffer 系统解码器提供的媒体缓冲区。
-   * @returns 无返回值。
+   * @param buffer The media buffer supplied by the system decoder.
    */
-  void HandleOutputBuffer(OH_AVBuffer* buffer) {
+  void HandleOutputBuffer(OH_AVBuffer *buffer) {
     if (!running_.load()) {
       return;
     }
@@ -1572,7 +1417,7 @@ class NativeVideoFileDecoder {
       return;
     }
     if ((attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0) {
-      auto* packet = new DecodedFramePacket();
+      auto *packet = new DecodedFramePacket();
       packet->endOfStream = true;
       Dispatch(packet);
       return;
@@ -1597,8 +1442,7 @@ class NativeVideoFileDecoder {
       sliceHeight = sliceHeight_;
       pixelFormat = pixelFormat_;
     }
-    if (pixelFormat != AV_PIXEL_FORMAT_NV12 ||
-        width <= 0 || height <= 0) {
+    if (pixelFormat != AV_PIXEL_FORMAT_NV12 || width <= 0 || height <= 0) {
       ReportError("视频解码器未输出 NV12 帧");
       return;
     }
@@ -1609,18 +1453,17 @@ class NativeVideoFileDecoder {
     if (sliceHeight < height) {
       sliceHeight = height;
     }
-    const size_t sourceLength = static_cast<size_t>(stride) *
-        static_cast<size_t>(sliceHeight + height / 2);
+    const size_t sourceLength =
+        static_cast<size_t>(stride) * static_cast<size_t>(sliceHeight + height / 2);
     if (sourceLength > static_cast<size_t>(attr.size)) {
       ReportError("NV12 视频解码帧布局无效");
       return;
     }
 
-    uint8_t* address = OH_AVBuffer_GetAddr(buffer);
+    uint8_t *address = OH_AVBuffer_GetAddr(buffer);
     const int32_t capacity = OH_AVBuffer_GetCapacity(buffer);
     if (address == nullptr || capacity < 0 ||
-        static_cast<int64_t>(attr.offset) +
-            static_cast<int64_t>(sourceLength) > capacity) {
+        static_cast<int64_t>(attr.offset) + static_cast<int64_t>(sourceLength) > capacity) {
       ReportError("访问 NV12 视频解码帧失败");
       return;
     }
@@ -1630,11 +1473,9 @@ class NativeVideoFileDecoder {
       return;
     }
     std::vector<uint8_t> frameData;
-    ScaleAndRotateNv12(
-        address + attr.offset,
+    ScaleAndRotateNv12(address + attr.offset,
         stride,
-        address + attr.offset +
-            static_cast<size_t>(stride) * sliceHeight,
+        address + attr.offset + static_cast<size_t>(stride) * sliceHeight,
         stride,
         width,
         height,
@@ -1643,7 +1484,7 @@ class NativeVideoFileDecoder {
         targetHeight_,
         &frameData);
 
-    auto* packet = new DecodedFramePacket();
+    auto *packet = new DecodedFramePacket();
     packet->width = targetWidth_;
     packet->height = targetHeight_;
     packet->stride = packet->width;
@@ -1653,17 +1494,14 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 按目标播放时间等待，同时响应暂停和停止请求，避免解码输出快于播放进度。
+   * Waits for playback time while responding to pause and stop requests.
    *
-   * @param timestampUs 媒体输出时间戳，单位微秒。
-   * @returns 无返回值。
+   * @param timestampUs The output media timestamp, in microseconds.
    */
   void Pace(int64_t timestampUs) {
     std::unique_lock<std::mutex> lock(pacingMutex_);
     while (running_.load()) {
-      pacingCondition_.wait(lock, [this] {
-        return !running_.load() || !paused_.load();
-      });
+      pacingCondition_.wait(lock, [this] { return !running_.load() || !paused_.load(); });
       if (!running_.load()) {
         return;
       }
@@ -1678,28 +1516,25 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 等待媒体恢复播放或停止，供解码回调遵守暂停状态。
+   * Waits until playback resumes or stops.
    *
-   * @returns 仍在运行且允许播放时返回 true，已经停止时返回 false。
+   * @return True while running and permitted to play; false after stopping.
    */
   bool WaitUntilPlaying() {
     std::unique_lock<std::mutex> lock(pacingMutex_);
-    pacingCondition_.wait(lock, [this] {
-      return !running_.load() || !paused_.load();
-    });
+    pacingCondition_.wait(lock, [this] { return !running_.load() || !paused_.load(); });
     return running_.load();
   }
 
   /**
-   * 按目标帧间隔过滤视频帧，避免重复或过密的媒体时间戳。
+   * Filters video output by the target interval to avoid duplicate or excessive timestamps.
    *
-   * @param mediaTimestampUs 源媒体时间戳，单位微秒。
-   * @returns 当前媒体时间戳应输出时返回 true。
+   * @param mediaTimestampUs The source media timestamp, in microseconds.
+   * @return True if the media timestamp should be output.
    */
   bool ShouldOutputFrame(int64_t mediaTimestampUs) {
     if (lastOutputMediaTimestampUs_ >= 0 &&
-        mediaTimestampUs - lastOutputMediaTimestampUs_ <
-            frameIntervalUs_ * 3 / 4) {
+        mediaTimestampUs - lastOutputMediaTimestampUs_ < frameIntervalUs_ * 3 / 4) {
       return false;
     }
     lastOutputMediaTimestampUs_ = mediaTimestampUs;
@@ -1707,73 +1542,59 @@ class NativeVideoFileDecoder {
   }
 
   /**
-   * 将媒体时间戳映射为包含暂停补偿的单调播放时间。
+   * Maps media time to monotonic playback time with pause compensation.
    *
-   * @param mediaTimestampUs 源媒体时间戳，单位微秒。
-   * @returns 以微秒为单位的播放时间戳。
+   * @param mediaTimestampUs The source media timestamp, in microseconds.
+   * @return The playback timestamp, in microseconds.
    */
   int64_t PlaybackTimestampUs(int64_t mediaTimestampUs) const {
-    return playbackAnchorUs_.load() + std::max<int64_t>(
-        mediaTimestampUs - mediaStartUs_,
-        0);
+    return playbackAnchorUs_.load() + std::max<int64_t>(mediaTimestampUs - mediaStartUs_, 0);
   }
 
   /**
-   * 仅通知一次媒体处理错误，避免重复错误回调。
+   * Reports a media processing error once.
    *
-   * @param message 需要交付或记录的错误原因。
-   * @returns 无返回值。
+   * @param message The failure description to deliver or log.
    */
-  void ReportError(const std::string& message) {
+  void ReportError(const std::string &message) {
     if (reportedError_.exchange(true)) {
       return;
     }
-    auto* packet = new DecodedFramePacket();
+    auto *packet = new DecodedFramePacket();
     packet->error = message;
     Dispatch(packet);
   }
 
   /**
-   * 将媒体数据包提交到 ArkTS 线程安全回调队列；提交失败时释放数据包。
+   * Queues a packet for ArkTS delivery, releasing it if submission fails.
    *
-   * @param packet 需要消费、交付或释放的媒体数据包。
-   * @returns 无返回值。
+   * @param packet The packet to consume, deliver, or release.
    */
-  void Dispatch(DecodedFramePacket* packet) {
+  void Dispatch(DecodedFramePacket *packet) {
     if (listener_ == nullptr ||
-        napi_call_threadsafe_function(
-            listener_, packet, napi_tsfn_blocking) != napi_ok) {
+        napi_call_threadsafe_function(listener_, packet, napi_tsfn_blocking) != napi_ok) {
       delete packet;
     }
   }
 
   /**
-   * 在 ArkTS 外部帧缓冲区被回收时释放对应原生视频数据包。
+   * Releases a native video packet when its ArkTS external buffer is collected.
    *
-   * @param hint 关联到外部帧缓冲区、需要在回收时释放的数据包。
-   * @returns 无返回值。
+   * @param hint The packet associated with the external frame buffer.
    */
-  static void FinalizeFrameData(
-      napi_env,
-      void*,
-      void* hint) {
-    delete static_cast<std::vector<uint8_t>*>(hint);
+  static void FinalizeFrameData(napi_env, void *, void *hint) {
+    delete static_cast<std::vector<uint8_t> *>(hint);
   }
 
   /**
-   * 在 ArkTS 线程交付媒体数据或状态通知，并按交付结果转移或释放数据包。
+   * Delivers media or status on the ArkTS thread and transfers or releases packet ownership.
    *
-   * @param env 当前 ArkTS N-API 执行环境。
-   * @param callback 需要在 ArkTS 线程调用的函数。
-   * @param data 关联的原生数据包或异步任务上下文。
-   * @returns 无返回值。
+   * @param env The current ArkTS N-API environment.
+   * @param callback The function to invoke on the ArkTS thread.
+   * @param data The associated packet or asynchronous work context.
    */
-  static void CallListener(
-      napi_env env,
-      napi_value callback,
-      void*,
-      void* data) {
-    auto* packet = static_cast<DecodedFramePacket*>(data);
+  static void CallListener(napi_env env, napi_value callback, void *, void *data) {
+    auto *packet = static_cast<DecodedFramePacket *>(data);
     if (packet == nullptr) {
       return;
     }
@@ -1784,20 +1605,11 @@ class NativeVideoFileDecoder {
 
     napi_value undefined = nullptr;
     napi_get_undefined(env, &undefined);
-    napi_value arguments[7] = {
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined
-    };
+    napi_value arguments[7] =
+        {undefined, undefined, undefined, undefined, undefined, undefined, undefined};
     if (!packet->data.empty()) {
-      auto* frameData = new std::vector<uint8_t>(
-          std::move(packet->data));
-      if (napi_create_external_arraybuffer(
-              env,
+      auto *frameData = new std::vector<uint8_t>(std::move(packet->data));
+      if (napi_create_external_arraybuffer(env,
               frameData->data(),
               frameData->size(),
               FinalizeFrameData,
@@ -1811,22 +1623,14 @@ class NativeVideoFileDecoder {
     napi_create_int32(env, packet->width, &arguments[1]);
     napi_create_int32(env, packet->height, &arguments[2]);
     napi_create_int32(env, packet->stride, &arguments[3]);
-    napi_create_double(
-        env,
-        static_cast<double>(packet->timestampUs),
-        &arguments[4]);
+    napi_create_double(env, static_cast<double>(packet->timestampUs), &arguments[4]);
     napi_get_boolean(env, packet->endOfStream, &arguments[5]);
     if (!packet->error.empty()) {
-      napi_create_string_utf8(
-          env,
-          packet->error.c_str(),
-          NAPI_AUTO_LENGTH,
-          &arguments[6]);
+      napi_create_string_utf8(env, packet->error.c_str(), NAPI_AUTO_LENGTH, &arguments[6]);
     }
 
     napi_value result = nullptr;
-    napi_call_function(
-        env,
+    napi_call_function(env,
         undefined,
         callback,
         sizeof(arguments) / sizeof(arguments[0]),
@@ -1835,121 +1639,205 @@ class NativeVideoFileDecoder {
     delete packet;
   }
 
-  /** 文件、解封装与视频解码资源 */
+  // File, demuxer, and video decoder resources
+
+  /** The duplicated file descriptor owned by the decoder. */
   int32_t fd_ = -1;
-  OH_AVSource* source_ = nullptr;
-  OH_AVDemuxer* demuxer_ = nullptr;
-  OH_AVCodec* decoder_ = nullptr;
-  OH_AVFormat* trackFormat_ = nullptr;
+
+  /** The owned native media source. */
+  OH_AVSource *source_ = nullptr;
+
+  /** The demuxer reading compressed track samples. */
+  OH_AVDemuxer *demuxer_ = nullptr;
+
+  /** The native file decoder for the current playback cycle. */
+  OH_AVCodec *decoder_ = nullptr;
+
+  /** The selected media track format. */
+  OH_AVFormat *trackFormat_ = nullptr;
+
+  /** The selected media track index. */
   uint32_t trackIndex_ = 0;
 
-  /** ArkTS 帧与状态通知 */
+  // ArkTS frame and status delivery
+
+  /** The currently installed event handler. */
   napi_threadsafe_function listener_ = nullptr;
 
-  /** 运行、暂停与错误去重状态 */
+  // Run, pause, and error notification state
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> reportedError_{false};
 
-  /** 输入读取与解封装同步 */
+  // Input reading and demuxer synchronization
+
+  /** The lock serializing demuxer reads and seeks. */
   std::mutex demuxerMutex_;
+
+  /** Whether compressed input has reached its end. */
   bool inputEnded_ = false;
 
-  /** 解码格式与像素布局同步 */
+  // Decoder format and pixel layout synchronization
+
+  /** The lock protecting decoder output format and layout. */
   std::mutex formatMutex_;
+
+  /** The image or frame width. */
   int32_t width_ = 0;
+
+  /** The image or frame height. */
   int32_t height_ = 0;
+
+  /** The plane row stride, in bytes. */
   int32_t stride_ = 0;
+
+  /** The decoder buffer height including alignment padding. */
   int32_t sliceHeight_ = 0;
+
+  /** The pixel layout used by the frame buffer. */
   int32_t pixelFormat_ = 0;
 
-  /** Surface 输出选择 */
+  // Surface output selection
+
+  /** Whether the selected video track uses HDR Vivid. */
   bool isHdrVivid_ = false;
+
+  /** Whether decoding uses Surface output rather than byte buffers. */
   bool useSurfaceOutput_ = false;
 
-  /** 视频处理器与输入窗口 */
-  OH_VideoProcessing* videoProcessor_ = nullptr;
-  VideoProcessing_Callback* surfaceProcessingCallback_ = nullptr;
-  OHNativeWindow* surfaceProcessorInputWindow_ = nullptr;
+  // Video processor and input window
+
+  /** The processor converting decoded Surface frames for output. */
+  OH_VideoProcessing *videoProcessor_ = nullptr;
+
+  /** The video processor callback registration resource. */
+  VideoProcessing_Callback *surfaceProcessingCallback_ = nullptr;
+
+  /** The input window receiving decoded frames for processing. */
+  OHNativeWindow *surfaceProcessorInputWindow_ = nullptr;
+
+  /** Whether the video processor has started. */
   bool videoProcessorStarted_ = false;
+
+  /** Whether the processor's stopped-state event has arrived. */
   bool videoProcessorStopped_ = true;
 
-  /** 视频处理器停止状态同步 */
+  // Video processor stop synchronization
+
+  /** The lock protecting processor stop state. */
   std::mutex surfaceProcessingStateMutex_;
+
+  /** The condition waiting for processor state changes. */
   std::condition_variable surfaceProcessingStateCondition_;
 
-  /** 输出 Surface 与原生窗口 */
-  OH_NativeImage* surfaceOutputSurface_ = nullptr;
-  OHNativeWindow* surfaceOutputWindow_ = nullptr;
+  // Output Surface and native window
 
-  /** Surface 资源与帧队列同步 */
+  /** The processed output Surface resource. */
+  OH_NativeImage *surfaceOutputSurface_ = nullptr;
+
+  /** The native window receiving processed output buffers. */
+  OHNativeWindow *surfaceOutputWindow_ = nullptr;
+
+  // Surface resource and frame queue synchronization
+
+  /** The lock protecting native Surface access and resource release. */
   std::mutex surfaceMutex_;
+
+  /** The lock protecting pending Surface buffers. */
   std::mutex surfaceQueueMutex_;
+
+  /** The condition waking the Surface consumer. */
   std::condition_variable surfaceCondition_;
 
-  /** 待消费输出缓冲区 */
+  // Pending output buffers
+
+  /** The processed output indices awaiting Surface consumption. */
   std::deque<uint32_t> surfacePendingOutputBuffers_;
 
-  /** Surface 消费线程 */
+  // Surface consumer thread
   std::atomic<bool> surfaceWorkerRunning_{false};
+
+  /** The worker consuming processed Surface frames. */
   std::thread surfaceWorker_;
 
-  /** 帧时间戳与结束通知同步 */
+  // Frame timestamp and completion synchronization
+
+  /** The lock protecting timestamp and completion accounting. */
   std::mutex surfaceTimestampMutex_;
+
+  /** The media timestamps awaiting processed Surface output. */
   std::deque<int64_t> pendingSurfaceTimestamps_;
+
+  /** The Surface frames still being processed before completion. */
   size_t surfaceFramesInFlight_ = 0;
+
+  /** Whether end-of-stream awaits completion of pending Surface work. */
   bool surfaceEndOfStreamPending_ = false;
 
-  /** Surface 像素转换缓存 */
+  // Surface pixel conversion cache
+
+  /** The reusable pixels copied from a decoded Surface buffer. */
   std::vector<uint8_t> surfaceSourceData_;
+
+  /** The reusable scaled Surface pixel buffer. */
   std::vector<uint8_t> surfaceScaledData_;
 
-  /** 暂停与播放节奏同步 */
+  // Pause and playback pacing synchronization
+
+  /** The lock protecting playback pacing waits. */
   std::mutex pacingMutex_;
+
+  /** The condition waking playback pacing on pause, resume, or stop. */
   std::condition_variable pacingCondition_;
 
-  /** 媒体时间轴与输出采样规格 */
+  // Media timeline and output sampling format
   std::atomic<int64_t> playbackAnchorUs_{0};
+
+  /** The source media timeline origin, in microseconds. */
   int64_t mediaStartUs_ = 0;
+
+  /** The clockwise video rotation. */
   int32_t rotation_ = 0;
+
+  /** The target frame width, in pixels. */
   int32_t targetWidth_ = 0;
+
+  /** The target frame height, in pixels. */
   int32_t targetHeight_ = 0;
+
+  /** The target output frame interval, in microseconds. */
   int64_t frameIntervalUs_ = 0;
+
+  /** The duration of one playback cycle, in microseconds. */
   int64_t cycleDurationUs_ = 0;
 
-  /** 文件循环轮次与输出帧去重 */
+  // File cycle and output frame deduplication
+
+  /** The decoder input cycle used for timestamp continuity. */
   int64_t inputLoopIndex_ = 0;
+
+  /** The last output media timestamp, in microseconds. */
   int64_t lastOutputMediaTimestampUs_ = -1;
 };
 
 /**
- * 从 ArkTS 对象中读取其绑定的原生文件解码器。
+ * Reads the native file decoder bound to an ArkTS object.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param info 当前 ArkTS 方法调用的参数与接收对象。
- * @param receiver 写回 ArkTS 方法接收对象的可选指针。
- * @returns 有效解码器指针；调用无效时返回空指针并抛出异常。
+ * @param env The current ArkTS N-API environment.
+ * @param info The ArkTS invocation arguments and receiver.
+ * @param receiver Optionally receives the ArkTS method receiver.
+ * @return The decoder, or a null pointer with an ArkTS exception on invalid invocation.
  */
-NativeVideoFileDecoder* UnwrapDecoder(
-    napi_env env,
+NativeVideoFileDecoder *UnwrapDecoder(napi_env env,
     napi_callback_info info,
-    napi_value* receiver = nullptr) {
+    napi_value *receiver = nullptr) {
   size_t argumentCount = 0;
   napi_value thisValue = nullptr;
-  if (napi_get_cb_info(
-          env,
-          info,
-          &argumentCount,
-          nullptr,
-          &thisValue,
-          nullptr) != napi_ok) {
+  if (napi_get_cb_info(env, info, &argumentCount, nullptr, &thisValue, nullptr) != napi_ok) {
     return nullptr;
   }
-  NativeVideoFileDecoder* decoder = nullptr;
-  if (napi_unwrap(
-          env,
-          thisValue,
-          reinterpret_cast<void**>(&decoder)) != napi_ok) {
+  NativeVideoFileDecoder *decoder = nullptr;
+  if (napi_unwrap(env, thisValue, reinterpret_cast<void **>(&decoder)) != napi_ok) {
     return nullptr;
   }
   if (receiver != nullptr) {
@@ -1959,16 +1847,14 @@ NativeVideoFileDecoder* UnwrapDecoder(
 }
 
 /**
- * 将 ArkTS 暂停请求转交给原生文件解码器。
+ * Forwards an ArkTS pause request to the native file decoder.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param info 当前 ArkTS 方法调用的参数与接收对象。
- * @returns ArkTS undefined。
+ * @param env The current ArkTS N-API environment.
+ * @param info The ArkTS invocation arguments and receiver.
+ * @return ArkTS undefined。
  */
-napi_value PauseDecoder(
-    napi_env env,
-    napi_callback_info info) {
-  NativeVideoFileDecoder* decoder = UnwrapDecoder(env, info);
+napi_value PauseDecoder(napi_env env, napi_callback_info info) {
+  NativeVideoFileDecoder *decoder = UnwrapDecoder(env, info);
   if (decoder == nullptr) {
     napi_throw_error(env, nullptr, "Video decoder is unavailable");
     return nullptr;
@@ -1980,30 +1866,25 @@ napi_value PauseDecoder(
 }
 
 /**
- * 读取暂停时长并恢复原生文件解码输出。
+ * Reads the pause duration and resumes native decoding.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param info 当前 ArkTS 方法调用的参数与接收对象。
- * @returns ArkTS undefined；参数无效时抛出异常。
+ * @param env The current ArkTS N-API environment.
+ * @param info The ArkTS invocation arguments and receiver.
+ * @return ArkTS undefined; invalid arguments produce an exception.
  */
-napi_value ResumeDecoder(
-    napi_env env,
-    napi_callback_info info) {
+napi_value ResumeDecoder(napi_env env, napi_callback_info info) {
   size_t argumentCount = 1;
   napi_value argument = nullptr;
   napi_value receiver = nullptr;
-  if (napi_get_cb_info(
-          env, info, &argumentCount, &argument, &receiver, nullptr) != napi_ok ||
+  if (napi_get_cb_info(env, info, &argumentCount, &argument, &receiver, nullptr) != napi_ok ||
       argumentCount != 1) {
     napi_throw_type_error(env, nullptr, "Expected paused duration");
     return nullptr;
   }
-  NativeVideoFileDecoder* decoder = nullptr;
+  NativeVideoFileDecoder *decoder = nullptr;
   double pausedDurationUs = 0;
-  if (napi_unwrap(
-          env, receiver, reinterpret_cast<void**>(&decoder)) != napi_ok ||
-      decoder == nullptr ||
-      napi_get_value_double(env, argument, &pausedDurationUs) != napi_ok ||
+  if (napi_unwrap(env, receiver, reinterpret_cast<void **>(&decoder)) != napi_ok ||
+      decoder == nullptr || napi_get_value_double(env, argument, &pausedDurationUs) != napi_ok ||
       pausedDurationUs < 0) {
     napi_throw_type_error(env, nullptr, "Video decoder resume arguments are invalid");
     return nullptr;
@@ -2014,66 +1895,62 @@ napi_value ResumeDecoder(
   return result;
 }
 
-/**
- * 保存原生视频解码器异步释放任务及其 Promise 和实例引用。
- */
+/** Native decoder release work with its Promise and instance reference. */
 struct ReleaseDecoderContext {
 
-  /** 异步任务与释放结果通知 */
+  // Asynchronous work and release notification
+
+  /** The N-API asynchronous work handle. */
   napi_async_work work = nullptr;
+
+  /** The N-API handle completing the ArkTS Promise. */
   napi_deferred deferred = nullptr;
 
-  /** ArkTS 对象与原生实例所有权 */
+  // ArkTS wrapper and native instance ownership
+
+  /** The ArkTS object reference retaining the decoder during asynchronous work. */
   napi_ref decoderReference = nullptr;
-  NativeVideoFileDecoder* decoder = nullptr;
+
+  /** The native file decoder for the current playback cycle. */
+  NativeVideoFileDecoder *decoder = nullptr;
 };
 
 /**
- * 将原生解码失败原因转换为 ArkTS 错误并拒绝待完成的 Promise。
+ * Rejects a pending ArkTS Promise with the native decoding failure.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param deferred 需要完成或拒绝的 ArkTS Promise。
- * @param reason 用于拒绝 Promise 的可读失败原因。
- * @returns 无返回值。
+ * @param env The current ArkTS N-API environment.
+ * @param deferred The ArkTS Promise to fulfill or reject.
+ * @param reason The readable Promise rejection reason.
  */
-void RejectDecoderPromise(
-    napi_env env,
-    napi_deferred deferred,
-    const char* reason) {
+void RejectDecoderPromise(napi_env env, napi_deferred deferred, const char *reason) {
   napi_value message = nullptr;
   napi_value error = nullptr;
-  napi_create_string_utf8(
-      env, reason, NAPI_AUTO_LENGTH, &message);
+  napi_create_string_utf8(env, reason, NAPI_AUTO_LENGTH, &message);
   napi_create_error(env, nullptr, message, &error);
   napi_reject_deferred(env, deferred, error);
 }
 
 /**
- * 在后台线程停止视频解码，避免阻塞 ArkTS 事件循环。
+ * Stops video decoding on a worker without blocking the ArkTS event loop.
  *
- * @param data 关联的原生数据包或异步任务上下文。
- * @returns 无返回值。
+ * @param data The associated packet or asynchronous work context.
  */
-void ExecuteReleaseDecoder(napi_env, void* data) {
-  auto* context = static_cast<ReleaseDecoderContext*>(data);
+void ExecuteReleaseDecoder(napi_env, void *data) {
+  auto *context = static_cast<ReleaseDecoderContext *>(data);
   if (context != nullptr && context->decoder != nullptr) {
     context->decoder->Stop();
   }
 }
 
 /**
- * 在 ArkTS 线程完成释放 Promise，并清理异步任务和实例引用。
+ * Completes release on the ArkTS thread and clears work and instance references.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param status N-API 异步任务的完成状态。
- * @param data 关联的原生数据包或异步任务上下文。
- * @returns 无返回值。
+ * @param env The current ArkTS N-API environment.
+ * @param status The N-API work completion status.
+ * @param data The associated packet or asynchronous work context.
  */
-void CompleteReleaseDecoder(
-    napi_env env,
-    napi_status status,
-    void* data) {
-  auto* context = static_cast<ReleaseDecoderContext*>(data);
+void CompleteReleaseDecoder(napi_env env, napi_status status, void *data) {
+  auto *context = static_cast<ReleaseDecoderContext *>(data);
   if (context == nullptr) {
     return;
   }
@@ -2082,8 +1959,7 @@ void CompleteReleaseDecoder(
     napi_get_undefined(env, &result);
     napi_resolve_deferred(env, context->deferred, result);
   } else {
-    RejectDecoderPromise(
-        env,
+    RejectDecoderPromise(env,
         context->deferred,
         "Failed to release the video decoder asynchronously");
   }
@@ -2097,40 +1973,34 @@ void CompleteReleaseDecoder(
 }
 
 /**
- * 在 ArkTS 解码器对象回收时删除原生实例并释放媒体资源。
+ * Deletes the native decoder and releases media resources when its ArkTS wrapper is collected.
  *
- * @param data 关联的原生数据包或异步任务上下文。
- * @returns 无返回值。
+ * @param data The associated packet or asynchronous work context.
  */
-void FinalizeDecoder(napi_env, void* data, void*) {
-  delete static_cast<NativeVideoFileDecoder*>(data);
+void FinalizeDecoder(napi_env, void *data, void *) {
+  delete static_cast<NativeVideoFileDecoder *>(data);
 }
 
 /**
- * 释放 ArkTS 对象绑定的原生文件解码器。
+ * Releases the native file decoder bound to an ArkTS object.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param info 当前 ArkTS 方法调用的参数与接收对象。
- * @returns 资源释放后兑现的 ArkTS Promise。
+ * @param env The current ArkTS N-API environment.
+ * @param info The ArkTS invocation arguments and receiver.
+ * @return The ArkTS Promise fulfilled after resource release.
  */
-napi_value ReleaseDecoder(
-    napi_env env,
-    napi_callback_info info) {
+napi_value ReleaseDecoder(napi_env env, napi_callback_info info) {
   napi_value receiver = nullptr;
-  NativeVideoFileDecoder* decoder =
-      UnwrapDecoder(env, info, &receiver);
+  NativeVideoFileDecoder *decoder = UnwrapDecoder(env, info, &receiver);
   if (decoder == nullptr || receiver == nullptr) {
     napi_throw_error(env, nullptr, "Video decoder is unavailable");
     return nullptr;
   }
 
   napi_value promise = nullptr;
-  auto* context = new ReleaseDecoderContext();
+  auto *context = new ReleaseDecoderContext();
   context->decoder = decoder;
-  if (napi_create_reference(
-          env, receiver, 1, &context->decoderReference) != napi_ok ||
-      napi_create_promise(
-          env, &context->deferred, &promise) != napi_ok) {
+  if (napi_create_reference(env, receiver, 1, &context->decoderReference) != napi_ok ||
+      napi_create_promise(env, &context->deferred, &promise) != napi_ok) {
     if (context->decoderReference != nullptr) {
       napi_delete_reference(env, context->decoderReference);
     }
@@ -2140,13 +2010,11 @@ napi_value ReleaseDecoder(
   }
 
   napi_value resourceName = nullptr;
-  if (napi_create_string_utf8(
-          env,
+  if (napi_create_string_utf8(env,
           "XmaxReleaseNativeVideoFileDecoder",
           NAPI_AUTO_LENGTH,
           &resourceName) != napi_ok ||
-      napi_create_async_work(
-          env,
+      napi_create_async_work(env,
           nullptr,
           resourceName,
           ExecuteReleaseDecoder,
@@ -2157,10 +2025,7 @@ napi_value ReleaseDecoder(
     if (context->work != nullptr) {
       napi_delete_async_work(env, context->work);
     }
-    RejectDecoderPromise(
-        env,
-        context->deferred,
-        "Failed to queue video decoder release");
+    RejectDecoderPromise(env, context->deferred, "Failed to queue video decoder release");
     napi_delete_reference(env, context->decoderReference);
     delete context;
     return promise;
@@ -2168,46 +2033,75 @@ napi_value ReleaseDecoder(
   return promise;
 }
 
-/**
- * 保存视频解码器异步初始化参数、结果和 ArkTS 通知资源。
- */
+/** Native decoder initialization arguments, result, and ArkTS notification resources. */
 struct CreateDecoderContext {
 
-  /** 异步任务与创建结果通知 */
+  // Asynchronous work and creation notification
+
+  /** The N-API asynchronous work handle. */
   napi_async_work work = nullptr;
+
+  /** The N-API handle completing the ArkTS Promise. */
   napi_deferred deferred = nullptr;
 
-  /** ArkTS 对象与原生实例所有权 */
-  napi_ref reference = nullptr;
-  NativeVideoFileDecoder* decoder = nullptr;
+  // ArkTS wrapper and native instance ownership
 
-  /** 源文件与播放时间配置 */
+  /** The ArkTS reference retained for native asynchronous work. */
+  napi_ref reference = nullptr;
+
+  /** The native file decoder for the current playback cycle. */
+  NativeVideoFileDecoder *decoder = nullptr;
+
+  // Source file and playback time configuration
+
+  /** The frame dimensions carried by the request. */
   int64_t size = 0;
+
+  /** The monotonic playback anchor, in microseconds. */
   int64_t anchorUs = 0;
+
+  /** The source media timeline origin, in microseconds. */
   int64_t mediaStartUs = 0;
 
-  /** 目标视频格式与帧间隔 */
+  // Target video format and frame interval
+
+  /** The clockwise video rotation. */
   int32_t rotation = 0;
+
+  /** The image or frame width. */
   int32_t width = 0;
+
+  /** The image or frame height. */
   int32_t height = 0;
+
+  /** The target output frame interval, in microseconds. */
   int64_t frameIntervalUs = 0;
+
+  /** The duration of one playback cycle, in microseconds. */
   int64_t cycleDurationUs = 0;
 
-  /** 后台初始化错误 */
+  // Background initialization error
+
+  /** The media processing failure description, if any. */
   std::string error;
 };
 
 /**
- * 在后台线程初始化系统视频解码器，保存初始化结果与错误说明。
+ * Initializes the system decoder on a worker and retains its result or error.
  *
- * @param data 关联的原生数据包或异步任务上下文。
- * @returns 无返回值。
+ * @param data The associated packet or asynchronous work context.
  */
-void ExecuteCreateDecoder(napi_env, void* data) {
-  auto* context = static_cast<CreateDecoderContext*>(data);
-  if (!context->decoder->Initialize(context->size, context->anchorUs,
-          context->mediaStartUs, context->rotation, context->width, context->height,
-          context->frameIntervalUs, context->cycleDurationUs, &context->error)) {
+void ExecuteCreateDecoder(napi_env, void *data) {
+  auto *context = static_cast<CreateDecoderContext *>(data);
+  if (!context->decoder->Initialize(context->size,
+          context->anchorUs,
+          context->mediaStartUs,
+          context->rotation,
+          context->width,
+          context->height,
+          context->frameIntervalUs,
+          context->cycleDurationUs,
+          &context->error)) {
     // Failed initialization may own codec/Surface resources: release them here,
     // not in the completion callback on the UI thread.
     context->decoder->Stop();
@@ -2215,18 +2109,19 @@ void ExecuteCreateDecoder(napi_env, void* data) {
 }
 
 /**
- * 在 ArkTS 线程兑现或拒绝解码器创建 Promise，并清理异步任务上下文。
+ * Completes decoder creation on the ArkTS thread and releases the work context.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param status N-API 异步任务的完成状态。
- * @param data 关联的原生数据包或异步任务上下文。
- * @returns 无返回值。
+ * @param env The current ArkTS N-API environment.
+ * @param status The N-API work completion status.
+ * @param data The associated packet or asynchronous work context.
  */
-void CompleteCreateDecoder(napi_env env, napi_status status, void* data) {
-  auto* context = static_cast<CreateDecoderContext*>(data);
+void CompleteCreateDecoder(napi_env env, napi_status status, void *data) {
+  auto *context = static_cast<CreateDecoderContext *>(data);
   if (status != napi_ok || !context->error.empty()) {
-    RejectDecoderPromise(env, context->deferred, context->error.empty()
-        ? "Failed to initialize the video decoder asynchronously" : context->error.c_str());
+    RejectDecoderPromise(env,
+        context->deferred,
+        context->error.empty() ? "Failed to initialize the video decoder asynchronously"
+                               : context->error.c_str());
   } else {
     napi_value result = nullptr;
     napi_get_reference_value(env, context->reference, &result);
@@ -2238,38 +2133,19 @@ void CompleteCreateDecoder(napi_env env, napi_status status, void* data) {
 }
 
 /**
- * 校验文件与播放参数，异步初始化视频解码器并返回创建结果 Promise。
+ * Validates file and playback parameters and returns asynchronous decoder initialization.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param info 当前 ArkTS 方法调用的参数与接收对象。
- * @returns 兑现为暂停状态视频解码器的 ArkTS Promise；初始化失败时拒绝。
+ * @param env The current ArkTS N-API environment.
+ * @param info The ArkTS invocation arguments and receiver.
+ * @return The Promise for an initially paused decoder; initialization failures reject it.
  */
-napi_value CreateVideoFileDecoder(
-    napi_env env,
-    napi_callback_info info) {
+napi_value CreateVideoFileDecoder(napi_env env, napi_callback_info info) {
   size_t argumentCount = 10;
-  napi_value arguments[10] = {
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr
-  };
-  if (napi_get_cb_info(
-          env,
-          info,
-          &argumentCount,
-          arguments,
-          nullptr,
-          nullptr) != napi_ok ||
+  napi_value arguments[10] =
+      {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+  if (napi_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr) != napi_ok ||
       argumentCount != 10) {
-    napi_throw_type_error(
-        env,
+    napi_throw_type_error(env,
         nullptr,
         "Expected fd, size, playback timing, output format and frame listener");
     return nullptr;
@@ -2287,30 +2163,22 @@ napi_value CreateVideoFileDecoder(
   napi_valuetype listenerType = napi_undefined;
   if (napi_get_value_int32(env, arguments[0], &fd) != napi_ok ||
       napi_get_value_double(env, arguments[1], &sizeValue) != napi_ok ||
-      napi_get_value_double(
-          env, arguments[2], &playbackAnchorUs) != napi_ok ||
-      napi_get_value_double(
-          env, arguments[3], &mediaStartUs) != napi_ok ||
+      napi_get_value_double(env, arguments[2], &playbackAnchorUs) != napi_ok ||
+      napi_get_value_double(env, arguments[3], &mediaStartUs) != napi_ok ||
       napi_get_value_int32(env, arguments[4], &rotation) != napi_ok ||
       napi_get_value_int32(env, arguments[5], &targetWidth) != napi_ok ||
       napi_get_value_int32(env, arguments[6], &targetHeight) != napi_ok ||
-      napi_get_value_double(
-          env, arguments[7], &frameIntervalUs) != napi_ok ||
-      napi_get_value_double(
-          env, arguments[8], &cycleDurationUs) != napi_ok ||
-      fd < 0 || sizeValue <= 0 ||
-      playbackAnchorUs <= 0 ||
-      targetWidth <= 0 || targetHeight <= 0 ||
-      targetWidth % 2 != 0 || targetHeight % 2 != 0 ||
-      frameIntervalUs <= 0 || cycleDurationUs <= 0 ||
-      !IsSupportedRotation(rotation) ||
-      napi_typeof(env, arguments[9], &listenerType) != napi_ok ||
-      listenerType != napi_function) {
+      napi_get_value_double(env, arguments[7], &frameIntervalUs) != napi_ok ||
+      napi_get_value_double(env, arguments[8], &cycleDurationUs) != napi_ok || fd < 0 ||
+      sizeValue <= 0 || playbackAnchorUs <= 0 || targetWidth <= 0 || targetHeight <= 0 ||
+      targetWidth % 2 != 0 || targetHeight % 2 != 0 || frameIntervalUs <= 0 ||
+      cycleDurationUs <= 0 || !IsSupportedRotation(rotation) ||
+      napi_typeof(env, arguments[9], &listenerType) != napi_ok || listenerType != napi_function) {
     napi_throw_type_error(env, nullptr, "Video file decoder arguments are invalid");
     return nullptr;
   }
 
-  auto* decoder = new NativeVideoFileDecoder();
+  auto *decoder = new NativeVideoFileDecoder();
   std::string error;
   if (!decoder->Bind(env, arguments[9], fd, &error)) {
     delete decoder;
@@ -2325,36 +2193,20 @@ napi_value CreateVideoFileDecoder(
     return nullptr;
   }
   napi_property_descriptor descriptors[] = {
-      {
-          "pause", nullptr, PauseDecoder, nullptr, nullptr, nullptr,
-          napi_default, nullptr
-      },
-      {
-          "resume", nullptr, ResumeDecoder, nullptr, nullptr, nullptr,
-          napi_default, nullptr
-      },
-      {
-          "release", nullptr, ReleaseDecoder, nullptr, nullptr, nullptr,
-          napi_default, nullptr
-      }
-  };
-  if (napi_define_properties(
-      env,
-      result,
-      sizeof(descriptors) / sizeof(descriptors[0]),
-      descriptors) != napi_ok || napi_wrap(
-      env,
-      result,
-      decoder,
-      FinalizeDecoder,
-      nullptr,
-      nullptr) != napi_ok) {
+      {"pause", nullptr, PauseDecoder, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"resume", nullptr, ResumeDecoder, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"release", nullptr, ReleaseDecoder, nullptr, nullptr, nullptr, napi_default, nullptr}};
+  if (napi_define_properties(env,
+          result,
+          sizeof(descriptors) / sizeof(descriptors[0]),
+          descriptors) != napi_ok ||
+      napi_wrap(env, result, decoder, FinalizeDecoder, nullptr, nullptr) != napi_ok) {
     delete decoder;
     napi_throw_error(env, nullptr, "Failed to bind video decoder handle");
     return nullptr;
   }
 
-  auto* context = new CreateDecoderContext();
+  auto *context = new CreateDecoderContext();
   context->decoder = decoder;
   context->size = static_cast<int64_t>(sizeValue);
   context->anchorUs = static_cast<int64_t>(playbackAnchorUs);
@@ -2373,43 +2225,48 @@ napi_value CreateVideoFileDecoder(
     return nullptr;
   }
   if (napi_create_reference(env, result, 1, &context->reference) != napi_ok ||
-      napi_create_string_utf8(env, "XmaxCreateNativeVideoFileDecoder", NAPI_AUTO_LENGTH,
+      napi_create_string_utf8(env,
+          "XmaxCreateNativeVideoFileDecoder",
+          NAPI_AUTO_LENGTH,
           &resourceName) != napi_ok ||
-      napi_create_async_work(env, nullptr, resourceName, ExecuteCreateDecoder,
-          CompleteCreateDecoder, context, &context->work) != napi_ok ||
+      napi_create_async_work(env,
+          nullptr,
+          resourceName,
+          ExecuteCreateDecoder,
+          CompleteCreateDecoder,
+          context,
+          &context->work) != napi_ok ||
       napi_queue_async_work(env, context->work) != napi_ok) {
     // The worker has not run: only the lightweight binding/fd exist here.
     decoder->Stop();
     RejectDecoderPromise(env, context->deferred, "Failed to queue video initialization");
-    if (context->reference != nullptr) napi_delete_reference(env, context->reference);
-    if (context->work != nullptr) napi_delete_async_work(env, context->work);
+    if (context->reference != nullptr)
+      napi_delete_reference(env, context->reference);
+    if (context->work != nullptr)
+      napi_delete_async_work(env, context->work);
     delete context;
   }
   return promise;
 }
-}  /** namespace */
+} // namespace
 
 namespace xmax {
+
 /**
- * 向原生模块导出视频文件解码器的异步创建入口。
+ * Exports asynchronous native video decoder creation.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param exports 需要挂载 SDK 原生入口的模块导出对象。
- * @returns 无返回值。
+ * @param env The current ArkTS N-API environment.
+ * @param exports The module object receiving SDK native exports.
  */
-void DefineNativeVideoFileDecoder(
-    napi_env env,
-    napi_value exports) {
-  napi_property_descriptor descriptor = {
-      "createVideoFileDecoder",
+void DefineNativeVideoFileDecoder(napi_env env, napi_value exports) {
+  napi_property_descriptor descriptor = {"createVideoFileDecoder",
       nullptr,
       CreateVideoFileDecoder,
       nullptr,
       nullptr,
       nullptr,
       napi_default,
-      nullptr
-  };
+      nullptr};
   napi_define_properties(env, exports, 1, &descriptor);
 }
-}  /** namespace xmax */
+} // namespace xmax

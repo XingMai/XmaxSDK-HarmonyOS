@@ -1,10 +1,9 @@
 //
 //  RealtimeGenerationOptions.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,31 +11,44 @@
 import { RealtimeContext } from './RealtimeContext';
 import { RealtimeMediaStream } from './RealtimeMediaStream';
 
-/** 生成请求的静态图片参数；图片地址必须可由服务端访问，并与本地输入保持相同比例。 */
+/**
+ * Static generation parameters. The image must be server-accessible and match local input aspect
+ * ratio.
+ */
 export interface RealtimeGenerationParameters {
-  /** 静态图片生成条件 */
-  /** 是否从指定静态图片开始生成；省略时使用常规实时输入。 */
+
+  /** Whether to generate from a specified static image; omission uses ordinary realtime input. */
   readonly static_generate?: boolean;
-  /** 静态输入图片地址；开启静态生成时必填。 */
+
+  /** The static image URL, required for static generation. */
   readonly static_image_path?: string;
 }
 
-/** 启动、更新或重新建立生成任务；重启仅替换任务，保留 RTC 连接和本地媒体流。 */
+/**
+ * Options for starting, updating, or replacing a task while retaining the connection and local
+ * media.
+ */
 export interface RealtimeGenerationOptions {
-  /** 输入媒体与生成条件 */
-  /** 当前 Manager 创建的本地流；已连接时可省略。 */
+
+  /** The local stream created by this manager; optional while connected. */
   readonly localStream?: RealtimeMediaStream;
-  /** 本次生成条件；省略时复用已缓存条件。 */
+
+  /** The requested conditions; omission reuses cached conditions. */
   readonly context?: RealtimeContext;
 
-  /** 任务替换与图像修复 */
-  /** true 时创建新任务，默认 false；静态任务确认后即可交互，普通任务还会等待首帧。 */
+  /**
+   * Whether to create a new task, default false. Static tasks permit interaction after
+   * confirmation; ordinary tasks also await a first frame.
+   */
   readonly restart?: boolean;
-  /** 是否启用原始人脸回贴，默认 false。 */
+
+  /** Whether to restore the original face; defaults to false. */
   readonly faceRestoration?: boolean;
 
-  /** 静态图片输入 */
-  /** 本次静态图配置的唯一公开入口；需同时提供 context，由 SDK 独立缓存。
-   * 省略 context 时复用缓存；显式提供 context 但省略 extraParams 时清除静态图配置。 */
+  /**
+   * The public static-image configuration entry, requiring context and cached independently by the
+   * SDK. Omitting context reuses the cache; explicit context without extraParams clears static
+   * configuration.
+   */
   readonly extraParams?: RealtimeGenerationParameters;
 }

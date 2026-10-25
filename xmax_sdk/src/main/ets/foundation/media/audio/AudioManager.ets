@@ -1,10 +1,9 @@
 //
 //  AudioManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,42 +13,56 @@ import { XmaxLogger } from '../../logging/XmaxLogger';
 import { AudioFrame } from './AudioFrame';
 import { AudioManaging } from './AudioManaging';
 
-/** 使用平台音频渲染器播放本地 PCM 音频帧。 */
+/** Plays local PCM frames through the platform audio renderer. */
 export class AudioManager implements AudioManaging {
 
-  /** 音量默认配置 */
+  // Default volume configuration
+
+  /** The default local preview volume in 0 to 1. */
   private static readonly DEFAULT_VOLUME: number = 0.45;
 
-  /** 播放器资源与音量 */
+  // Player resources and volume
+
+  /** The renderer used by this component. */
   private renderer: audio.AudioRenderer | null = null;
+
+  /** The retained local playback volume in 0 to 1. */
   private configuredVolume: number = AudioManager.DEFAULT_VOLUME;
 
-  /** 播放器操作串行化 */
+  // Serialized player operations
+
+  /** The Promise serializing player volume and resource operations. */
   private pendingOperation: Promise<void> = Promise.resolve();
 
-  /** 待播放帧队列与读取位置 */
+  // Pending playback queue and read position
+
+  /** The media frames queued for asynchronous consumption. */
   private pendingFrames: Uint8Array[] = [];
+
+  /** The byte offset into the currently consumed audio frame. */
   private pendingFrameOffset: number = 0;
 
-  /** 播放开关与队列排空状态 */
+  // Playback enablement and draining state
+
+  /** Whether local audio preview is enabled. */
   private isPlaybackEnabled: boolean = true;
+
+  /** The callbacks waiting for queued audio frames to drain. */
   private pendingFrameWaiters: Array<() => void> = [];
+
+  /** Whether playback is draining queued audio without adding silence. */
   private isDraining: boolean = false;
 
   /**
-   * 创建并启动本地 PCM 音频播放器。
+   * Creates and starts a local PCM player.
    *
-   * @returns 播放器启动完成后的 Promise。
+   * The Promise fulfills after playback starts.
    */
   start(): Promise<void> {
     return this.enqueueOperation((): Promise<void> => this.startRenderer());
   }
 
-  /**
-   * 创建并启动系统 PCM 播放器，连接待播放音频帧队列。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Creates the system PCM player and binds the pending audio queue. */
   private async startRenderer(): Promise<void> {
     if (this.renderer !== null) {
       return;
@@ -98,12 +111,13 @@ export class AudioManager implements AudioManaging {
   }
 
   /**
-   * 将一帧 PCM 音频加入待播放缓冲区。
+   * Queues a PCM frame for local playback.
    *
-   * @param frame 待播放的 PCM 音频帧。
-   * @returns 无返回值。
+   * @param frame The PCM frame to play.
    */
-  write(frame: AudioFrame): void {
+  write(
+    frame: AudioFrame
+  ): void {
     if (this.renderer === null || !this.isPlaybackEnabled) {
       return;
     }
@@ -112,14 +126,14 @@ export class AudioManager implements AudioManaging {
   }
 
   /**
-   * 启用或暂停本地音频预览。
+   * Enables or pauses local audio preview. While paused, upstream audio processing continues but
+   * the local player outputs silence.
    *
-   * 暂停后继续由上游处理音频帧，但本地播放器仅输出静音数据。
-   *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setPlaybackEnabled(enabled: boolean): void {
+  setPlaybackEnabled(
+    enabled: boolean
+  ): void {
     if (this.isPlaybackEnabled === enabled) {
       return;
     }
@@ -130,22 +144,19 @@ export class AudioManager implements AudioManaging {
     }
   }
 
-  /**
-   * 读取本地音频当前配置的播放音量。
-   *
-   * @returns 0～1 的音量比例，0 为静音，1 为原始音量。
-   */
+  /** The configured local playback volume in 0 to 1; zero mutes and one uses original volume. */
   get volume(): number {
     return this.configuredVolume;
   }
 
   /**
-   * 设置播放器音量（0～1），播放器停止后保留设置。
+   * Sets player volume in 0 to 1, retaining it after the player stops.
    *
-   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume The volume in 0 to 1, from muted to original volume.
    */
-  setVolume(volume: number): Promise<void> {
+  setVolume(
+    volume: number
+  ): Promise<void> {
     return this.enqueueOperation(async (): Promise<void> => {
       if (this.renderer !== null) {
         await this.renderer.setVolume(volume);
@@ -154,23 +165,23 @@ export class AudioManager implements AudioManaging {
     });
   }
 
-  /** 顺序执行音量与资源操作，避免连续拖动滑块或换视频时写入旧值、访问已释放播放器。 */
   /**
-   * 串行执行播放器操作，避免启停和写入并发访问资源。
+   * Serializes player operations to prevent resource access racing with startup or stopping.
    *
-   * @param operation 需要完成或清理的实时操作记录。
-   * @returns 操作完成时兑现的 Promise。
+   * @param operation The operation to complete or clean up.
    */
-  private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+  private enqueueOperation(
+    operation: () => Promise<void>
+  ): Promise<void> {
     const result: Promise<void> = this.pendingOperation.then(operation);
-    this.pendingOperation = result.catch((): void => {});
+    this.pendingOperation = result.catch((): void => { });
     return result;
   }
 
   /**
-   * 清除平台播放器及本地队列中尚未播放的音频数据。
+   * Clears unplayed platform and local audio buffers.
    *
-   * @returns 缓冲区清理完成后的 Promise。
+   * The Promise fulfills after buffered audio is cleared.
    */
   async flush(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
@@ -182,11 +193,7 @@ export class AudioManager implements AudioManaging {
     }
   }
 
-  /**
-   * 等待已提交的本地音频播放完，不清空尾部音频。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for queued local audio playback without dropping its tail. */
   async drain(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     if (renderer === null || !this.isPlaybackEnabled) {
@@ -209,11 +216,7 @@ export class AudioManager implements AudioManaging {
     }
   }
 
-  /**
-   * 结束音频队列排空等待，释放所有已登记的等待回调。
-   *
-   * @returns 无返回值。
-   */
+  /** Completes audio queue drain waits and releases pending callbacks. */
   private finishPendingFrameWaiters(): void {
     const waiters: Array<() => void> = this.pendingFrameWaiters;
     this.pendingFrameWaiters = [];
@@ -221,19 +224,15 @@ export class AudioManager implements AudioManaging {
   }
 
   /**
-   * 停止本地音频播放并释放平台资源。
+   * Stops local audio and releases platform resources.
    *
-   * @returns 播放器停止完成后的 Promise。
+   * The Promise fulfills after the player stops.
    */
   stop(): Promise<void> {
     return this.enqueueOperation((): Promise<void> => this.stopRenderer());
   }
 
-  /**
-   * 停止音频播放并释放系统播放器资源。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops playback and releases the system audio player. */
   private async stopRenderer(): Promise<void> {
     const renderer: audio.AudioRenderer | null = this.renderer;
     this.renderer = null;
@@ -267,13 +266,16 @@ export class AudioManager implements AudioManaging {
   }
 
   /**
-   * 使用待播放音频帧填充平台请求的播放缓冲区。
+   * Fills the platform playback buffer from queued audio frames.
    *
-   * @param data 平台提供的播放缓冲区。
-   * @returns 平台音频数据回调处理结果。
+   * @param data The platform-supplied playback buffer.
+   *
+   * @returns The platform audio callback result.
    */
-  private fillPlaybackBuffer(data: ArrayBuffer): audio.AudioDataCallbackResult {
-    // 尾音排空期间不再持续补静音，否则平台缓冲无法排空。
+  private fillPlaybackBuffer(
+    data: ArrayBuffer
+  ): audio.AudioDataCallbackResult {
+    // Do not keep padding silence while draining; otherwise the platform buffer cannot empty.
     if (this.isDraining && this.pendingFrames.length === 0) {
       return audio.AudioDataCallbackResult.INVALID;
     }
@@ -310,7 +312,10 @@ export class AudioManager implements AudioManaging {
     }
 
     if (outputOffset < output.length) {
-      output.fill(0, outputOffset);
+      output.fill(
+        0,
+        outputOffset
+      );
     }
     if (this.pendingFrames.length === 0) {
       this.finishPendingFrameWaiters();
@@ -319,11 +324,7 @@ export class AudioManager implements AudioManaging {
     return audio.AudioDataCallbackResult.VALID;
   }
 
-  /**
-   * 清空待播放音频帧及当前帧读取偏移量。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears queued frames and resets the current read offset. */
   private clearPendingFrames(): void {
     this.pendingFrames = [];
     this.pendingFrameOffset = 0;

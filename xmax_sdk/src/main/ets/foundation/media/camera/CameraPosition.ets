@@ -1,16 +1,19 @@
 //
 //  CameraPosition.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 选择本地采集使用的前置或后置摄像头。 */
+/** The camera position used for local capture. */
 export enum CameraPosition {
+
+  /** The front-facing camera. */
   FRONT = 'front',
+
+  /** The rear-facing camera. */
   BACK = 'back'
 }

@@ -1,10 +1,9 @@
 //
 //  RuntimeInfo.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,44 +13,48 @@ import { XMAX_SDK_VERSION } from './SDKVersion';
 
 export const RUNTIME_PLATFORM: string = 'harmonyos';
 
-/** 携带房间信令所需的平台、系统版本、SDK 版本和设备型号。 */
+/** Platform, system, SDK, and device fields used in room signaling. */
 export interface RuntimeInfoPayload {
 
-  /** 可序列化的运行环境字段 */
+  /** The runtime platform identifier sent to the service. */
   platform: string;
+
+  /** The system version sent in runtime metadata. */
   os_version: string;
+
+  /** The SDK version sent in runtime metadata. */
   sdk_version: string;
+
+  /** The device model sent in runtime metadata. */
   device_model: string;
 }
 
-/** API 和房间信令共享的进程级运行环境快照。 */
+/** A process-level runtime snapshot shared by API requests and room signals. */
 export class RuntimeInfo {
 
-  /** 运行环境缓存 */
+  /** The process-level cached runtime snapshot. */
   private static cached: RuntimeInfo | undefined;
 
-  /** 平台与版本信息 */
+  /** The runtime platform identifier sent to the service. */
   readonly platform: string = RUNTIME_PLATFORM;
+
+  /** The device system version. */
   readonly osVersion: string;
+
+  /** The SDK version. */
   readonly sdkVersion: string = XMAX_SDK_VERSION;
+
+  /** The device model. */
   readonly deviceModel: string;
 
-  /**
-   * 创建运行环境快照。
-   *
-   * @returns 新建的 RuntimeInfo 实例。
-   */
+  /** Creates a runtime snapshot. */
   private constructor() {
     this.osVersion = RuntimeInfo.readValue((): string => deviceInfo.distributionOSVersion) ||
       RuntimeInfo.readValue((): string => deviceInfo.osFullName) || 'unknown';
     this.deviceModel = RuntimeInfo.readValue((): string => deviceInfo.productModel) || 'unknown';
   }
 
-  /**
-   * 读取缓存的当前运行环境信息。
-   *
-   * @returns 当前设备与 SDK 的运行环境快照。
-   */
+  /** The cached device and SDK runtime snapshot. */
   static get current(): RuntimeInfo {
     if (RuntimeInfo.cached === undefined) {
       RuntimeInfo.cached = new RuntimeInfo();
@@ -60,9 +63,9 @@ export class RuntimeInfo {
   }
 
   /**
-   * 将运行环境快照转换为房间信令字段。
+   * Converts runtime information into room signal fields.
    *
-   * @returns 用于 JSON 序列化的运行环境数据。
+   * @returns The runtime data for JSON serialization.
    */
   toPayload(): RuntimeInfoPayload {
     return {
@@ -74,12 +77,15 @@ export class RuntimeInfo {
   }
 
   /**
-   * 设备信息不可用时仍允许正常发起 API 和信令。
+   * Unavailable device information must not prevent API requests or signaling.
    *
-   * @param read 读取系统属性值的函数。
-   * @returns 去除首尾空白的系统属性值；读取失败时返回空字符串。
+   * @param read The system property reader.
+   *
+   * @returns The trimmed property value, or an empty string if reading fails.
    */
-  private static readValue(read: () => string): string {
+  private static readValue(
+    read: () => string
+  ): string {
     try {
       return read().trim();
     } catch (_error) {

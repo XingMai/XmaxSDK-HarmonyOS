@@ -1,10 +1,9 @@
 //
 //  PermissionManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -24,26 +23,23 @@ import { PermissionManaging } from './PermissionManaging';
 const CAMERA_PERMISSION: Permissions = 'ohos.permission.CAMERA';
 const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE';
 
-/** 检查并申请 SDK 使用相机和麦克风所需的平台权限。 */
+/** Checks and requests camera and microphone permissions. */
 export class PermissionManager implements PermissionManaging {
 
-  /** 权限请求所需的平台上下文 */
+  /** The platform context for SDK resources. */
   private readonly context: common.UIAbilityContext;
 
-  /**
-   * 创建权限 Manager。
-   *
-   * @param context 用于检查和申请权限的页面上下文。
-   * @returns 新建的 PermissionManager 实例。
-   */
-  constructor(context: common.UIAbilityContext) {
+  /** Creates a permission manager. */
+  constructor(
+    context: common.UIAbilityContext
+  ) {
     this.context = context;
   }
 
   /**
-   * 确保当前应用已获得相机访问权限。
+   * Ensures your app has camera access.
    *
-   * @returns 权限确认完成后的 Promise。
+   * The Promise fulfills after permission is confirmed.
    */
   async ensureCameraPermission(): Promise<void> {
     await this.ensurePermission(
@@ -54,9 +50,9 @@ export class PermissionManager implements PermissionManaging {
   }
 
   /**
-   * 确保当前应用已获得麦克风访问权限。
+   * Ensures your app has microphone access.
    *
-   * @returns 权限确认完成后的 Promise。
+   * The Promise fulfills after permission is confirmed.
    */
   async ensureMicrophonePermission(): Promise<void> {
     await this.ensurePermission(
@@ -67,12 +63,13 @@ export class PermissionManager implements PermissionManaging {
   }
 
   /**
-   * 检查指定权限，并在未授权时向用户发起申请。
+   * Checks a permission and requests it if not granted.
    *
-   * @param permission 平台权限名称。
-   * @param errorCode 权限不可用时抛出的 SDK 错误码。
-   * @param errorMessage 权限不可用时抛出的错误信息。
-   * @returns 权限确认完成后的 Promise。
+   * The Promise fulfills after permission is confirmed.
+   *
+   * @param permission The platform permission name.
+   * @param errorCode The SDK error code for unavailable permission.
+   * @param errorMessage The message for unavailable permission.
    */
   private async ensurePermission(
     permission: Permissions,
@@ -83,13 +80,19 @@ export class PermissionManager implements PermissionManaging {
 
     try {
       const tokenId: number = this.context.applicationInfo.accessTokenId;
-      const current = await manager.checkAccessToken(tokenId, permission);
+      const current = await manager.checkAccessToken(
+        tokenId,
+        permission
+      );
 
       if (current === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
         return;
       }
 
-      const result = await manager.requestPermissionsFromUser(this.context, [permission]);
+      const result = await manager.requestPermissionsFromUser(
+        this.context,
+        [permission]
+      );
       const granted: boolean = result.authResults.length > 0 &&
         result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
 
@@ -104,6 +107,9 @@ export class PermissionManager implements PermissionManaging {
       );
     }
 
-    throw new XmaxError(errorCode, errorMessage);
+    throw new XmaxError(
+      errorCode,
+      errorMessage
+    );
   }
 }

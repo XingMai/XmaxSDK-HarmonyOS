@@ -1,39 +1,48 @@
 //
 //  RealtimeNetworkQuality.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 描述上行或下行网络的可用质量等级。 */
+/** A network quality level for uplink or downlink. */
 export enum RealtimeNetworkQualityLevel {
+
+  /** Network quality is unavailable. */
   UNKNOWN = 'Unknown',
+
+  /** Excellent network quality. */
   EXCELLENT = 'Excellent',
+
+  /** Good network quality. */
   GOOD = 'Good',
+
+  /** Poor network quality. */
   POOR = 'Poor',
+
+  /** Bad network quality. */
   BAD = 'Bad',
+
+  /** Very bad network quality. */
   VERY_BAD = 'VeryBad',
+
+  /** The network is disconnected. */
   DOWN = 'Down'
 }
 
-/** 同时提供本地上行和下行的网络质量等级。 */
+/** The local uplink and downlink network quality. */
 export class RealtimeNetworkQuality {
 
-  /** 上下行网络质量 */
+  /** The uplink quality level or recommendation. */
   readonly uplink: RealtimeNetworkQualityLevel;
+
+  /** The downlink quality level or recommendation. */
   readonly downlink: RealtimeNetworkQualityLevel;
 
-  /**
-   * 创建上下行网络质量快照。
-   *
-   * @param uplink 本地上行网络等级或建议档位。
-   * @param downlink 本地下行的网络质量等级或建议档位。
-   * @returns 新建的 RealtimeNetworkQuality 实例。
-   */
+  /** Creates a network quality snapshot. */
   constructor(
     uplink: RealtimeNetworkQualityLevel,
     downlink: RealtimeNetworkQualityLevel
@@ -44,9 +53,10 @@ export class RealtimeNetworkQuality {
 }
 
 /**
- * 接收上下行网络质量变化的回调。
+ * Receives uplink and downlink network quality changes.
  *
- * @param quality 当前方向或上下行的网络质量采样。
- * @returns 无返回值。
+ * @param quality The uplink, downlink, or combined network quality sample.
  */
-export type RealtimeNetworkQualityListener = (quality: RealtimeNetworkQuality) => void;
+export type RealtimeNetworkQualityListener = (
+  quality: RealtimeNetworkQuality
+) => void;

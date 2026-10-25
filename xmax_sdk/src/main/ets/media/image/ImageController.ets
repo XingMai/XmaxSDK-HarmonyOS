@@ -1,10 +1,9 @@
 //
 //  ImageController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -33,47 +32,54 @@ import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 
-/** 协调本地图片解码、循环帧输出、编码和预览资源。 */
+/** Coordinates local image decoding, repeated frames, encoding, and preview resources. */
 export class ImageController {
 
-  /** 图片解码与传输依赖 */
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
+
+  /** The manager decoding platform images into SDK-owned resources. */
   private readonly imageManager: ImageManaging;
 
-  /** 服务层组件 */
+  /** The service resolving model-specific media dimensions. */
   private readonly mediaService: MediaServicing;
 
-  /** 业务层组件 */
+  /** The source preparing and repeating local image frames. */
   private readonly imageSourceController: ImageSourceControlling;
+
+  /** The controller coordinating RTC rooms, streams, and signaling. */
   private readonly streamController: StreamControlling;
 
-  /** 图片输出轨道与帧开关 */
+  /** The local track owned by the current media source. */
   private activeTrack: RealtimeVideoTrack | null = null;
+
+  /** Whether the current source may deliver media frames. */
   private acceptsFrames: boolean = false;
 
   /**
-   * 创建图片媒体 Controller。
+   * Creates an image media controller.
    *
-   * @param rtcManager 外部视频源和本地渲染使用的 RTC 基础能力。
-   * @param streamController 提供编码配置和视频帧传输能力的统一流组件。
-   * @param errorListener 持续图片帧输出错误监听器。
-   * @param mediaService 当前模型的媒体输入规则。
-   * @returns 新建的 ImageController 实例。
+   * @param rtcManager The RTC services for external video and local rendering.
+   * @param streamController The controller for encoding configuration and video transport.
+   * @param errorListener The continuous image frame error handler.
+   * @param mediaService The model's media sizing service.
    */
   constructor(
     rtcManager: RtcManaging,
     streamController: StreamControlling,
-    errorListener: (error: XmaxError) => void,
+    errorListener: (
+      error: XmaxError
+    ) => void,
     mediaService: MediaServicing = new MediaService()
   ) {
-    // 基础层组件
+    // Foundation components
     this.rtcManager = rtcManager;
     this.imageManager = new ImageManager();
 
-    // 服务层组件
+    // Service components
     this.mediaService = mediaService;
 
-    // 业务层组件
+    // Business components
     this.streamController = streamController;
     this.imageSourceController = new ImageSourceController(
       this.imageManager,
@@ -93,21 +99,18 @@ export class ImageController {
     );
   }
 
-  /**
-   * 读取当前本地输入提供的视频轨道。
-   *
-   * @returns 当前轨道；尚无本地媒体时返回 null。
-   */
+  /** The current local input track, or null without local media. */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
   }
 
   /**
-   * 从图片输入创建持续输出帧的媒体流。
+   * Creates a continuous frame stream from image input.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 可选的视频输出格式；未传入时根据图片信息计算。
-   * @returns 创建完成后的本地图片媒体流。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The optional output format, resolved from image metadata if omitted.
+   *
+   * @returns The created local image stream.
    */
   async createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
@@ -127,20 +130,16 @@ export class ImageController {
   }
 
   /**
-   * 停止图片帧输出并释放本地预览绑定。
+   * Stops image output and releases preview bindings.
    *
-   * @returns 停止操作完成后的 Promise。
+   * The Promise fulfills after stopping.
    */
   async stopLocalImageStream(): Promise<void> {
     this.prepareForStop();
     this.activeTrack = null;
   }
 
-  /**
-   * 立即停止图片帧输出并解除本地预览绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops image output and detaches preview immediately. */
   prepareForStop(): void {
     this.acceptsFrames = false;
     this.imageSourceController.stop();
@@ -153,11 +152,12 @@ export class ImageController {
   }
 
   /**
-   * 准备图片帧来源并装配编码、传输和预览资源。
+   * Prepares image output, encoding, transport, and preview resources.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 可选的视频输出格式。
-   * @returns 完成底层资源装配后的本地图片媒体流。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The optional video output format.
+   *
+   * @returns The image stream after resource setup.
    */
   private async createStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
@@ -171,7 +171,10 @@ export class ImageController {
           source,
           videoFormat
         );
-      track = new RealtimeVideoTrack('video0', resolvedFormat);
+      track = new RealtimeVideoTrack(
+        'video0',
+        resolvedFormat
+      );
 
       this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
@@ -181,7 +184,10 @@ export class ImageController {
       this.imageSourceController.start();
       this.activeTrack = track;
 
-      return new RealtimeMediaStream(StreamId.LOCAL, track);
+      return new RealtimeMediaStream(
+        StreamId.LOCAL,
+        track
+      );
     } catch (error) {
       this.acceptsFrames = false;
       this.imageSourceController.stop();
@@ -195,24 +201,31 @@ export class ImageController {
   }
 
   /**
-   * 为本地图片轨道注册 RTC 预览绑定。
+   * Registers RTC preview for a local image track.
    *
-   * @param track 需要显示的本地图片视频轨道。
-   * @returns 无返回值。
+   * @param track The local image track to display.
    */
-  private registerPreview(track: RealtimeVideoTrack): void {
-    VideoRenderRegistry.register(track, new VideoRenderBinding(
-      this.rtcManager.renderLibraryName(),
-      (
-        viewId: string,
-        contentMode: VideoContentMode
-      ): void => {
-        this.rtcManager.bindLocalVideo(viewId, contentMode);
-      },
-      (_viewId: string): void => {
-        this.rtcManager.unbindLocalVideo();
-      }
-    ));
+  private registerPreview(
+    track: RealtimeVideoTrack
+  ): void {
+    VideoRenderRegistry.register(
+      track,
+      new VideoRenderBinding(
+        this.rtcManager.renderLibraryName(),
+        (
+          viewId: string,
+          contentMode: VideoContentMode
+        ): void => {
+          this.rtcManager.bindLocalVideo(
+            viewId,
+            contentMode
+          );
+        },
+        (_viewId: string): void => {
+          this.rtcManager.unbindLocalVideo();
+        }
+      )
+    );
   }
 
 }

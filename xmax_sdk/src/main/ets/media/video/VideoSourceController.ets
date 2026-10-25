@@ -1,10 +1,9 @@
 //
 //  VideoSourceController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -31,65 +30,94 @@ import {
 } from './VideoSourceControlling';
 
 const FRAME_INTERVAL_TOLERANCE: number = 0.75;
-/** 帧率采样间隔不是处理延迟预算：Surface、取帧和线程调度可能超过一帧。 */
-/** 允许最多三个帧周期（至少 100 ms），仍丢弃明显积压的历史帧。 */
+
+/**
+ * The sampling interval is not a processing deadline; Surface access and scheduling may exceed one
+ * frame.
+ */
+
+/** Allow up to three frame intervals, at least 100 ms, while discarding clearly stale frames. */
 const MIN_FRAME_LATENESS_US: number = 100000;
 const FRAME_LATENESS_INTERVALS: number = 3;
 
-/** 解码本地媒体文件中的视频轨，并按共享时间轴循环输出采样后的视频帧。 */
+/** Decodes and samples file video on a shared timeline with optional looping. */
 export class VideoSourceController implements VideoSourceControlling {
 
-  /** 帧与错误通知 */
+  // Frame and error notifications
+
+  /** The receiver for prepared media frames. */
   private readonly frameListener: VideoSourceFrameListener;
+
+  /** The handler for asynchronous component failures. */
   private readonly errorListener: VideoSourceErrorListener;
 
-  /** 解码资源与释放等待 */
+  // Decoder resources and release waits
+
+  /** The native file decoder for the current playback cycle. */
   private decoder: VideoFileFrameDecoder | null = null;
+
+  /** The pending decoder release awaited before replacement. */
   private decoderReleasePromise: Promise<void> | null = null;
 
-  /** 文件与原始方向配置 */
+  // File and source orientation configuration
+
+  /** The local media file path. */
   private filePath: string = '';
+
+  /** The rotation stored in the source file metadata. */
   private sourceRotation: VideoRotation = VideoRotation.ROTATION_0;
 
-  /** 循环播放时间轴 */
+  // Loop playback timeline
+
+  /** The playback timeline shared by audio and video. */
   private timeline: MediaTimeline | null = null;
+
+  /** The zero-based playback cycle index. */
   private loopIndex: number = 0;
 
-  /** 解码输出规格 */
+  // Decoded output format
+
+  /** The target output frame interval, in microseconds. */
   private frameIntervalUs: number = 0;
+
+  /** The decoded output width, in pixels. */
   private outputWidth: number = 0;
+
+  /** The decoded output height, in pixels. */
   private outputHeight: number = 0;
 
-  /** 源时间戳去重 */
+  // Source timestamp deduplication
+
+  /** The last accepted source timestamp, in microseconds. */
   private lastSourceTimestampUs: number = -1;
 
-  /** 暂停、循环与文件结束状态 */
+  // Pause, looping, and file completion state
+
+  /** Whether media output is paused. */
   private isPaused: boolean = false;
+
+  /** Whether completion arrived while playback was paused. */
   private pendingEndOfStream: boolean = false;
+
+  /** Whether file playback restarts after natural completion. */
   private loop: boolean = true;
+
+  /** Whether non-looping media output has ended naturally. */
   private hasEnded: boolean = false;
 
-  /** 视频源版本与播放结束通知 */
+  // Video source revision and completion notification
+
+  /** The revision rejecting output from obsolete file sources. */
   private sourceVersion: number = 0;
-  /**
-   * 通知本地媒体已完成当前播放。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Reports local media playback completion. */
   private readonly endedListener: () => void;
 
-  /**
-   * 创建视频源 Controller。
-   *
-   * @param frameListener 视频帧输出监听器。
-   * @param errorListener 视频源错误监听器。
-   * @param endedListener 当前媒体播放结束时执行的回调。
-   * @returns 新建的 VideoSourceController 实例。
-   */
+  /** Creates a video source controller. */
   constructor(
     frameListener: VideoSourceFrameListener,
     errorListener: VideoSourceErrorListener,
-    endedListener: () => void = (): void => {}
+    endedListener: () => void = (): void => { }
   ) {
     this.frameListener = frameListener;
     this.errorListener = errorListener;
@@ -97,15 +125,18 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 配置待解码的视频文件、旋转方向和目标格式。
+   * Configures the video file, rotation, and target format.
    *
-   * @param filePath 本地视频文件路径。
-   * @param rotation 视频源旋转方向。
-   * @param outputWidth 目标视频宽度。
-   * @param outputHeight 目标视频高度。
-   * @param frameRate 目标视频帧率。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 旧解码器释放完成后的 Promise。
+   * Stop the current decoder and await its release before reconfiguring this source.
+   *
+   * @param filePath The local video file path.
+   * @param rotation The video source rotation.
+   * @param outputWidth The target video width.
+   * @param outputHeight The target video height.
+   * @param frameRate The target video frame rate.
+   * @param loop Whether to loop after file completion.
+   *
+   * @throws A configuration error if a decoder is active or still being released.
    */
   configure(
     filePath: string,
@@ -132,12 +163,15 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 按共享时间轴开始输出视频帧。
+   * Starts video output on the shared timeline.
    *
-   * @param timeline 音视频共享播放时间轴。
-   * @returns 后台初始化并开始输出后的 Promise。
+   * The Promise fulfills after background initialization and output startup.
+   *
+   * @param timeline The shared audio/video playback timeline.
    */
-  async start(timeline: MediaTimeline): Promise<void> {
+  async start(
+    timeline: MediaTimeline
+  ): Promise<void> {
     if (this.filePath.length === 0) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -163,11 +197,7 @@ export class VideoSourceController implements VideoSourceControlling {
     await this.createDecoder(true);
   }
 
-  /**
-   * 暂停当前解码器，保留媒体位置与资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses the decoder while retaining media position and resources. */
   pause(): void {
     if (this.hasEnded) {
       return;
@@ -187,12 +217,13 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 使用统一的暂停时长恢复当前解码器。
+   * Resumes the decoder with the shared pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void {
+  resume(
+    pausedDurationUs: number
+  ): void {
     if (this.hasEnded) {
       return;
     }
@@ -215,9 +246,9 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 停止输出并清理视频文件状态。
+   * Stops output and clears video file state.
    *
-   * @returns 解码器释放完成后的 Promise。
+   * The Promise fulfills after decoder release.
    */
   async stop(): Promise<void> {
     this.sourceVersion++;
@@ -237,12 +268,16 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 根据当前文件和时间轴创建视频帧解码器。
+   * Creates a video frame decoder for the current file and timeline.
    *
-   * @param initial 是否为首次启动；循环重建不移动音视频共享时间轴。
-   * @returns 解码器就绪并按共享时间轴放行后的 Promise。
+   * The Promise fulfills after decoder readiness and shared-timeline activation.
+   *
+   * @param initial Whether this is initial startup; rebuilding for a loop preserves the shared
+   * timeline.
    */
-  private async createDecoder(initial: boolean = false): Promise<void> {
+  private async createDecoder(
+    initial: boolean = false
+  ): Promise<void> {
     const timeline: MediaTimeline | null = this.timeline;
     if (timeline === null) {
       throw new XmaxError(
@@ -285,7 +320,10 @@ export class VideoSourceController implements VideoSourceControlling {
     await decoder.ready;
     if (version !== this.sourceVersion || this.decoder !== decoder) {
       await decoder.release();
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Video initialization was cancelled');
+      throw new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'Video initialization was cancelled'
+      );
     }
     if (initial) {
       timeline.resume();
@@ -295,12 +333,13 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 将已转正且符合采样节奏的解码帧封装为统一视频帧并输出。
+   * Delivers upright decoded frames that satisfy output sampling.
    *
-   * @param frame 视频文件解码帧。
-   * @returns 无返回值。
+   * @param frame The decoded file video frame.
    */
-  private handleFrame(frame: VideoFileDecodedFrame): void {
+  private handleFrame(
+    frame: VideoFileDecodedFrame
+  ): void {
     if (this.isPaused || !this.shouldOutputFrame(frame)) {
       return;
     }
@@ -339,12 +378,13 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 在当前循环结束后创建下一轮视频解码器。
+   * Creates the next video decoder after a playback cycle ends.
    *
-   * @param loopIndex 结束解码器所属的循环序号。
-   * @returns 无返回值。
+   * @param loopIndex The completed decoder's playback cycle index.
    */
-  private handleEndOfStream(loopIndex: number): void {
+  private handleEndOfStream(
+    loopIndex: number
+  ): void {
     const endedDecoder: VideoFileFrameDecoder | null = this.decoder;
     if (endedDecoder === null || loopIndex !== this.loopIndex || this.hasEnded) {
       return;
@@ -354,17 +394,24 @@ export class VideoSourceController implements VideoSourceControlling {
       return;
     }
 
-    setTimeout((): void => {
-      void this.restartAfterEndOfStream(endedDecoder, loopIndex);
-    }, 0);
+    setTimeout(
+      (): void => {
+        void this.restartAfterEndOfStream(
+          endedDecoder,
+          loopIndex
+        );
+      },
+      0
+    );
   }
 
   /**
-   * 异步释放已结束的解码器并启动下一轮循环。
+   * Releases the completed decoder asynchronously and starts the next cycle.
    *
-   * @param endedDecoder 已完成当前循环的解码器。
-   * @param loopIndex 已完成的循环序号。
-   * @returns 下一轮解码器创建完成后的 Promise。
+   * The Promise fulfills after the next decoder is created.
+   *
+   * @param endedDecoder The decoder completing the current cycle.
+   * @param loopIndex The completed cycle index.
    */
   private async restartAfterEndOfStream(
     endedDecoder: VideoFileFrameDecoder,
@@ -406,12 +453,15 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 根据播放进度和目标帧率判断解码帧是否需要输出。
+   * Selects decoded frames using playback progress and target rate.
    *
-   * @param frame 视频文件解码帧。
-   * @returns 当前解码帧需要输出时返回 true，否则返回 false。
+   * @param frame The decoded file video frame.
+   *
+   * @returns True if the decoded frame should be output.
    */
-  private shouldOutputFrame(frame: VideoFileDecodedFrame): boolean {
+  private shouldOutputFrame(
+    frame: VideoFileDecodedFrame
+  ): boolean {
     const nowUs: number = MediaTimeline.currentTimestampUs();
     const ageUs: number = nowUs - frame.timestampUs;
     const latenessLimitUs: number = Math.max(
@@ -432,19 +482,15 @@ export class VideoSourceController implements VideoSourceControlling {
     return true;
   }
 
-  /**
-   * 重置视频帧采样进度。
-   *
-   * @returns 无返回值。
-   */
+  /** Resets video frame sampling progress. */
   private resetFrameSampling(): void {
     this.lastSourceTimestampUs = -1;
   }
 
   /**
-   * 释放当前视频解码器。
+   * Releases the current video decoder.
    *
-   * @returns 当前解码器释放完成后的 Promise。
+   * The Promise fulfills after current decoder release.
    */
   private async releaseDecoder(): Promise<void> {
     const decoder: VideoFileFrameDecoder | null = this.decoder;
@@ -470,12 +516,15 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 
   /**
-   * 安全释放指定视频解码器并记录释放错误。
+   * Releases a video decoder and logs release errors.
    *
-   * @param decoder 待释放的视频解码器。
-   * @returns 指定解码器释放完成后的 Promise。
+   * The Promise fulfills after the specified decoder is released.
+   *
+   * @param decoder The video decoder to release.
    */
-  private async releaseDecoderInstance(decoder: VideoFileFrameDecoder): Promise<void> {
+  private async releaseDecoderInstance(
+    decoder: VideoFileFrameDecoder
+  ): Promise<void> {
     try {
       await decoder.release();
     } catch (error) {
@@ -488,43 +537,39 @@ export class VideoSourceController implements VideoSourceControlling {
   }
 }
 
-/** 将视频解码器事件转发给视频源 Controller。 */
+/** Forwards video decoder events to the source controller. */
 class VideoSourceDecoderListener implements VideoFileFrameDecoderListener {
 
-  /** 解码帧、结束与错误处理 */
   /**
-   * 交付当前源的解码帧。
+   * Delivers a decoded frame for the current source.
    *
-   * @param frame 当前解码的视频帧。
-   * @returns 无返回值。
+   * @param frame The decoded video frame.
    */
-  private readonly frameHandler: (frame: VideoFileDecodedFrame) => void;
-  /**
-   * 通知当前源已输出到文件结尾。
-   *
-   * @returns 无返回值。
-   */
+  private readonly frameHandler: (
+    frame: VideoFileDecodedFrame
+  ) => void;
+
+  /** Reports that the source reached the file end. */
   private readonly endHandler: () => void;
-  /**
-   * 交付当前源的解码或输出错误。
-   *
-   * @param message 日志内容、错误说明或收到的信令文本。
-   * @returns 无返回值。
-   */
-  private readonly errorHandler: (message: string) => void;
 
   /**
-   * 创建视频解码事件转发器。
+   * Delivers source decoding or output errors.
    *
-   * @param frameHandler 视频帧处理方法。
-   * @param endHandler 视频流结束处理方法。
-   * @param errorHandler 视频解码错误处理方法。
-   * @returns 新建的 VideoSourceDecoderListener 实例。
+   * @param message The local video decoding or output failure description.
    */
+  private readonly errorHandler: (
+    message: string
+  ) => void;
+
+  /** Creates a video decoder event adapter. */
   constructor(
-    frameHandler: (frame: VideoFileDecodedFrame) => void,
+    frameHandler: (
+      frame: VideoFileDecodedFrame
+    ) => void,
     endHandler: () => void,
-    errorHandler: (message: string) => void
+    errorHandler: (
+      message: string
+    ) => void
   ) {
     this.frameHandler = frameHandler;
     this.endHandler = endHandler;
@@ -532,31 +577,29 @@ class VideoSourceDecoderListener implements VideoFileFrameDecoderListener {
   }
 
   /**
-   * 转发解码后的视频帧。
+   * Forwards decoded video frames.
    *
-   * @param frame 视频文件解码帧。
-   * @returns 无返回值。
+   * @param frame The decoded file video frame.
    */
-  onFrame(frame: VideoFileDecodedFrame): void {
+  onFrame(
+    frame: VideoFileDecodedFrame
+  ): void {
     this.frameHandler(frame);
   }
 
-  /**
-   * 转发视频流结束事件。
-   *
-   * @returns 无返回值。
-   */
+  /** Forwards video completion. */
   onEndOfStream(): void {
     this.endHandler();
   }
 
   /**
-   * 转发视频解码错误。
+   * Forwards video decoding errors.
    *
-   * @param message 错误信息。
-   * @returns 无返回值。
+   * @param message The error message.
    */
-  onError(message: string): void {
+  onError(
+    message: string
+  ): void {
     this.errorHandler(message);
   }
 }

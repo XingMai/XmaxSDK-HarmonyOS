@@ -1,10 +1,9 @@
 //
 //  ApiService.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -21,90 +20,122 @@ import { ApiServicing } from './ApiServicing';
 
 const API_TIMEOUT_MS: number = 15000;
 
-/** 表示 Xmax API 的统一响应结构。 */
+/** The standard Xmax API response structure. */
 interface ApiEnvelope {
 
-  /** 服务端响应状态与业务数据 */
+  // Server response status and data
+
+  /** Whether the server reports a successful response. */
   success?: boolean;
+
+  /** The server business response code. */
   code?: number;
+
+  /** The readable error or response message. */
   message?: string;
+
+  /** The response business data. */
   data?: Object;
 }
 
-/** 负责发送 Xmax API 请求并统一处理响应、日志和错误。 */
+/** Sends Xmax API requests and normalizes responses, logs, and errors. */
 export class ApiService implements ApiServicing {
 
-  /** 服务访问凭证与基础地址 */
+  // Service credentials and base URL
+
+  /** The API key used to access Xmax services. */
   private readonly apiKey: string;
+
+  /** The API base URL for this service. */
   private readonly baseURL: string;
 
-  /**
-   * 创建 API Service。
-   *
-   * @param apiKey 调用 Xmax API 使用的访问密钥。
-   * @param baseURL Xmax API 基础地址。
-   * @returns 新建的 ApiService 实例。
-   */
-  constructor(apiKey: string, baseURL: string) {
+  /** Creates an API service. */
+  constructor(
+    apiKey: string,
+    baseURL: string
+  ) {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
   }
 
   /**
-   * 发送 GET 请求。
+   * Sends a GET request.
    *
-   * @param path 相对于 API 基础地址的请求路径。
-   * @returns 解析后的响应数据。
+   * @param path The request path relative to the API base URL.
+   *
+   * @returns The parsed response data.
    */
-  get<T>(path: string): Promise<T> {
-    return this.request<T>(http.RequestMethod.GET, path);
+  get<T>(
+    path: string
+  ): Promise<T> {
+    return this.request<T>(
+      http.RequestMethod.GET,
+      path
+    );
   }
 
   /**
-   * 发送 POST 请求。
+   * Sends a POST request.
    *
-   * @param path 相对于 API 基础地址的请求路径。
-   * @param body 可选的请求体。
-   * @returns 解析后的响应数据。
+   * @param path The request path relative to the API base URL.
+   * @param body The optional request body.
+   *
+   * @returns The parsed response data.
    */
   post<T>(
     path: string,
     body?: Object
   ): Promise<T> {
-    return this.request<T>(http.RequestMethod.POST, path, body);
+    return this.request<T>(
+      http.RequestMethod.POST,
+      path,
+      body
+    );
   }
 
   /**
-   * 发送 PUT 请求。
+   * Sends a PUT request.
    *
-   * @param path 相对于 API 基础地址的请求路径。
-   * @param body 可选的请求体。
-   * @returns 解析后的响应数据。
+   * @param path The request path relative to the API base URL.
+   * @param body The optional request body.
+   *
+   * @returns The parsed response data.
    */
   put<T>(
     path: string,
     body?: Object
   ): Promise<T> {
-    return this.request<T>(http.RequestMethod.PUT, path, body);
+    return this.request<T>(
+      http.RequestMethod.PUT,
+      path,
+      body
+    );
   }
 
   /**
-   * 发送 DELETE 请求。
+   * Sends a DELETE request.
    *
-   * @param path 相对于 API 基础地址的请求路径。
-   * @returns 解析后的响应数据。
+   * @param path The request path relative to the API base URL.
+   *
+   * @returns The parsed response data.
    */
-  delete<T>(path: string): Promise<T> {
-    return this.request<T>(http.RequestMethod.DELETE, path);
+  delete<T>(
+    path: string
+  ): Promise<T> {
+    return this.request<T>(
+      http.RequestMethod.DELETE,
+      path
+    );
   }
 
   /**
-   * 执行 HTTP 请求并统一处理网络异常、响应解析和日志记录。
+   * Executes an HTTP request with normalized network errors, response parsing, and logging.
    *
-   * @param method HTTP 请求方法。
-   * @param path 相对于 API 基础地址的请求路径。
-   * @param body 可选的请求体。
-   * @returns 解析后的响应数据。
+   * @param method The HTTP method.
+   * @param path The request path relative to the API base URL.
+   * @param body The optional request body.
+   *
+   * @returns The parsed response data.
    */
   private async request<T>(
     method: http.RequestMethod,
@@ -124,14 +155,17 @@ export class ApiService implements ApiServicing {
         const extraData: string | undefined = body === undefined ?
           undefined : JSON.stringify(body);
 
-        result = await request.request(url, {
-          method,
-          header: this.headers(),
-          extraData,
-          expectDataType: http.HttpDataType.STRING,
-          connectTimeout: API_TIMEOUT_MS,
-          readTimeout: API_TIMEOUT_MS
-        });
+        result = await request.request(
+          url,
+          {
+            method,
+            header: this.headers(),
+            extraData,
+            expectDataType: http.HttpDataType.STRING,
+            connectTimeout: API_TIMEOUT_MS,
+            readTimeout: API_TIMEOUT_MS
+          }
+        );
       } catch (error) {
         ApiLogger.logFailure(
           method,
@@ -154,7 +188,10 @@ export class ApiService implements ApiServicing {
       const durationMs: number = Date.now() - startedAt;
 
       try {
-        const value: T = this.parseResponse<T>(result.responseCode, responseBody);
+        const value: T = this.parseResponse<T>(
+          result.responseCode,
+          responseBody
+        );
         ApiLogger.logResponse(
           method,
           path,
@@ -191,11 +228,7 @@ export class ApiService implements ApiServicing {
     }
   }
 
-  /**
-   * 校验当前 API Key 是否可用于发起请求。
-   *
-   * @returns 无返回值。
-   */
+  /** Validates the API key before a request. */
   private validateApiKey(): void {
     if (this.apiKey.trim().length === 0) {
       throw new XmaxError(
@@ -206,9 +239,9 @@ export class ApiService implements ApiServicing {
   }
 
   /**
-   * 创建 API 请求使用的公共请求头。
+   * Creates common API request headers.
    *
-   * @returns API 请求头。
+   * @returns The API request headers.
    */
   private headers(): Record<string, string> {
     const runtime: RuntimeInfo = RuntimeInfo.current;
@@ -224,11 +257,12 @@ export class ApiService implements ApiServicing {
   }
 
   /**
-   * 解析并校验 API 统一响应结构。
+   * Parses and validates the standard API response.
    *
-   * @param statusCode HTTP 状态码。
-   * @param text 原始响应文本。
-   * @returns 响应中的业务数据。
+   * @param statusCode The HTTP status code.
+   * @param text The raw response text.
+   *
+   * @returns The response business data.
    */
   private parseResponse<T>(
     statusCode: number,
@@ -261,12 +295,15 @@ export class ApiService implements ApiServicing {
   }
 
   /**
-   * 将未知异常格式化为可读错误信息。
+   * Formats an unknown exception as a readable error.
    *
-   * @param error 待格式化的异常。
-   * @returns 可读错误信息。
+   * @param error The error to format.
+   *
+   * @returns The readable error message.
    */
-  private errorMessage(error: Object): string {
+  private errorMessage(
+    error: Object
+  ): string {
     return ErrorMessageFormatter.format(error);
   }
 }

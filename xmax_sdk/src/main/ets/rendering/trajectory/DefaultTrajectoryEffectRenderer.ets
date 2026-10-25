@@ -1,10 +1,9 @@
 //
 //  DefaultTrajectoryEffectRenderer.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,65 +12,108 @@ import { TrajectoryEffectRendering } from './TrajectoryEffectRendering';
 import { TrajectoryId } from './TrajectoryId';
 import { TrajectoryPoint } from './TrajectoryPoint';
 
-/** 记录单个活动触点的位置与起始时间，供轨迹动画绘制。 */
+/** An active touch location and start time used for trajectory animation. */
 interface ActiveTrajectory {
 
-  /** 触点位置与动画起点 */
+  // Touch location and animation start
+
+  /** The horizontal coordinate. */
   x: number;
+
+  /** The vertical coordinate. */
   y: number;
+
+  /** The touch's animation origin, in milliseconds. */
   startTime: number;
 }
 
-/** 集中定义默认轨迹的颜色、线宽、光晕和衰减节奏。 */
+/** The default trajectory colors, widths, glow, and decay timing. */
 class TrajectoryEffectStyle {
 
-  /** 轨迹采样与衰减节奏 */
+  // Trajectory sampling and decay timing
+
+  /** The trajectory animation refresh interval, in milliseconds. */
   static readonly TICK_MS: number = 16;
+
+  /** The spacing between interpolated trajectory samples. */
   static readonly INTERPOLATE_STEP: number = 1.5;
+
+  /** The opacity decay applied at each trajectory refresh. */
   static readonly FADE_STEP: number = 0.05;
 
-  /** 绿色轨迹颜色 */
+  // Green trajectory colors
+
+  /** The red component of the trajectory glow color. */
   static readonly GLOW_R: number = 0;
+
+  /** The green component of the trajectory glow color. */
   static readonly GLOW_G: number = 255;
+
+  /** The blue component of the trajectory glow color. */
   static readonly GLOW_B: number = 100;
 
-  /** 轨迹线宽与光晕半径 */
+  // Trajectory widths and glow radii
+
+  /** The width of the central trajectory stroke. */
   static readonly CORE_WIDTH: number = 3;
+
+  /** The width of the outer trajectory glow. */
   static readonly OUTER_GLOW_WIDTH: number = 18;
+
+  /** The width of the middle trajectory glow. */
   static readonly MID_GLOW_WIDTH: number = 10;
+
+  /** The radius of the touch head. */
   static readonly HEAD_RADIUS: number = 5;
+
+  /** The radius of the touch head glow. */
   static readonly HEAD_GLOW_RADIUS: number = 14;
 }
 
-/** 绘制绿色发光轨迹、触点光晕与粒子，并在触摸结束后逐步消退。 */
+/** Renders glowing green trajectories, touch halos, and particles that fade after touch completion. */
 export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRendering {
 
-  /** 刷新节奏与双层绘图上下文 */
+  // Refresh interval and two drawing contexts
+
+  /** The animation refresh interval, in milliseconds. */
   readonly tickIntervalMs: number = TrajectoryEffectStyle.TICK_MS;
+
+  /** The canvas containing retained trajectory strokes. */
   readonly trailContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(
     new RenderingContextSettings(true)
   );
+
+  /** The canvas for animated touch effects. */
   readonly effectContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(
     new RenderingContextSettings(true)
   );
 
-  /** 活动触点记录 */
+  // Active touch records
+
+  /** The active touch trajectories and their animation origins. */
   private readonly activeTrajectories: Map<number, ActiveTrajectory> = new Map();
 
-  /** 绘制区域尺寸 */
+  // Drawing area dimensions
+
+  /** The drawing area width. */
   private width: number = 0;
+
+  /** The drawing area height. */
   private height: number = 0;
 
-  /** 轨迹残留与消退状态 */
+  // Retained trajectory and decay state
+
+  /** Whether retained trajectory strokes remain on the canvas. */
   private hasTrailPixels: boolean = false;
+
+  /** The remaining idle refreshes used to fade residual strokes. */
   private idleFadeTicks: number = 0;
 
   /**
-   * 更新渲染区域尺寸。
+   * Updates rendering area dimensions.
    *
-   * @param width 渲染区域宽度。
-   * @param height 渲染区域高度。
-   * @returns 无返回值。
+   * @param width The rendering area width.
+   * @param height The rendering area height.
    */
   resize(
     width: number,
@@ -88,37 +130,45 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 渲染轨迹起点。
+   * Renders new trajectory points.
    *
-   * @param points 新开始的轨迹点。
-   * @returns 无返回值。
+   * @param points The starting trajectory points.
    */
-  renderBegan(points: TrajectoryPoint[]): void {
+  renderBegan(
+    points: TrajectoryPoint[]
+  ): void {
     points.forEach((point: TrajectoryPoint): void => {
-      this.activeTrajectories.set(point.id.rawValue, {
-        x: point.x,
-        y: point.y,
-        startTime: point.timestamp
-      });
+      this.activeTrajectories.set(
+        point.id.rawValue,
+        {
+          x: point.x,
+          y: point.y,
+          startTime: point.timestamp
+        }
+      );
     });
   }
 
   /**
-   * 渲染移动中的轨迹点。
+   * Renders moving trajectory points.
    *
-   * @param points 发生移动的轨迹点。
-   * @returns 无返回值。
+   * @param points The moved trajectory points.
    */
-  renderMoved(points: TrajectoryPoint[]): void {
+  renderMoved(
+    points: TrajectoryPoint[]
+  ): void {
     points.forEach((point: TrajectoryPoint): void => {
       const activeTrajectory: ActiveTrajectory | undefined =
         this.activeTrajectories.get(point.id.rawValue);
       if (activeTrajectory === undefined) {
-        this.activeTrajectories.set(point.id.rawValue, {
-          x: point.x,
-          y: point.y,
-          startTime: point.timestamp
-        });
+        this.activeTrajectories.set(
+          point.id.rawValue,
+          {
+            x: point.x,
+            y: point.y,
+            startTime: point.timestamp
+          }
+        );
 
         return;
       }
@@ -135,75 +185,85 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 结束指定轨迹。
+   * Ends the specified trajectories.
    *
-   * @param identifiers 已结束的轨迹标识。
-   * @returns 无返回值。
+   * @param identifiers The completed trajectory identifiers.
    */
-  renderEnded(identifiers: TrajectoryId[]): void {
+  renderEnded(
+    identifiers: TrajectoryId[]
+  ): void {
     identifiers.forEach((identifier: TrajectoryId): void => {
       this.activeTrajectories.delete(identifier.rawValue);
     });
   }
 
   /**
-   * 推进一帧动态轨迹效果。
+   * Advances one animation frame.
    *
-   * @param timestamp 当前时间戳，单位为毫秒。
-   * @returns 无返回值。
+   * @param timestamp The current timestamp, in milliseconds.
    */
-  tick(timestamp: number): void {
+  tick(
+    timestamp: number
+  ): void {
     this.fadeTrail();
     this.drawEffects(timestamp);
   }
 
   /**
-   * 判断是否仍有需要持续刷新的轨迹效果。
+   * Returns whether trajectory effects need continued refreshing.
    *
-   * @returns 仍有活动触点或残留轨迹需要消退时返回 true。
+   * @returns True while active touches or residual trajectories need animation.
    */
   isAnimating(): boolean {
     return this.activeTrajectories.size > 0 || this.hasTrailPixels;
   }
 
-  /**
-   * 清理全部轨迹效果。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears all trajectory effects. */
   reset(): void {
     this.activeTrajectories.clear();
     this.hasTrailPixels = false;
     this.idleFadeTicks = 0;
 
     if (this.width > 0 && this.height > 0) {
-      this.trailContext.clearRect(0, 0, this.width, this.height);
-      this.effectContext.clearRect(0, 0, this.width, this.height);
+      this.trailContext.clearRect(
+        0,
+        0,
+        this.width,
+        this.height
+      );
+      this.effectContext.clearRect(
+        0,
+        0,
+        this.width,
+        this.height
+      );
     }
   }
 
   /**
-   * 按指定透明度生成默认轨迹的绿色光晕颜色。
+   * Returns the default green glow color at an opacity.
    *
-   * @param alpha 透明度，范围为 0～1。
-   * @returns 可供画布使用的 RGBA 颜色文本。
+   * @param alpha The opacity in 0 to 1.
+   *
+   * @returns The RGBA color string for the canvas.
    */
-  private glowColor(alpha: number): string {
+  private glowColor(
+    alpha: number
+  ): string {
     return `rgba(${TrajectoryEffectStyle.GLOW_R},${TrajectoryEffectStyle.GLOW_G},` +
       `${TrajectoryEffectStyle.GLOW_B},${alpha})`;
   }
 
   /**
-   * 绘制一层指定线宽、模糊半径和透明度的轨迹线段。
+   * Draws a trajectory layer with width, blur, and opacity.
    *
-   * @param x0 线段起点横坐标。
-   * @param y0 线段起点纵坐标。
-   * @param x1 线段终点横坐标。
-   * @param y1 线段终点纵坐标。
-   * @param width 画面宽度，单位像素。
-   * @param blur 笔触模糊半径。
-   * @param alpha 透明度，范围为 0～1。
-   * @returns 无返回值。
+   * @param x0 The segment start horizontal coordinate.
+   * @param y0 The segment start vertical coordinate.
+   * @param x1 The segment end horizontal coordinate.
+   * @param y1 The segment end vertical coordinate.
+   * @param width The frame width, in pixels.
+   * @param blur The stroke blur radius.
+   * @param alpha The opacity in 0 to 1.
    */
   private strokeLayer(
     x0: number,
@@ -220,7 +280,10 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.shadowColor = this.glowColor(alpha);
     context.strokeStyle = this.glowColor(alpha);
     context.beginPath();
-    context.moveTo(x0, y0);
+    context.moveTo(
+      x0,
+      y0
+    );
 
     const dx: number = x1 - x0;
     const dy: number = y1 - y0;
@@ -241,13 +304,12 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 叠加多层发光笔触绘制一段轨迹。
+   * Draws a trajectory segment with layered glowing strokes.
    *
-   * @param x0 线段起点横坐标。
-   * @param y0 线段起点纵坐标。
-   * @param x1 线段终点横坐标。
-   * @param y1 线段终点纵坐标。
-   * @returns 无返回值。
+   * @param x0 The segment start horizontal coordinate.
+   * @param y0 The segment start vertical coordinate.
+   * @param x1 The segment end horizontal coordinate.
+   * @param y1 The segment end vertical coordinate.
    */
   private drawTrail(
     x0: number,
@@ -289,8 +351,14 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.lineWidth = TrajectoryEffectStyle.CORE_WIDTH;
     context.strokeStyle = 'rgba(255,255,255,1)';
     context.beginPath();
-    context.moveTo(x0, y0);
-    context.lineTo(x1, y1);
+    context.moveTo(
+      x0,
+      y0
+    );
+    context.lineTo(
+      x1,
+      y1
+    );
     context.stroke();
     context.restore();
 
@@ -298,11 +366,7 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     this.idleFadeTicks = 0;
   }
 
-  /**
-   * 逐步衰减轨迹画布，使已结束的轨迹自然消退。
-   *
-   * @returns 无返回值。
-   */
+  /** Fades the trajectory canvas so completed paths decay naturally. */
   private fadeTrail(): void {
     if (!this.hasTrailPixels || this.width <= 0 || this.height <= 0) {
       return;
@@ -312,7 +376,12 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.save();
     context.globalCompositeOperation = 'destination-out';
     context.fillStyle = `rgba(0,0,0,${TrajectoryEffectStyle.FADE_STEP})`;
-    context.fillRect(0, 0, this.width, this.height);
+    context.fillRect(
+      0,
+      0,
+      this.width,
+      this.height
+    );
     context.restore();
 
     if (this.activeTrajectories.size > 0) {
@@ -328,18 +397,24 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 清空效果层并绘制活动触点的光晕、圆环和粒子。
+   * Clears the effect layer and draws active touch halos, rings, and particles.
    *
-   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
-   * @returns 无返回值。
+   * @param timestamp The sampling or animation timestamp, in milliseconds.
    */
-  private drawEffects(timestamp: number): void {
+  private drawEffects(
+    timestamp: number
+  ): void {
     if (this.width <= 0 || this.height <= 0) {
       return;
     }
 
     const context: CanvasRenderingContext2D = this.effectContext;
-    context.clearRect(0, 0, this.width, this.height);
+    context.clearRect(
+      0,
+      0,
+      this.width,
+      this.height
+    );
     if (this.activeTrajectories.size === 0) {
       return;
     }
@@ -347,20 +422,31 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.save();
     context.globalCompositeOperation = 'lighter';
     this.activeTrajectories.forEach((trajectory: ActiveTrajectory): void => {
-      this.drawRings(context, trajectory, timestamp);
-      this.drawParticles(context, trajectory, timestamp);
-      this.drawHead(context, trajectory.x, trajectory.y);
+      this.drawRings(
+        context,
+        trajectory,
+        timestamp
+      );
+      this.drawParticles(
+        context,
+        trajectory,
+        timestamp
+      );
+      this.drawHead(
+        context,
+        trajectory.x,
+        trajectory.y
+      );
     });
     context.restore();
   }
 
   /**
-   * 绘制触点中心与外围光晕。
+   * Draws a touch center and surrounding glow.
    *
-   * @param context 承载当前绘制的画布上下文。
-   * @param x 横坐标。
-   * @param y 纵坐标。
-   * @returns 无返回值。
+   * @param context The drawing canvas context.
+   * @param x The horizontal coordinate.
+   * @param y The vertical coordinate.
    */
   private drawHead(
     context: CanvasRenderingContext2D,
@@ -375,9 +461,18 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
       y,
       TrajectoryEffectStyle.HEAD_GLOW_RADIUS
     );
-    gradient.addColorStop(0, this.glowColor(0.9));
-    gradient.addColorStop(0.4, this.glowColor(0.54));
-    gradient.addColorStop(1, this.glowColor(0));
+    gradient.addColorStop(
+      0,
+      this.glowColor(0.9)
+    );
+    gradient.addColorStop(
+      0.4,
+      this.glowColor(0.54)
+    );
+    gradient.addColorStop(
+      1,
+      this.glowColor(0)
+    );
 
     context.fillStyle = gradient;
     context.beginPath();
@@ -403,12 +498,11 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 按触点持续时间绘制扩散圆环。
+   * Draws expanding rings based on touch duration.
    *
-   * @param context 承载当前绘制的画布上下文。
-   * @param trajectory 需要绘制的活动轨迹。
-   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
-   * @returns 无返回值。
+   * @param context The drawing canvas context.
+   * @param trajectory The active trajectory to draw.
+   * @param timestamp The sampling or animation timestamp, in milliseconds.
    */
   private drawRings(
     context: CanvasRenderingContext2D,
@@ -438,12 +532,11 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
   }
 
   /**
-   * 按触点持续时间绘制周围粒子。
+   * Draws surrounding particles based on touch duration.
    *
-   * @param context 承载当前绘制的画布上下文。
-   * @param trajectory 需要绘制的活动轨迹。
-   * @param timestamp 轨迹采样或动画更新时间，单位毫秒。
-   * @returns 无返回值。
+   * @param context The drawing canvas context.
+   * @param trajectory The active trajectory to draw.
+   * @param timestamp The sampling or animation timestamp, in milliseconds.
    */
   private drawParticles(
     context: CanvasRenderingContext2D,
@@ -467,12 +560,24 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
         y,
         6
       );
-      gradient.addColorStop(0, this.glowColor(alpha));
-      gradient.addColorStop(1, this.glowColor(0));
+      gradient.addColorStop(
+        0,
+        this.glowColor(alpha)
+      );
+      gradient.addColorStop(
+        1,
+        this.glowColor(0)
+      );
 
       context.fillStyle = gradient;
       context.beginPath();
-      context.arc(x, y, 6, 0, Math.PI * 2);
+      context.arc(
+        x,
+        y,
+        6,
+        0,
+        Math.PI * 2
+      );
       context.fill();
     }
   }

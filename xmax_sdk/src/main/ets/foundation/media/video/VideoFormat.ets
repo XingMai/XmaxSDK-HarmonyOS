@@ -1,10 +1,9 @@
 //
 //  VideoFormat.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,21 +14,24 @@ import {
 } from '../../errors/XmaxError';
 import { VideoPixelFormat } from './VideoPixelFormat';
 
-/** 表示视频帧的固定尺寸和像素格式。 */
+/** Fixed video dimensions and pixel format. */
 export class VideoFormat {
 
-  /** 画面尺寸与像素格式 */
+  /** The frame width, in pixels. */
   readonly width: number;
+
+  /** The frame height, in pixels. */
   readonly height: number;
+
+  /** The pixel layout used by the frame buffer. */
   readonly pixelFormat: VideoPixelFormat;
 
   /**
-   * 创建视频尺寸与像素格式。
+   * Creates video dimensions and a pixel format.
    *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param pixelFormat 媒体数据的像素排列格式。
-   * @returns 新建的 VideoFormat 实例。
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   * @param pixelFormat The media pixel layout.
    */
   constructor(
     width: number,

@@ -1,10 +1,9 @@
 //
 //  XmaxRealtimeManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -30,114 +29,141 @@ import {
 } from '../../service/realtime/LocalVideoPlaybackState';
 import { RealtimeConfiguration } from './RealtimeConfiguration';
 
-/** 定义 SDK 对接入方提供的实时媒体与生成控制能力。 */
+/** An interface for local media, realtime connections, and video generation. */
 export interface XmaxRealtimeManaging {
 
-  /** 实时业务配置与状态 */
-  /** 实时能力配置。 */
+  /** The realtime configuration. */
   readonly options: RealtimeConfiguration;
 
-  /** 当前实时连接状态。 */
+  /** The current realtime connection state. */
   readonly currentState: RealtimeState;
 
-  /** 音频播放控制状态 */
-  /** 当前配置的本地视频预览音量（0～1），默认 0.45；不受生成期间自动静音影响。 */
+  /**
+   * The configured local file preview volume in 0 to 1, default 0.45, independent of automatic
+   * generation muting.
+   */
   readonly localAudioVolume: number;
 
-  /** 当前远端播放音量（0～1），按 RTC 百分比精度返回；新建相机/图片流后为 0，视频流后为 1。 */
+  /**
+   * The remote volume in 0 to 1 at RTC percentage precision; camera/image creation resets it to
+   * zero, video creation to one.
+   */
   readonly remoteAudioVolume: number;
 
-  /** 当前本地视频文件播放状态；其他媒体来源或尚未创建时为空。 */
+  /** The local file playback state, or undefined before creation or for another media source. */
   readonly localVideoPlaybackState: LocalVideoPlaybackState | undefined;
 
   /**
-   * 设置实时生命周期状态监听器，包含本地准备、预览就绪及 state.reason 中的结束/失败原因。
+   * Sets lifecycle notifications for local preparation, preview readiness, and termination or
+   * failure through state.reason.
    *
-   * @param listener 状态监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The state handler, or null to remove it.
    */
-  setStateListener(listener: RealtimeStateListener | null): void;
+  setStateListener(
+    listener: RealtimeStateListener | null
+  ): void;
 
   /**
-   * 设置本地视频文件播放状态监听器；设置后立即回调当前有效状态。
+   * Sets the local file playback listener and immediately delivers the current valid state.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setLocalVideoPlaybackStateListener(listener: LocalVideoPlaybackStateListener | null): void;
+  setLocalVideoPlaybackStateListener(
+    listener: LocalVideoPlaybackStateListener | null
+  ): void;
 
   /**
-   * 异步交付当前生成流的 RTC 后处理帧；null 取消监听，未监听时不复制像素。
-   * 缓冲区可在回调后持有；按接收顺序逐帧交付，不合并待交付帧。
-   * 回调运行在 ArkTS 事件循环中，耗时处理应移交 Worker。
-   * 断开后停止交付，监听器配置保留以供后续生成使用。
+   * Delivers processed RTC frames for the current result stream asynchronously; null removes the
+   * listener. Pixels are copied only while observed. Buffers remain valid after the callback.
+   * Frames are delivered in receive order without coalescing pending delivery. Callbacks run on the
+   * ArkTS event loop; move expensive processing to a Worker. Delivery stops on disconnect; the
+   * listener remains configured for subsequent generation.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void;
-
+  setRemoteVideoFrameListener(
+    listener: RealtimeVideoFrameListener | null
+  ): void;
 
   /**
-   * 设置实时网络质量监听器。
+   * Sets the realtime network quality listener.
    *
-   * @param listener 网络质量监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The network quality handler, or null to remove it.
    */
-  setNetworkQualityListener(listener: RealtimeNetworkQualityListener | null): void;
+  setNetworkQualityListener(
+    listener: RealtimeNetworkQualityListener | null
+  ): void;
 
   /**
-   * 设置上行视频统计监听器；传入 null 清除，停止发布或断开时以 undefined 清空统计。
+   * Sets uplink statistics delivery; null removes it. Unpublishing or disconnecting delivers
+   * undefined to clear statistics.
    *
-   * @param listener 异步接收上行统计或 undefined 清空通知的监听器；null 表示移除。
-   * @returns 无返回值。
+   * @param listener The uplink statistics handler, receiving undefined to clear values; null
+   * removes it.
    */
-  setUplinkVideoStatisticsListener(listener: UplinkVideoStatisticsListener | null): void;
+  setUplinkVideoStatisticsListener(
+    listener: UplinkVideoStatisticsListener | null
+  ): void;
 
   /**
-   * 设置当前生成流的下行视频统计监听器；传入 null 清除，流清理时以 undefined 清空统计。
+   * Sets current result-stream statistics delivery; null removes it. Stream cleanup delivers
+   * undefined.
    *
-   * @param listener 异步接收当前生成流下行统计或 undefined 清空通知的监听器；null 表示移除。
-   * @returns 无返回值。
+   * @param listener The current result-stream statistics handler, receiving undefined to clear
+   * values; null removes it.
    */
-  setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void;
-
+  setDownlinkVideoStatisticsListener(
+    listener: DownlinkVideoStatisticsListener | null
+  ): void;
 
   /**
-   * 设置实时性能告警监听器。
+   * Sets the device performance alarm listener.
    *
-   * @param listener 性能告警监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The performance alarm handler, or null to remove it.
    */
-  setPerformanceAlarmListener(listener: RealtimePerformanceAlarmListener | null): void;
+  setPerformanceAlarmListener(
+    listener: RealtimePerformanceAlarmListener | null
+  ): void;
 
   /**
-   * 设置本地视频文件的预览音量，不影响上传的音频和生成期间的自动静音。
-   * 可在创建本地流前设置，停止或替换视频后保留。
+   * Sets local file preview volume without affecting uploaded audio or automatic generation muting.
+   * Can be set before local stream creation and is retained after stopping or replacing video.
    *
-   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
-   * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
+   * The Promise rejects for invalid input or configuration failure.
+   *
+   * @param volume A finite volume in 0 to 1; zero mutes, one uses original volume, and the default
+   * is 0.45.
    */
-  setLocalAudioVolume(volume: number): Promise<void>;
+  setLocalAudioVolume(
+    volume: number
+  ): Promise<void>;
 
   /**
-   * 设置远端生成结果的播放音量，后续订阅和重连沿用该值。
-   * 新建相机/图片流成功后重置为 0，新建视频流成功后重置为 1；自定义音量请在创建流后设置。
+   * Sets remote playback volume, retained for later subscriptions and reconnections. Successful
+   * camera/image creation resets it to zero; video creation resets it to one. Override volume after
+   * stream creation.
    *
-   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量；尚未创建本地流时为 1。
-   * @returns 设置完成后的 Promise；无效参数或设置失败时拒绝 Promise。
+   * The Promise rejects for invalid input or configuration failure.
+   *
+   * @param volume A finite volume in 0 to 1; zero mutes, one uses original volume, and the value
+   * before local stream creation is one.
    */
-  setRemoteAudioVolume(volume: number): Promise<void>;
-
+  setRemoteAudioVolume(
+    volume: number
+  ): Promise<void>;
 
   /**
-   * 创建本地相机流并开始预览；返回轨道供视图绑定，有效帧和预览绑定完成后进入 READY。
+   * Creates a camera stream for preview. Bind its track to a view; READY requires a valid frame and
+   * preview binding.
    *
-   * @param videoFormat 本地视频格式；省略时使用当前模型默认相机规格。
-   * @param position 初始相机位置；未传入时使用前置相机。
-   * @param useMicrophone 是否启用麦克风，默认 false；创建时申请权限，连接时开始采集，断开时停止。
-   * @param observeDisplayChange 是否监听屏幕变化，默认 true；false 时转屏不切换采集比例与方向，也不会因转屏重启生成。
-   * @returns 本地媒体流。
+   * @param videoFormat The local video format; defaults to the model's camera format.
+   * @param position The initial camera position; defaults to front.
+   * @param useMicrophone Whether to use the microphone, default false. Creation requests
+   * permission; connection starts capture and disconnection stops it.
+   * @param observeDisplayChange Whether to observe display changes, default true. False preserves
+   * capture orientation and ratio without rotation-triggered generation restarts.
+   *
+   * @returns The local media stream.
    */
   createLocalCameraStream(
     videoFormat?: RealtimeVideoFormat,
@@ -147,28 +173,33 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 停止本地相机流并释放本地预览资源。
+   * Stops the local camera stream and releases local preview resources.
    *
-   * @returns 停止完成后的 Promise。
+   * The Promise fulfills after stopping completes.
    */
   stopLocalCameraStream(): Promise<void>;
 
   /**
-   * 切换前后置相机。生成期间会停止当前任务并使用缓存条件恢复，保留 RTC 连接。
-   * 连接或生成启动期间不可切换。
+   * Switches front and rear cameras. During generation, replaces the task using cached conditions
+   * while retaining the RTC connection. Unavailable while connection or generation startup is in
+   * progress.
    *
-   * @returns 更新相机位置后的本地媒体流。
+   * @returns The local stream with its updated camera position.
    */
   switchCamera(): Promise<RealtimeMediaStream>;
 
   /**
-   * 从设备中的视频文件创建本地媒体流。
+   * Creates a local media stream from a device video file.
    *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时按文件显示尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
-   * @param loop 是否循环播放，默认 true；false 时自然结束停止音视频推帧并通知 ENDED，不自动停止生成或断开会话。
-   * @returns 可用于建立实时连接的本地媒体流。
-   * @throws 输出尺寸不符合模型规则时返回 INVALID_CONFIGURATION 错误。
+   * The Promise rejects with INVALID_CONFIGURATION if output dimensions violate model constraints.
+   *
+   * @param filePath The local video file path.
+   * @param videoFormat The output format; defaults to dimensions resolved from video display size
+   * and the model frame rate. An explicit frame rate is preserved.
+   * @param loop Whether to loop, default true. False stops audio/video delivery and reports ENDED
+   * at completion, preserving generation and connection.
+   *
+   * @returns The local media stream for connection.
    */
   createLocalVideoStream(
     filePath: string,
@@ -177,40 +208,31 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 停止本地视频文件流并释放本地预览资源。
+   * Stops the local file video stream and releases local preview resources.
    *
-   * @returns 停止完成后的 Promise。
+   * The Promise fulfills after stopping completes.
    */
   stopLocalVideoStream(): Promise<void>;
 
-  /**
-   * 暂停本地视频文件，保持 RTC 发送冻结帧和静音音频。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Pauses local video while RTC continues sending a frozen frame and silent audio. */
   pauseLocalVideoStream(): Promise<void>;
 
-  /**
-   * 从暂停位置恢复本地视频文件。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Resumes local video from its paused position. */
   resumeLocalVideoStream(): Promise<void>;
 
-  /**
-   * 在播放和暂停之间切换。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Toggles local video between playing and paused. */
   toggleLocalVideoStreamPlayback(): Promise<void>;
 
   /**
-   * 从图片输入创建持续输出视频帧的本地媒体流。
+   * Creates a continuous video frame stream from image input.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 期望的视频输出格式；未传入时按图片尺寸计算模型输入尺寸，并使用模型默认帧率；显式指定时保留帧率。
-   * @returns 可用于建立实时连接的本地媒体流。
-   * @throws 输出尺寸不符合模型规则时返回 INVALID_CONFIGURATION 错误。
+   * The Promise rejects with INVALID_CONFIGURATION if output dimensions violate model constraints.
+   *
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The output format; defaults to dimensions resolved from the image and the
+   * model frame rate. An explicit frame rate is preserved.
+   *
+   * @returns The local media stream for connection.
    */
   createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
@@ -218,63 +240,88 @@ export interface XmaxRealtimeManaging {
   ): Promise<RealtimeMediaStream>;
 
   /**
-   * 停止本地图片流并释放本地预览资源。
+   * Stops the local image stream and releases local preview resources.
    *
-   * @returns 停止完成后的 Promise。
+   * The Promise fulfills after stopping completes.
    */
   stopLocalImageStream(): Promise<void>;
 
   /**
-   * 使用已有本地流建立实时连接。
+   * Establishes a realtime connection using an existing local stream.
    *
-   * @param localStream 当前 Manager 创建的本地媒体流。
-   * @returns 实时连接建立后的远端媒体流。
+   * @param localStream The local media stream created by this manager.
+   *
+   * @returns The remote stream after connection completes.
    */
-  connect(localStream: RealtimeMediaStream): Promise<RealtimeMediaStream>;
+  connect(
+    localStream: RealtimeMediaStream
+  ): Promise<RealtimeMediaStream>;
 
   /**
-   * 断开实时连接并保留当前本地媒体流和预览。
-   * 取消正在进行的连接和生成；清理完成后通过 state.reason 返回原因。
-   * 尚未连接且没有相关操作时直接返回，不改变本地准备或预览状态。
+   * Disconnects realtime while preserving the local stream and preview. Cancels pending connection
+   * and generation work, reporting the cleanup reason through state.reason. Returns immediately
+   * without changing local preparation or preview state if no connection-related work exists.
    *
-   * @param reason 本次断开的原因；省略时为 RealtimeReason.NORMAL。
-   * @returns 受影响的操作结束、会话回滚和连接清理完成后的 Promise。
+   * The Promise fulfills after affected work, session rollback, and connection cleanup complete.
+   *
+   * @param reason The disconnection reason; defaults to RealtimeReason.NORMAL.
    */
-  disconnect(reason?: RealtimeReason): Promise<void>;
+  disconnect(
+    reason?: RealtimeReason
+  ): Promise<void>;
 
   /**
-   * 关闭当前实时生命周期并释放本地媒体、连接和 RTC Engine。
+   * Closes the realtime lifecycle and releases local media, the connection, and the RTC engine.
+   * Stops frame delivery and detaches rendering immediately; remaining resources are released
+   * asynchronously.
    *
-   * 调用后会立即停止媒体推帧并解绑视频渲染，剩余资源在返回的 Promise 中异步释放。
-   *
-   * @returns 全部实时资源释放完成后的 Promise；重复调用时返回同一个关闭任务。
+   * Concurrent calls share a Promise that fulfills after all realtime resources are released.
    */
   close(): Promise<void>;
 
   /**
-   * 开始生成或更新当前生成条件。
+   * Starts generation or updates conditions for the active task.
    *
-   * @param context 生成条件；首次开始生成时必须传入。
-   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
-   * @returns 操作完成后的 Promise。
+   * Requires an existing connection. New tasks await result confirmation and, unless static,
+   * first-frame readiness. Condition updates complete after signal submission, not after display.
+   *
+   * @param context The generation conditions, required for the first request.
+   * @param faceRestoration Whether to restore the original face; defaults to false per call and can
+   * change during generation.
    */
-  startGeneration(context?: RealtimeContext, faceRestoration?: boolean): Promise<void>;
+  startGeneration(
+    context?: RealtimeContext,
+    faceRestoration?: boolean
+  ): Promise<void>;
 
   /**
-   * 启动或更新生成；restart 为 true 时替换生成任务，保留连接及本地流。
+   * Starts or updates generation; restart replaces the task while preserving the connection and
+   * local stream.
    *
-   * @param options 本地流、生成条件、静态图配置和重启选项。
-   * @returns 当前远端媒体流；静态任务等待结果确认，普通任务还会等待首帧。静态任务的画面就绪由视频视图回调通知。
+   * Static-task display readiness is reported by the view. Condition updates complete after their
+   * signal is submitted, not after the result is displayed.
+   *
+   * @param options The local stream, generation conditions, static image parameters, and restart
+   * settings.
+   *
+   * @returns The remote stream after confirmation; ordinary tasks also await the first frame.
    */
-  startGeneration(options: RealtimeGenerationOptions): Promise<RealtimeMediaStream>;
+  startGeneration(
+    options: RealtimeGenerationOptions
+  ): Promise<RealtimeMediaStream>;
 
   /**
-   * 使用当前本地流按需连接并开始生成；已经连接时复用连接，生成中更新条件。
+   * Connects the local stream if necessary, reuses connections, and updates active generation
+   * conditions.
    *
-   * @param localStream 当前 Manager 创建并持有的本地媒体流。
-   * @param context 首次生成必须提供；同一连接内可省略以复用缓存条件。
-   * @param faceRestoration 是否启用原始人脸回贴；每次调用默认 false，生成中可更新。
-   * @returns 生成开始后的远端媒体流，可交给组合视频组件显示。
+   * @param localStream The current local stream owned by this manager.
+   * @param context The initial conditions, required for the first request; omission reuses
+   * conditions within the same connection.
+   * @param faceRestoration Whether to restore the original face; defaults to false per call and can
+   * change during generation.
+   *
+   * @returns The remote stream after startup confirmation and first-frame readiness, or condition
+   * signal submission when updating an active task.
    */
   startGeneration(
     localStream: RealtimeMediaStream,

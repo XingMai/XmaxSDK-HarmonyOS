@@ -1,10 +1,9 @@
 //
 //  ImageSize.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,19 +13,20 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 
-/** 以像素为单位描述图片或视频画面的宽高。 */
+/** Image or video dimensions, in pixels. */
 export class ImageSize {
 
-  /** 媒体像素尺寸 */
+  /** The width, in pixels. */
   readonly width: number;
+
+  /** The height, in pixels. */
   readonly height: number;
 
   /**
-   * 创建媒体像素尺寸。
+   * Creates media pixel dimensions.
    *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @returns 新建的 ImageSize 实例。
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
    */
   constructor(
     width: number,

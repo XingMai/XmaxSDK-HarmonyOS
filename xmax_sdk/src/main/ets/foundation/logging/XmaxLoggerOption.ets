@@ -1,22 +1,25 @@
 //
 //  XmaxLoggerOption.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 控制 SDK 输出的日志类型，可使用按位或组合。 */
+/** SDK log categories that can be combined with bitwise OR. */
 export enum XmaxLoggerOption {
-  /** 默认关闭所有 SDK 日志。 */
+
+  /** Disables all SDK logs by default. */
   NONE = 0,
-  /** API、Room、Realtime、Storage 等业务运行日志。 */
+
+  /** API, room, realtime, storage, and other operational logs. */
   BUSINESS = 1 << 0,
-  /** 生成启动耗时、RTC 音视频指标、网络质量及性能告警日志。 */
+
+  /** Startup timing, RTC media statistics, network quality, and performance alarm logs. */
   PERFORMANCE = 1 << 1,
-  /** 开启所有 SDK 日志。 */
+
+  /** Enables all SDK logs. */
   ALL = BUSINESS | PERFORMANCE
 }

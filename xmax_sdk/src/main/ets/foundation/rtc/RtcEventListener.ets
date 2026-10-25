@@ -1,27 +1,29 @@
 //
 //  RtcEventListener.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 import { RemoteStream } from './RemoteStream';
 
-/** 接收远端音视频发布状态及 SEI 消息，供实时业务识别生成结果流。 */
+/** Receives remote publication and SEI events for generation result matching. */
 export interface RtcEventListener {
-  /** 接收当前房间的服务端文本信令（含定向消息）。 */
-  onRoomSignalReceived?(userId: string, message: string): void;
+
+  /** Receives server text signaling, including directed messages, for the current room. */
+  onRoomSignalReceived?(
+    userId: string,
+    message: string
+  ): void;
 
   /**
-   * 处理远端音频发布状态变化。
+   * Handles remote audio publication changes.
    *
-   * @param userId 远端用户标识。
-   * @param published 是否已发布音频。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param published Whether audio is published.
    */
   onRemoteAudioPublished(
     userId: string,
@@ -29,11 +31,10 @@ export interface RtcEventListener {
   ): void;
 
   /**
-   * 处理远端视频发布状态变化。
+   * Handles remote video publication changes.
    *
-   * @param userId 远端用户标识。
-   * @param published 是否已发布视频。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param published Whether video is published.
    */
   onRemoteVideoPublished(
     userId: string,
@@ -41,11 +42,10 @@ export interface RtcEventListener {
   ): void;
 
   /**
-   * 处理远端流携带的 SEI 消息。
+   * Handles SEI messages associated with a remote stream.
    *
-   * @param stream 远端流信息。
-   * @param message SEI 消息内容。
-   * @returns 无返回值。
+   * @param stream The remote stream information.
+   * @param message The SEI message content.
    */
   onSeiMessageReceived(
     stream: RemoteStream,

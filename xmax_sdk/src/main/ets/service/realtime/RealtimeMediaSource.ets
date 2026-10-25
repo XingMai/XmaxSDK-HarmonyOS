@@ -1,17 +1,25 @@
 //
 //  RealtimeMediaSource.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 本地媒体来源；摄像头使用模型固定分辨率，图片和视频保留媒体比例。 */
+/**
+ * A local media source. Cameras use fixed model dimensions; images and videos retain media aspect
+ * ratio.
+ */
 export enum RealtimeMediaSource {
+
+  /** Local camera input. */
   CAMERA = 'camera',
+
+  /** Local image input. */
   IMAGE = 'image',
+
+  /** Local video file input. */
   VIDEO = 'video'
 }

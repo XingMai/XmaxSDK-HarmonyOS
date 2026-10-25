@@ -1,10 +1,9 @@
 //
 //  StorageService.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -30,20 +29,18 @@ import { StoredFile } from '../../foundation/storage/StoredFile';
 import { ApiServicing } from '../network/ApiServicing';
 import { StorageServicing } from './StorageServicing';
 
-/** 保存一次上传使用的临时存储配置和对象路径前缀。 */
+/** Temporary upload configuration and object path prefix. */
 class TemporaryStorageConfiguration {
 
-  /** 上传目标路径与访问配置 */
+  // Upload path and access configuration
+
+  /** The storage object path prefix. */
   readonly prefix: string;
+
+  /** The configuration for the current operation. */
   readonly configuration: StorageConfiguration;
 
-  /**
-   * 创建临时存储配置。
-   *
-   * @param prefix 上传对象使用的路径前缀。
-   * @param configuration 基础层存储 Manager 使用的配置。
-   * @returns 新建的 TemporaryStorageConfiguration 实例。
-   */
+  /** Creates a temporary storage configuration. */
   constructor(
     prefix: string,
     configuration: StorageConfiguration
@@ -53,29 +50,30 @@ class TemporaryStorageConfiguration {
   }
 }
 
-/** 表示存储操作支持的媒体类型。 */
+/** A media type supported by storage operations. */
 enum StorageMediaType {
 
+  /** Local image input. */
   IMAGE = 'image',
+
+  /** Local video file input. */
   VIDEO = 'video'
 }
 
-/** 协调图片和视频的上传、下载、临时凭证及图片安全检查。 */
+/** Coordinates image/video transfers, temporary credentials, and image content checks. */
 export class StorageService implements StorageServicing {
 
-  /** 上传凭证与文件操作依赖 */
+  // Upload credential and file operation dependencies
+
+  /** The service sending authenticated Xmax API requests. */
   private readonly apiService: ApiServicing;
 
-  /** 基础层组件 */
+  // Foundation components
+
+  /** The platform adapter for file uploads and downloads. */
   private readonly storageManager: StorageManaging;
 
-  /**
-   * 创建存储 Service。
-   *
-   * @param apiService 提供临时凭证和图片安全检查请求能力的 API Service。
-   * @param storageManager 提供文件上传和下载能力的存储 Manager。
-   * @returns 新建的 StorageService 实例。
-   */
+  /** Creates a storage service. */
   constructor(
     apiService: ApiServicing,
     storageManager: StorageManaging
@@ -85,13 +83,14 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 上传图片二进制数据。
+   * Uploads encoded image bytes.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 图片内容类型。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The image MIME type.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   async uploadImage(
     data: ArrayBuffer,
@@ -99,16 +98,24 @@ export class StorageService implements StorageServicing {
     contentType: string,
     progress?: StorageProgressListener
   ): Promise<StoredFile> {
-    return this.upload(data, fileName, contentType, StorageMediaType.IMAGE, false, progress);
+    return this.upload(
+      data,
+      fileName,
+      contentType,
+      StorageMediaType.IMAGE,
+      false,
+      progress
+    );
   }
 
   /**
-   * 上传本地图片文件。
+   * Uploads a local image file.
    *
-   * @param filePath 本地图片文件路径。
-   * @param contentType 图片内容类型；未传入时根据扩展名推断。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param filePath The local image file path.
+   * @param contentType The image MIME type, inferred from the extension if omitted.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   async uploadImageFile(
     filePath: string,
@@ -127,13 +134,14 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 上传图片二进制数据并执行内容安全检查。
+   * Uploads encoded image bytes and checks their content.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 图片内容类型。
-   * @param progress 上传进度监听器。
-   * @returns 上传并通过安全检查后的文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The image MIME type.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file after a successful safety check.
    */
   async uploadImageWithSafetyCheck(
     data: ArrayBuffer,
@@ -141,16 +149,24 @@ export class StorageService implements StorageServicing {
     contentType: string,
     progress?: StorageProgressListener
   ): Promise<StoredFile> {
-    return this.upload(data, fileName, contentType, StorageMediaType.IMAGE, true, progress);
+    return this.upload(
+      data,
+      fileName,
+      contentType,
+      StorageMediaType.IMAGE,
+      true,
+      progress
+    );
   }
 
   /**
-   * 上传本地图片文件并执行内容安全检查。
+   * Uploads a local image file and checks its content.
    *
-   * @param filePath 本地图片文件路径。
-   * @param contentType 图片内容类型；未传入时根据扩展名推断。
-   * @param progress 上传进度监听器。
-   * @returns 上传并通过安全检查后的文件信息。
+   * @param filePath The local image file path.
+   * @param contentType The image MIME type, inferred from the extension if omitted.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file after a successful safety check.
    */
   async uploadImageFileWithSafetyCheck(
     filePath: string,
@@ -169,13 +185,14 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 上传视频二进制数据。
+   * Uploads encoded video bytes.
    *
-   * @param data 视频二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 视频内容类型。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param data The encoded video bytes.
+   * @param fileName The filename.
+   * @param contentType The video MIME type.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   async uploadVideo(
     data: ArrayBuffer,
@@ -183,16 +200,24 @@ export class StorageService implements StorageServicing {
     contentType: string,
     progress?: StorageProgressListener
   ): Promise<StoredFile> {
-    return this.upload(data, fileName, contentType, StorageMediaType.VIDEO, false, progress);
+    return this.upload(
+      data,
+      fileName,
+      contentType,
+      StorageMediaType.VIDEO,
+      false,
+      progress
+    );
   }
 
   /**
-   * 上传本地视频文件。
+   * Uploads a local video file.
    *
-   * @param filePath 本地视频文件路径。
-   * @param contentType 视频内容类型；未传入时根据扩展名推断。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param filePath The local video file path.
+   * @param contentType The video MIME type, inferred from the extension if omitted.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   async uploadVideoFile(
     filePath: string,
@@ -211,49 +236,66 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 下载远端图片到本地文件。
+   * Downloads a remote image to a local file.
    *
-   * @param remoteUrl 远端图片地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度监听器。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote image URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress handler.
+   *
+   * @returns The downloaded file information.
    */
   async downloadImage(
     remoteUrl: string,
     destinationPath: string,
     progress?: StorageProgressListener
   ): Promise<DownloadedFile> {
-    this.validateDownload(remoteUrl, destinationPath);
-    return this.storageManager.download(remoteUrl, destinationPath, progress);
+    this.validateDownload(
+      remoteUrl,
+      destinationPath
+    );
+    return this.storageManager.download(
+      remoteUrl,
+      destinationPath,
+      progress
+    );
   }
 
   /**
-   * 下载远端视频到本地文件。
+   * Downloads a remote video to a local file.
    *
-   * @param remoteUrl 远端视频地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度监听器。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote video URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress handler.
+   *
+   * @returns The downloaded file information.
    */
   async downloadVideo(
     remoteUrl: string,
     destinationPath: string,
     progress?: StorageProgressListener
   ): Promise<DownloadedFile> {
-    this.validateDownload(remoteUrl, destinationPath);
-    return this.storageManager.download(remoteUrl, destinationPath, progress);
+    this.validateDownload(
+      remoteUrl,
+      destinationPath
+    );
+    return this.storageManager.download(
+      remoteUrl,
+      destinationPath,
+      progress
+    );
   }
 
   /**
-   * 执行统一上传流程，并按需调用图片安全检查。
+   * Runs the shared upload flow with optional image content checking.
    *
-   * @param source 文件二进制数据或本地路径。
-   * @param fileName 文件名称。
-   * @param contentType 文件内容类型。
-   * @param mediaType 文件媒体类型。
-   * @param checksSafety 是否执行图片安全检查。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param source The file bytes or local path.
+   * @param fileName The filename.
+   * @param contentType The file MIME type.
+   * @param mediaType The file media type.
+   * @param checksSafety Whether to check image content safety.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   private async upload(
     source: ArrayBuffer | string,
@@ -272,7 +314,10 @@ export class StorageService implements StorageServicing {
         mediaType
       );
       const byteCount: number = this.sourceByteCount(source);
-      const resolution: string = await this.readResolution(source, mediaType);
+      const resolution: string = await this.readResolution(
+        source,
+        mediaType
+      );
       XmaxLogger.info(
         "开始上传 (Upload Started)\n" +
         `${XmaxLogger.localized("├─ 类型：", "├─ Type: ")}${mediaType}\n` +
@@ -284,7 +329,10 @@ export class StorageService implements StorageServicing {
 
       const temporary: TemporaryStorageConfiguration =
         await this.fetchStorageConfiguration();
-      const objectKey: string = this.makeObjectKey(temporary.prefix, safeName);
+      const objectKey: string = this.makeObjectKey(
+        temporary.prefix,
+        safeName
+      );
 
       const stored: StoredFile = await this.storageManager.upload(
         source,
@@ -297,7 +345,11 @@ export class StorageService implements StorageServicing {
       let result: StoredFile = stored;
       if (checksSafety) {
         const checkedUrl: string = await this.checkImage(stored.url);
-        result = new StoredFile(checkedUrl, stored.objectKey, stored.etag);
+        result = new StoredFile(
+          checkedUrl,
+          stored.objectKey,
+          stored.etag
+        );
       }
 
       XmaxLogger.info(
@@ -320,26 +372,33 @@ export class StorageService implements StorageServicing {
       if (error instanceof Error) {
         throw error;
       }
-      throw new XmaxError(XmaxErrorCode.UPLOAD_ERROR, String(error));
+      throw new XmaxError(
+        XmaxErrorCode.UPLOAD_ERROR,
+        String(error)
+      );
     }
   }
 
   /**
-   * 获取上传源的字节数。
+   * Returns the upload source byte count.
    *
-   * @param source 文件二进制数据或本地路径。
-   * @returns 上传源的字节数。
+   * @param source The file bytes or local path.
+   *
+   * @returns The upload source byte count.
    */
-  private sourceByteCount(source: ArrayBuffer | string): number {
+  private sourceByteCount(
+    source: ArrayBuffer | string
+  ): number {
     return typeof source === 'string' ? fileIo.statSync(source).size : source.byteLength;
   }
 
   /**
-   * 尝试读取上传媒体的显示分辨率。
+   * Attempts to read uploaded media display dimensions.
    *
-   * @param source 文件二进制数据或本地路径。
-   * @param mediaType 文件媒体类型。
-   * @returns 格式化后的分辨率；无法读取时返回占位文本。
+   * @param source The file bytes or local path.
+   * @param mediaType The file media type.
+   *
+   * @returns The formatted resolution, or a placeholder if unavailable.
    */
   private async readResolution(
     source: ArrayBuffer | string,
@@ -355,34 +414,46 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 读取图片上传源的分辨率。
+   * Reads image upload dimensions.
    *
-   * @param source 图片二进制数据或本地路径。
-   * @returns 格式化后的图片分辨率。
+   * @param source The image bytes or local path.
+   *
+   * @returns The formatted image resolution.
    */
-  private async readImageResolution(source: ArrayBuffer | string): Promise<string> {
+  private async readImageResolution(
+    source: ArrayBuffer | string
+  ): Promise<string> {
     const imageSource: image.ImageSource = typeof source === 'string' ?
       image.createImageSource(source) : image.createImageSource(source);
     try {
       const info: image.ImageInfo = await imageSource.getImageInfo();
-      return this.formatResolution(info.size.width, info.size.height);
+      return this.formatResolution(
+        info.size.width,
+        info.size.height
+      );
     } finally {
       await imageSource.release();
     }
   }
 
   /**
-   * 读取本地视频文件考虑旋转方向后的显示分辨率。
+   * Reads local video display dimensions accounting for rotation.
    *
-   * @param source 视频二进制数据或本地路径。
-   * @returns 格式化后的视频分辨率；二进制输入无法读取时返回占位文本。
+   * @param source The video bytes or local path.
+   *
+   * @returns The formatted resolution, or a placeholder if binary input cannot be read.
    */
-  private async readVideoResolution(source: ArrayBuffer | string): Promise<string> {
+  private async readVideoResolution(
+    source: ArrayBuffer | string
+  ): Promise<string> {
     if (typeof source !== 'string') {
       return '--';
     }
 
-    const sourceFile: fileIo.File = fileIo.openSync(source, fileIo.OpenMode.READ_ONLY);
+    const sourceFile: fileIo.File = fileIo.openSync(
+      source,
+      fileIo.OpenMode.READ_ONLY
+    );
     let extractor: media.AVMetadataExtractor | null = null;
     try {
       extractor = await media.createAVMetadataExtractor();
@@ -398,8 +469,14 @@ export class StorageService implements StorageServicing {
       const normalizedRotation: number = Number.isFinite(rotation) ?
         ((rotation % 360) + 360) % 360 : 0;
       return normalizedRotation === 90 || normalizedRotation === 270 ?
-        this.formatResolution(height, width) :
-        this.formatResolution(width, height);
+        this.formatResolution(
+          height,
+          width
+        ) :
+        this.formatResolution(
+          width,
+          height
+        );
     } finally {
       try {
         if (extractor !== null) {
@@ -412,13 +489,17 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 将有效宽高格式化为分辨率文本。
+   * Formats valid dimensions as a resolution.
    *
-   * @param width 媒体宽度。
-   * @param height 媒体高度。
-   * @returns 格式化后的分辨率；宽高无效时返回占位文本。
+   * @param width The media width.
+   * @param height The media height.
+   *
+   * @returns The formatted resolution, or a placeholder for invalid dimensions.
    */
-  private formatResolution(width: number, height: number): string {
+  private formatResolution(
+    width: number,
+    height: number
+  ): string {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       return '--';
     }
@@ -426,12 +507,15 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 将字节数格式化为便于阅读的容量文本。
+   * Formats a byte count as a readable file size.
    *
-   * @param byteCount 文件字节数。
-   * @returns 格式化后的容量文本。
+   * @param byteCount The file byte count.
+   *
+   * @returns The formatted file size.
    */
-  private formatByteCount(byteCount: number): string {
+  private formatByteCount(
+    byteCount: number
+  ): string {
     if (byteCount < 1024) {
       return `${byteCount} B`;
     }
@@ -445,41 +529,50 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 将毫秒耗时格式化为便于阅读的时间文本。
+   * Formats elapsed milliseconds for display.
    *
-   * @param milliseconds 耗时毫秒数。
-   * @returns 格式化后的耗时文本。
+   * @param milliseconds The elapsed milliseconds.
+   *
+   * @returns The formatted duration.
    */
-  private formatDuration(milliseconds: number): string {
+  private formatDuration(
+    milliseconds: number
+  ): string {
     return milliseconds < 1000 ?
       `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(2)} s`;
   }
 
   /**
-   * 获取上传异常对应的 SDK 错误码。
+   * Returns the SDK code for an upload error.
    *
-   * @param error 上传异常。
-   * @returns SDK 错误码。
+   * @param error The upload error.
+   *
+   * @returns The SDK error code.
    */
-  private errorCode(error: Object): string {
+  private errorCode(
+    error: Object
+  ): string {
     return error instanceof XmaxError ? error.code : XmaxErrorCode.UPLOAD_ERROR;
   }
 
   /**
-   * 获取上传异常的可读错误信息。
+   * Returns a readable upload error.
    *
-   * @param error 上传异常。
-   * @returns 可读错误信息。
+   * @param error The upload error.
+   *
+   * @returns The readable error message.
    */
-  private errorMessage(error: Object): string {
+  private errorMessage(
+    error: Object
+  ): string {
     const message: string = error instanceof Error ? error.message.trim() : '';
     return message.length > 0 ? message : String(error);
   }
 
   /**
-   * 请求并解析一次上传使用的临时存储配置。
+   * Requests and parses temporary upload configuration.
    *
-   * @returns 临时存储配置。
+   * @returns The temporary storage configuration.
    */
   private async fetchStorageConfiguration(): Promise<TemporaryStorageConfiguration> {
     const value = await this.apiService.get<Object>('/cos/sts');
@@ -532,7 +625,10 @@ export class StorageService implements StorageServicing {
 
     if (bucket.length === 0 || region.length === 0 || accessKeyId.length === 0 ||
       secretAccessKey.length === 0 || sessionToken.length === 0) {
-      throw new XmaxError(XmaxErrorCode.API_ERROR, 'Invalid storage credential payload');
+      throw new XmaxError(
+        XmaxErrorCode.API_ERROR,
+        'Invalid storage credential payload'
+      );
     }
 
     return new TemporaryStorageConfiguration(
@@ -541,18 +637,25 @@ export class StorageService implements StorageServicing {
         bucket,
         region,
         endpoint,
-        new StorageCredential(accessKeyId, secretAccessKey, sessionToken)
+        new StorageCredential(
+          accessKeyId,
+          secretAccessKey,
+          sessionToken
+        )
       )
     );
   }
 
   /**
-   * 请求图片内容安全检查并返回检查后的地址。
+   * Requests an image content check and returns the approved URL.
    *
-   * @param url 已上传图片的远端地址。
-   * @returns 通过安全检查后的图片地址。
+   * @param url The uploaded image URL.
+   *
+   * @returns The image URL after the content check.
    */
-  private async checkImage(url: string): Promise<string> {
+  private async checkImage(
+    url: string
+  ): Promise<string> {
     const body: Record<string, string> = { 'url': url };
     const value = await this.apiService.post<Object>(
       '/cos/image/check',
@@ -566,29 +669,42 @@ export class StorageService implements StorageServicing {
     const safe: Object | undefined = record['safe'];
 
     if (typeof safe !== 'boolean') {
-      throw new XmaxError(XmaxErrorCode.API_ERROR, 'Invalid image safety check payload');
+      throw new XmaxError(
+        XmaxErrorCode.API_ERROR,
+        'Invalid image safety check payload'
+      );
     }
 
     if (!safe) {
-      throw new XmaxError(XmaxErrorCode.UNSAFE_IMAGE, 'The image did not pass the safety check');
+      throw new XmaxError(
+        XmaxErrorCode.UNSAFE_IMAGE,
+        'The image did not pass the safety check'
+      );
     }
 
-    const checkedUrl: string = this.readString(record, 'url');
+    const checkedUrl: string = this.readString(
+      record,
+      'url'
+    );
     if (!this.isHttpUrl(checkedUrl)) {
-      throw new XmaxError(XmaxErrorCode.API_ERROR, 'Invalid image safety check payload');
+      throw new XmaxError(
+        XmaxErrorCode.API_ERROR,
+        'Invalid image safety check payload'
+      );
     }
 
     return checkedUrl;
   }
 
   /**
-   * 校验上传源、文件名和内容类型，并生成安全文件名。
+   * Validates upload input, filename, and MIME type, producing a safe filename.
    *
-   * @param source 文件二进制数据或本地路径。
-   * @param fileName 原始文件名称。
-   * @param contentType 文件内容类型。
-   * @param mediaType 文件媒体类型。
-   * @returns 清理后的安全文件名。
+   * @param source The file bytes or local path.
+   * @param fileName The original filename.
+   * @param contentType The file MIME type.
+   * @param mediaType The file media type.
+   *
+   * @returns The sanitized filename.
    */
   private validateUpload(
     source: ArrayBuffer | string,
@@ -633,18 +749,20 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 校验下载地址和本地目标路径。
+   * Validates a download URL and destination path.
    *
-   * @param remoteUrl 远端文件地址。
-   * @param destinationPath 本地目标路径。
-   * @returns 无返回值。
+   * @param remoteUrl The remote file URL.
+   * @param destinationPath The destination file path.
    */
   private validateDownload(
     remoteUrl: string,
     destinationPath: string
   ): void {
     if (!this.isHttpUrl(remoteUrl.trim())) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Invalid download URL');
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Invalid download URL'
+      );
     }
 
     if (destinationPath.trim().length === 0) {
@@ -656,12 +774,15 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 根据图片文件扩展名推断内容类型。
+   * Infers image MIME type from its extension.
    *
-   * @param fileName 图片文件名称。
-   * @returns 推断出的图片内容类型。
+   * @param fileName The image filename.
+   *
+   * @returns The inferred image MIME type.
    */
-  private inferImageContentType(fileName: string): string {
+  private inferImageContentType(
+    fileName: string
+  ): string {
     const types: Record<string, string> = {
       'jpg': 'image/jpeg',
       'jpeg': 'image/jpeg',
@@ -677,16 +798,23 @@ export class StorageService implements StorageServicing {
       'tiff': 'image/tiff',
       'avif': 'image/avif'
     };
-    return this.inferContentType(fileName, types, 'image');
+    return this.inferContentType(
+      fileName,
+      types,
+      'image'
+    );
   }
 
   /**
-   * 根据视频文件扩展名推断内容类型。
+   * Infers video MIME type from its extension.
    *
-   * @param fileName 视频文件名称。
-   * @returns 推断出的视频内容类型。
+   * @param fileName The video filename.
+   *
+   * @returns The inferred video MIME type.
    */
-  private inferVideoContentType(fileName: string): string {
+  private inferVideoContentType(
+    fileName: string
+  ): string {
     const types: Record<string, string> = {
       'mp4': 'video/mp4',
       'mov': 'video/quicktime',
@@ -698,16 +826,21 @@ export class StorageService implements StorageServicing {
       '3g2': 'video/3gpp2',
       'ts': 'video/mp2t'
     };
-    return this.inferContentType(fileName, types, 'video');
+    return this.inferContentType(
+      fileName,
+      types,
+      'video'
+    );
   }
 
   /**
-   * 使用扩展名映射表推断文件内容类型。
+   * Infers MIME type using an extension map.
    *
-   * @param fileName 文件名称。
-   * @param types 扩展名与内容类型的映射表。
-   * @param mediaType 用于错误信息的媒体类型名称。
-   * @returns 推断出的文件内容类型。
+   * @param fileName The filename.
+   * @param types The extension-to-MIME-type map.
+   * @param mediaType The media type name for error messages.
+   *
+   * @returns The inferred MIME type.
    */
   private inferContentType(
     fileName: string,
@@ -728,55 +861,80 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 清理文件名中的不安全字符和首尾分隔符。
+   * Removes unsafe filename characters and leading or trailing separators.
    *
-   * @param value 原始文件名称。
-   * @returns 可用于对象存储路径的安全文件名。
+   * @param value The original filename.
+   *
+   * @returns The safe filename for object storage paths.
    */
-  private sanitizeFileName(value: string): string {
+  private sanitizeFileName(
+    value: string
+  ): string {
     let result: string = value.trim()
-      .replace(/[^\p{L}\p{N}._-]/gu, '_')
-      .replace(/__/g, '_');
+      .replace(
+        /[^\p{L}\p{N}._-]/gu,
+        '_'
+      )
+      .replace(
+        /__/g,
+        '_'
+      );
     while (result.length > 0 && this.isTrimFileNameCharacter(result.charAt(0))) {
       result = result.substring(1);
     }
 
     while (result.length > 0 &&
       this.isTrimFileNameCharacter(result.charAt(result.length - 1))) {
-      result = result.substring(0, result.length - 1);
+      result = result.substring(
+        0,
+        result.length - 1
+      );
     }
 
     return result;
   }
 
   /**
-   * 判断字符是否需要从文件名首尾移除。
+   * Checks whether a filename boundary character should be removed.
    *
-   * @param value 待检查字符。
-   * @returns 字符需要移除时返回 true，否则返回 false。
+   * @param value The character to check.
+   *
+   * @returns True if the character should be removed.
    */
-  private isTrimFileNameCharacter(value: string): boolean {
+  private isTrimFileNameCharacter(
+    value: string
+  ): boolean {
     return value === '.' || value === '_' || value === '-';
   }
 
   /**
-   * 从本地路径中提取文件名称。
+   * Extracts the filename from a local path.
    *
-   * @param filePath 本地文件路径。
-   * @returns 路径中的最后一个文件名部分。
+   * @param filePath The local file path.
+   *
+   * @returns The final filename component.
    */
-  private lastPathComponent(filePath: string): string {
-    const normalized: string = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  private lastPathComponent(
+    filePath: string
+  ): string {
+    const normalized: string = filePath.replace(
+      /\\/g,
+      '/'
+    ).replace(
+      /\/+$/,
+      ''
+    );
     const slashIndex: number = normalized.lastIndexOf('/');
     return slashIndex < 0 ? normalized : normalized.substring(slashIndex + 1);
   }
 
   /**
-   * 使用路径前缀、时间和随机标识生成唯一对象键。
+   * Creates a unique object key from prefix, time, and a random identity.
    *
-   * @param prefix 对象路径前缀。
-   * @param fileName 安全文件名。
-   * @returns 唯一对象键。
+   * @param prefix The object path prefix.
+   * @param fileName The safe filename.
+   *
+   * @returns The unique object key.
    */
   private makeObjectKey(
     prefix: string,
@@ -787,28 +945,33 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 将未知 API 数据转换为可读取的记录。
+   * Converts unknown API data into a readable record.
    *
-   * @param value 待转换的数据。
-   * @param message 数据无效时使用的错误信息。
-   * @returns 转换后的数据记录。
+   * @param value The data to convert.
+   * @param message The error message for invalid data.
+   *
+   * @returns The converted data record.
    */
   private toRecord(
     value: Object | undefined,
     message: string
   ): Record<string, Object> {
     if (value === undefined || value === null || typeof value !== 'object') {
-      throw new XmaxError(XmaxErrorCode.API_ERROR, message);
+      throw new XmaxError(
+        XmaxErrorCode.API_ERROR,
+        message
+      );
     }
     return JSON.parse(JSON.stringify(value)) as Record<string, Object>;
   }
 
   /**
-   * 读取并清理记录中的字符串字段。
+   * Reads and trims a string field.
    *
-   * @param record 数据记录。
-   * @param key 字段名称。
-   * @returns 清理后的字符串；字段无效时返回空字符串。
+   * @param record The data record.
+   * @param key The field name.
+   *
+   * @returns The trimmed string, or an empty string for invalid input.
    */
   private readString(
     record: Record<string, Object>,
@@ -819,12 +982,13 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 读取记录中的必填字符串字段。
+   * Reads a required string field.
    *
-   * @param record 数据记录。
-   * @param key 字段名称。
-   * @param message 字段无效时使用的错误信息。
-   * @returns 清理后的必填字符串。
+   * @param record The data record.
+   * @param key The field name.
+   * @param message The error message for an invalid field.
+   *
+   * @returns The required trimmed string.
    */
   private requiredString(
     record: Record<string, Object>,
@@ -833,18 +997,24 @@ export class StorageService implements StorageServicing {
   ): string {
     const value: Object | undefined = record[key];
     if (typeof value !== 'string') {
-      throw new XmaxError(XmaxErrorCode.API_ERROR, message);
+      throw new XmaxError(
+        XmaxErrorCode.API_ERROR,
+        message
+      );
     }
     return value.trim();
   }
 
   /**
-   * 判断字符串是否为包含主机名的 HTTP 或 HTTPS 地址。
+   * Checks for an HTTP or HTTPS URL with a hostname.
    *
-   * @param value 待检查的地址。
-   * @returns 地址有效时返回 true，否则返回 false。
+   * @param value The URL to check.
+   *
+   * @returns True if the URL is valid.
    */
-  private isHttpUrl(value: string): boolean {
+  private isHttpUrl(
+    value: string
+  ): boolean {
     try {
       const parsed = new uri.URI(value);
       const scheme: string = parsed.scheme.toLowerCase();
@@ -855,12 +1025,15 @@ export class StorageService implements StorageServicing {
   }
 
   /**
-   * 将字符串首字母转换为大写。
+   * Capitalizes the first character of a string.
    *
-   * @param value 待转换字符串。
-   * @returns 首字母大写后的字符串。
+   * @param value The string to convert.
+   *
+   * @returns The string with its first character capitalized.
    */
-  private capitalized(value: string): string {
+  private capitalized(
+    value: string
+  ): string {
     return value.charAt(0).toUpperCase() + value.substring(1);
   }
 }

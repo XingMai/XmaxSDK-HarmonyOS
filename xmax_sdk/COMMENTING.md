@@ -1,43 +1,59 @@
-# SDK 注释规范
+# SDK Documentation Conventions
 
-本规范适用于 `xmax_sdk` 自有源码，包括 ArkTS、原生 C++ 和原生接口声明；不适用于示例 App、第三方依赖或生成文件。
+These conventions apply to SDK-owned ArkTS, C++, and native interface declarations. They do not apply to example apps, generated files, or third-party code.
 
-## 文件头
+## File Headers
 
-每个源码文件使用统一文件头，依次记录实际文件名、SDK 名称、仓库地址、作者信息和版权声明。文件重命名时同步更新文件名。
+Use the actual filename and the following header. Keep the repository URL in `GitHub:` rather than adding a separate `Repo:` field or linking to an author's profile.
 
-## 类型与成员
+```text
+//
+//  MediaService.ets
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+```
 
-- 所有类、接口、结构体、枚举和类型别名均需说明用途，以及调用方需要了解的约束。
-- 成员变量按职责分组，如配置、服务依赖、媒体资源、生命周期、监听通知、缓存和调度。
-- 每组使用独立的 `/** */` 组头注释；组间保留一个空行。字段自身的文档注释放在组头之后。
-- 对外字段说明单位、范围、默认值和空值含义；涉及缓冲区或原生资源时说明所有权与释放责任。
+## Types and Members
 
-## 方法与回调
+- Write source comments in English, preserving localized runtime strings and the prescribed author name.
+- Document every type, method, constructor, accessor, property, enum case, and standalone function, including private declarations.
+- Describe types by their responsibility, methods by their result, and properties by their meaning.
+- Use `/** ... */` for declaration documentation and `//` for implementation explanations. A short declaration description may use a single-line documentation comment.
+- Keep related members together. Do not use documentation comments as section headings or add headings for small groups.
+- Describe units, ranges, defaults, ownership, and missing values when they affect correct use. State shared conventions once and document exceptions separately.
 
-- 所有方法均需文档注释，包括构造方法、重载声明、私有方法、访问器、独立函数和具名回调。
-- 第一段直接说明调用后得到的结果、提供的能力或必须遵守的约束。
-- 使用 `@param` 逐一描述参数，顺序与签名一致；可选参数说明省略后的行为。
-- 使用 `@returns` 说明实际返回值；空值、布尔值和集合应说明具体含义。无返回值明确写出。
-- 异步方法说明 Promise 在哪个阶段完成，不能将配置提交成功描述为服务端已经生效。
-- 监听器说明替换、移除、通知时机及清空事件；按需复制的媒体帧说明有效访问期限。
-- 错误、取消、线程与资源释放约束在影响调用方式时写明。C++ 平台回调保留的未命名参数无需虚构参数名。
+## Methods and Callbacks
+
+- Lead with a concise summary, followed by essential behavior, parameter descriptions, return values, and synchronous errors, in that order. Separate these sections with an empty documentation line.
+- Match parameter names and order to the declaration. Omit descriptions that merely repeat types or documented properties assigned by a constructor.
+- Omit return-value documentation when the summary is sufficient. Do not add it to constructors or `void` methods.
+- For `Promise<void>`, explain meaningful fulfillment timing in the behavior section. Distinguish Promise rejection from synchronous exceptions and runtime listener notifications.
+- Document lifecycle requirements, cancellation, late results, callback delivery, buffer validity, and resource release when they affect callers or essential maintenance.
+- Keep shared contracts on interfaces. Implementations need concise descriptions and implementation-specific constraints, not copies of the entire interface contract.
 
 ```typescript
 /**
- * 设置当前生成流的下行视频统计监听器。
+ * Sets the video statistics listener for the current generation stream.
  *
- * @param listener 异步接收下行统计的监听器；null 表示移除，undefined 统计表示清空。
- * @returns 无返回值。
+ * The listener receives undefined when the result stream is cleared.
+ *
+ * @param listener The statistics handler, or null to remove it.
  */
-setDownlinkVideoStatisticsListener(listener: DownlinkVideoStatisticsListener | null): void;
+setDownlinkVideoStatisticsListener(
+  listener: DownlinkVideoStatisticsListener | null
+): void;
 ```
 
-## 表达与维护
+## Formatting and Review
 
-- 从调用方视角描述最终行为，使用明确的对象、动作、结果和单位。
-- 不记录排查过程、调试发现、开发中间状态或平台之间的对齐历史。
-- 避免复述方法名、逐行翻译实现，或使用“处理结果”等无法指导使用的描述。
-- 除统一文件头外，声明与成员分组使用 `/** */`；只有方法内部的实现说明使用 `//`，用于解释坐标基准、并发保护、取消和资源所有权等必要约束。
-- 修改签名、默认值、生命周期或返回含义时，同步检查接口、实现及回调声明。
-- 提交前检查注释覆盖、参数顺序与描述准确性；纯注释整理应确认可执行代码保持一致。
+- Use two-space ArkTS indentation and one blank line between declarations. Put each declaration parameter on its own line, including a single parameter.
+- Expand multi-argument calls, except compact scalar expressions or string interpolations where expansion would harm readability.
+- Preserve ArkUI component structure, decorator order, Surface lifecycle, and modifier execution order.
+- Use two-space C++ block indentation and four-space continuation indentation.
+- Avoid boilerplate, implementation history, debugging observations, and claims of alignment with another platform.
+- Verify descriptions against the implementation. Formatting-only changes must preserve executable code, API signatures, defaults, parameter order, access control, and ownership.

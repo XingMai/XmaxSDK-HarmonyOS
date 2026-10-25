@@ -1,10 +1,9 @@
 //
 //  InteractionController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -19,90 +18,91 @@ import { InteractionFrame } from './InteractionFrame';
 import { InteractionPoint } from './InteractionPoint';
 
 /**
- * 向当前生成任务发送归一化交互点的回调。
+ * Sends normalized interaction points to the active task.
  *
- * @param taskId 当前生成任务标识。
- * @param points 本次提交或绘制的触点集合。
- * @returns 无返回值。
+ * @param taskId The current generation task identifier.
+ * @param points The touch points to submit or draw.
  */
 type InteractionSender = (
   taskId: string,
   points: RealtimePoint[]
 ) => void;
 
-/** 保存当前生成任务的交互坐标映射上下文。 */
+/** The coordinate mapping context for the active generation task. */
 class ActiveInteraction {
 
-  /** 当前任务与固定媒体坐标基准 */
+  /** The generation task identifier. */
   readonly taskId: string;
+
+  /** The fixed processed-media dimensions used for interaction mapping. */
   readonly resolvedMediaSize: ImageSize;
 
   /**
-   * 创建交互上下文。
+   * Creates an interaction context.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
-   * @returns 新建的 ActiveInteraction 实例。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The processed local media format serving as the fixed normalized coordinate
+   * baseline.
    */
   constructor(
     taskId: string,
     videoFormat: RealtimeVideoFormat
   ) {
     this.taskId = taskId;
-    this.resolvedMediaSize = new ImageSize(videoFormat.width, videoFormat.height);
+    this.resolvedMediaSize = new ImageSize(
+      videoFormat.width,
+      videoFormat.height
+    );
   }
 }
 
-/** 将渲染容器中的交互行为转换为处理后媒体的 [0, 1] 坐标并发送。 */
+/** Maps viewport interactions into normalized processed-media coordinates and sends them. */
 export class InteractionController implements InteractionControlling {
 
-  /** 交互信令发送依赖 */
+  /** The function sending normalized interaction points. */
   private readonly sender: InteractionSender;
 
-  /** 活动交互任务 */
+  /** The confirmed task and fixed interaction coordinate baseline. */
   private activeInteraction: ActiveInteraction | null = null;
 
-  /**
-   * 创建交互采集 Controller。
-   *
-   * @param sender 交互轨迹发送方法。
-   * @returns 新建的 InteractionController 实例。
-   */
-  constructor(sender: InteractionSender) {
-    // 交互发送器
+  /** Creates an interaction controller. */
+  constructor(
+    sender: InteractionSender
+  ) {
+    // Interaction sender
     this.sender = sender;
   }
 
   /**
-   * 开始处理指定生成任务的交互输入。
+   * Starts interaction processing for a generation task.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The processed local media format serving as the fixed normalized coordinate
+   * baseline.
    */
   start(
     taskId: string,
     videoFormat: RealtimeVideoFormat
   ): void {
-    this.activeInteraction = new ActiveInteraction(taskId, videoFormat);
+    this.activeInteraction = new ActiveInteraction(
+      taskId,
+      videoFormat
+    );
   }
 
-  /**
-   * 停止处理当前生成任务的交互输入。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops interaction processing for the active task. */
   stop(): void {
     this.activeInteraction = null;
   }
 
   /**
-   * 提交交互轨迹；无已确认任务时直接丢弃，不影响视图本地绘制。
+   * Submits trajectories, discarding them without a confirmed task while preserving local drawing.
    *
-   * @param frame 当前容器中的交互点和显示信息。
-   * @returns 无返回值。
+   * @param frame The current viewport touch points and display information.
    */
-  submit(frame: InteractionFrame): void {
+  submit(
+    frame: InteractionFrame
+  ): void {
     if (frame.points.length === 0 || this.activeInteraction === null) {
       return;
     }
@@ -110,12 +110,13 @@ export class InteractionController implements InteractionControlling {
   }
 
   /**
-   * 按当前任务的媒体比例转换并发送触点。
+   * Maps and sends points using the active task's media aspect ratio.
    *
-   * @param frame 交互点和对应的视口显示信息。
-   * @returns 无返回值。
+   * @param frame The touch points and viewport display information.
    */
-  private send(frame: InteractionFrame): void {
+  private send(
+    frame: InteractionFrame
+  ): void {
     const interaction: ActiveInteraction | null = this.activeInteraction;
     if (interaction === null) {
       return;
@@ -138,7 +139,10 @@ export class InteractionController implements InteractionControlling {
     }
 
     try {
-      this.sender(interaction.taskId, points);
+      this.sender(
+        interaction.taskId,
+        points
+      );
     } catch (error) {
       const reason: string = error instanceof Error ? error.message : String(error);
       XmaxLogger.error(

@@ -1,10 +1,9 @@
 //
 //  xmax_video_module.cpp
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,22 +14,21 @@
 #include "native_video_file_decoder.h"
 
 namespace {
+
 /**
- * 初始化 SDK 原生模块并挂载媒体创建入口。
+ * Initializes SDK native media exports.
  *
- * @param env 当前 ArkTS N-API 执行环境。
- * @param exports 需要挂载 SDK 原生入口的模块导出对象。
- * @returns 已挂载 SDK 原生入口的模块导出对象。
+ * @param env The current ArkTS N-API environment.
+ * @param exports The module object receiving SDK native exports.
+ * @return The module object with SDK native exports.
  */
-napi_value Initialize(
-    napi_env env,
-    napi_value exports) {
+napi_value Initialize(napi_env env, napi_value exports) {
   xmax::DefineNativeAudioFileDecoder(env, exports);
   xmax::DefineNativeFrameReceiver(env, exports);
   xmax::DefineNativeVideoFileDecoder(env, exports);
   return exports;
 }
-}  /** namespace */
+} // namespace
 
 static napi_module videoModule = {
     .nm_version = 1,
@@ -42,11 +40,8 @@ static napi_module videoModule = {
     .reserved = {nullptr, nullptr, nullptr, nullptr},
 };
 
-extern "C" /**
- * 向 N-API 注册 SDK 原生视频模块。
- *
- * @returns 无返回值。
- */
-           __attribute__((constructor)) void RegisterXmaxVideoModule() {
+extern "C" /** Registers the SDK native video module with N-API. */
+    __attribute__((constructor)) void
+    RegisterXmaxVideoModule() {
   napi_module_register(&videoModule);
 }

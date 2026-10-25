@@ -187,7 +187,7 @@ official OHPM Registry; both archives must therefore be integrated manually.
 
 Download the following files:
 
-- [`xmaxsdk-1.0.12.har`](https://github.com/XingMai/XmaxSDK-HarmonyOS/releases/download/1.0.12/xmaxsdk-1.0.12.har)
+- [`xmaxsdk-1.0.12.har`](https://github.com/Xmax-AI/XmaxSDK-HarmonyOS/releases/download/1.0.12/xmaxsdk-1.0.12.har)
   from the XmaxSDK GitHub Release
 - The VolcEngine RTC HAR from the
   [HarmonyOS integration guide](https://bytedance.larkoffice.com/docx/VCVzduvzioORCixDKzEcMt9Fnof?from=from_copylink)
@@ -453,7 +453,7 @@ realtime.setStateListener((state) => {
 ## Example Project
 
 A complete example application featuring an ArkUI implementation
-is available in [`examples/XLab`](https://github.com/XingMai/XmaxSDK-HarmonyOS/tree/main/examples/XLab).
+is available in [`examples/XLab`](https://github.com/Xmax-AI/XmaxSDK-HarmonyOS/tree/main/examples/XLab).
 It demonstrates real-time generation using live camera feeds, static images, and
 local video files.
 
@@ -471,7 +471,7 @@ local video files.
 ## Contact us
 
 For bug reports and feature requests, please open a
-[GitHub Issue](https://github.com/XingMai/XmaxSDK-HarmonyOS/issues). For integration
+[GitHub Issue](https://github.com/Xmax-AI/XmaxSDK-HarmonyOS/issues). For integration
 assistance and technical support, contact us at [sdk@xmax.ai](mailto:sdk@xmax.ai).
 
 <br>

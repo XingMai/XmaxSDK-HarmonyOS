@@ -1,10 +1,9 @@
 //
 //  RtcEngineManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -21,63 +20,55 @@ import {
 
 const RTC_APP_ID: string = '69a177e226e9b90176a86b96';
 
-/** 表示对全局 RTC Engine 的独占使用权。 */
+/** An exclusive lease of the global RTC engine. */
 export class RtcEngineLease {
 
-  /** 独占使用的 RTC 引擎 */
+  /** The RTC engine owned by the active lease. */
   readonly engine: RTCEngine;
 
-  /**
-   * 创建 RTC Engine 租约。
-   *
-   * @param engine 当前租约持有的 RTC Engine。
-   * @returns 新建的 RtcEngineLease 实例。
-   */
-  constructor(engine: RTCEngine) {
+  /** Creates an RTC engine lease. */
+  constructor(
+    engine: RTCEngine
+  ) {
     this.engine = engine;
   }
 }
 
-/** 保存等待 RTC Engine 可用的请求。 */
+/** A request waiting for RTC engine availability. */
 class RtcEngineRequest {
 
-  /** 引擎租约等待回调 */
-  /**
-   * 完成当前资源或媒体结果的异步等待。
-   *
-   * @returns 无返回值。
-   */
+  /** Completes an asynchronous resource or media result wait. */
   readonly resolve: () => void;
 
-  /**
-   * 创建 RTC Engine 等待请求。
-   *
-   * @param resolve Engine 可用时调用的完成方法。
-   * @returns 新建的 RtcEngineRequest 实例。
-   */
-  constructor(resolve: () => void) {
+  /** Creates an RTC engine request. */
+  constructor(
+    resolve: () => void
+  ) {
     this.resolve = resolve;
   }
 }
 
-/** 管理全局 RTC Engine 的独占创建、租用和销毁。 */
+/** Manages exclusive RTC engine creation, leasing, and destruction. */
 export class RtcEngineManager {
 
-  /** 当前引擎所有权 */
+  /** The exclusive RTC engine lease currently in use. */
   private static activeLease: RtcEngineLease | null = null;
 
-  /** 排队等待的引擎请求 */
+  /** The engine requests waiting in admission order. */
   private static readonly requests: RtcEngineRequest[] = [];
 
-  /** 引擎创建与销毁等待 */
+  /** The shared in-flight RTC engine initialization. */
   private static initializationPromise: Promise<RTCEngine> | null = null;
+
+  /** The pending engine destruction that must finish before another lease. */
   private static destructionPromise: Promise<void> | null = null;
 
   /**
-   * 等待并获取一份独占 RTC Engine 租约。
+   * Waits for and acquires an exclusive RTC engine lease.
    *
-   * @param context 创建 RTC Engine 使用的平台上下文。
-   * @returns RTC Engine 创建完成后的独占租约。
+   * @param context The platform context for creating the RTC engine.
+   *
+   * @returns The exclusive lease after engine initialization.
    */
   static async acquire(
     context: common.UIAbilityContext
@@ -111,12 +102,15 @@ export class RtcEngineManager {
   }
 
   /**
-   * 释放当前有效租约并销毁对应 RTC Engine。
+   * Releases the valid lease and destroys its RTC engine.
    *
-   * @param lease 待释放的 RTC Engine 租约。
-   * @returns Engine 销毁完成后的 Promise。
+   * The Promise fulfills after engine destruction.
+   *
+   * @param lease The RTC engine lease to release.
    */
-  static async release(lease: RtcEngineLease): Promise<void> {
+  static async release(
+    lease: RtcEngineLease
+  ): Promise<void> {
     if (RtcEngineManager.activeLease !== lease) {
       return;
     }
@@ -137,9 +131,9 @@ export class RtcEngineManager {
   }
 
   /**
-   * 将当前请求加入 RTC Engine 可用等待队列。
+   * Queues a request for RTC engine availability.
    *
-   * @returns 收到下一次可用通知后的 Promise。
+   * The Promise fulfills by the next availability notification.
    */
   private static waitForAvailability(): Promise<void> {
     return new Promise<void>((resolve): void => {
@@ -147,11 +141,7 @@ export class RtcEngineManager {
     });
   }
 
-  /**
-   * 唤醒等待队列中的下一个 RTC Engine 请求。
-   *
-   * @returns 无返回值。
-   */
+  /** Wakes the next pending RTC engine request. */
   private static notifyNextRequest(): void {
     const request: RtcEngineRequest | undefined =
       RtcEngineManager.requests.shift();
@@ -161,10 +151,11 @@ export class RtcEngineManager {
   }
 
   /**
-   * 创建并初始化 RTC Engine。
+   * Creates and initializes an RTC engine.
    *
-   * @param context 创建 RTC Engine 使用的平台上下文。
-   * @returns 初始化完成的 RTC Engine。
+   * @param context The platform context for creating the RTC engine.
+   *
+   * @returns The initialized RTC engine.
    */
   private static async create(
     context: common.UIAbilityContext
@@ -186,13 +177,16 @@ export class RtcEngineManager {
   }
 
   /**
-   * 销毁指定 RTC Engine。
+   * Destroys an RTC engine.
    *
-   * @param engine 待销毁的 RTC Engine。
-   * @returns Engine 销毁完成后的 Promise。
+   * The Promise fulfills after engine destruction.
+   *
+   * @param engine The RTC engine to destroy.
    */
-  private static async destroy(engine: RTCEngine): Promise<void> {
-    // 厂商 SDK 状态异常时可能直接抛异常而非返回错误码，统一转换为 XmaxError。
+  private static async destroy(
+    engine: RTCEngine
+  ): Promise<void> {
+    // Vendor calls may throw instead of returning codes; normalize either failure as XmaxError.
     let result: number;
     try {
       result = await engine.destroyRTCEngine();

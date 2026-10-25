@@ -1,45 +1,48 @@
 //
 //  VideoEncodingConfiguration.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 选择视频编码在流畅度、清晰度与均衡表现之间的优先策略。 */
+/** An encoder preference favoring smoothness, clarity, or balance. */
 export enum VideoEncoderPreference {
+
+  /** Balances frame rate and resolution. */
   AUTO,
+
+  /** Prioritizes frame rate. */
   MAINTAIN_FRAMERATE,
+
+  /** Prioritizes image clarity. */
   MAINTAIN_QUALITY
 }
 
-/** 配置上行编码的尺寸、帧率、码率范围与编码偏好。 */
+/** Uplink encoding dimensions, frame rate, bitrate bounds, and preference. */
 export class VideoEncodingConfiguration {
 
-  /** 编码画面与帧率 */
+  /** The encoded width, in pixels. */
   readonly width: number;
+
+  /** The encoded height, in pixels. */
   readonly height: number;
+
+  /** The video frame rate, in fps. */
   readonly frameRate: number;
 
-  /** 码率边界与编码偏好 */
+  /** The minimum video bitrate, in kbps. */
   readonly minimumBitrate: number;
+
+  /** The optional maximum video bitrate, in kbps. */
   readonly maximumBitrate: number;
+
+  /** The balance between video clarity and smoothness. */
   readonly encoderPreference: VideoEncoderPreference;
 
-  /**
-   * 创建视频编码配置。
-   *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param frameRate 目标视频帧率，单位 fps。
-   * @param minimumBitrate 可选的编码码率下限，单位 kbps。
-   * @param maximumBitrate 可选的编码码率上限，单位 kbps。
-   * @param encoderPreference 流畅、清晰或均衡的编码优先策略。
-   * @returns 新建的 VideoEncodingConfiguration 实例。
-   */
+  /** Creates a video encoding configuration. */
   constructor(
     width: number,
     height: number,

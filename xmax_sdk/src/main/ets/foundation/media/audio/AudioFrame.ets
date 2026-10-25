@@ -1,33 +1,32 @@
 //
 //  AudioFrame.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** RTC 外部音频链路使用的单声道 PCM 音频帧。 */
+/** A mono PCM frame for external RTC audio input. */
 export class AudioFrame {
 
-  /** PCM 输出规格 */
+  /** The PCM output sample rate, in Hz. */
   static readonly SAMPLE_RATE: number = 48000;
+
+  /** The mono PCM channel count. */
   static readonly CHANNEL_COUNT: number = 1;
+
+  /** The samples per channel in each 10 ms PCM frame. */
   static readonly SAMPLES_PER_FRAME: number = 480;
 
-  /** PCM 数据与播放时间 */
+  /** The mono PCM frame bytes. */
   readonly data: Uint8Array;
+
+  /** The frame timestamp, in microseconds. */
   readonly timestampUs: number;
 
-  /**
-   * 创建48 kHz 单声道 PCM 音频帧。
-   *
-   * @param data 当前帧的有效媒体数据。
-   * @param timestampUs 媒体帧时间戳，单位微秒。
-   * @returns 新建的 AudioFrame 实例。
-   */
+  /** Creates a 48 kHz mono PCM audio frame. */
   constructor(
     data: Uint8Array,
     timestampUs: number

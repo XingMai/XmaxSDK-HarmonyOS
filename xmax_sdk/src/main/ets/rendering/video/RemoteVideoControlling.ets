@@ -1,10 +1,9 @@
 //
 //  RemoteVideoControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,25 +11,23 @@
 import { RemoteStream } from '../../foundation/rtc/RemoteStream';
 import { VideoContentMode } from '../../foundation/media/video/VideoContentMode';
 
-/** 定义远端视频流的渲染绑定能力。 */
+/** An interface for remote video rendering bindings. */
 export interface RemoteVideoControlling {
 
   /**
-   * 设置当前远端视频流。
+   * Sets the current remote video stream.
    *
-   * @param stream 远端视频流；传入空值时清除当前流。
-   * @returns 无返回值。
+   * @param stream The remote stream, or null to clear it.
    */
   setRemoteStream(
     stream: RemoteStream | null
   ): void;
 
   /**
-   * 将远端视频绑定到渲染容器。
+   * Binds remote video to a rendering container.
    *
-   * @param viewId 渲染容器标识。
-   * @param contentMode 画面显示模式。
-   * @returns 无返回值。
+   * @param viewId The rendering container identifier.
+   * @param contentMode The video display mode.
    */
   attach(
     viewId: string,
@@ -38,19 +35,14 @@ export interface RemoteVideoControlling {
   ): void;
 
   /**
-   * 解除远端视频与渲染容器的绑定。
+   * Detaches remote video from its rendering container.
    *
-   * @param viewId 渲染容器标识。
-   * @returns 无返回值。
+   * @param viewId The rendering container identifier.
    */
   detach(
     viewId: string
   ): void;
 
-  /**
-   * 清理远端视频流和渲染绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears the remote stream and rendering bindings. */
   reset(): void;
 }

@@ -1,10 +1,9 @@
 //
 //  EncodingController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,29 +15,27 @@ import { VideoEncoderPreference, VideoEncodingConfiguration } from '../../founda
 import { RealtimeVideoEncoderPreference, RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { EncodingControlling } from './EncodingControlling';
 
-/** 根据最终上传尺寸、帧率和显式编码配置设置 RTC 编码参数。 */
+/** Configures RTC encoding from final uplink dimensions, rate, and explicit settings. */
 export class EncodingController implements EncodingControlling {
 
-  /** RTC 编码配置提交 */
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
 
-  /**
-   * 创建视频编码控制器。
-   *
-   * @param rtcManager 提供音视频采集、发布和订阅能力的 RTC 组件。
-   * @returns 新建的 EncodingController 实例。
-   */
-  constructor(rtcManager: RtcManaging) {
+  /** Creates an encoding controller. */
+  constructor(
+    rtcManager: RtcManaging
+  ) {
     this.rtcManager = rtcManager;
   }
 
   /**
-   * 按视频格式计算码率预算并提交 RTC 编码配置。
+   * Resolves a bitrate budget and submits RTC encoding configuration.
    *
-   * @param videoFormat 视频编码格式。
-   * @returns 无返回值。
+   * @param videoFormat The video encoding format.
    */
-  configure(videoFormat: RealtimeVideoFormat): void {
+  configure(
+    videoFormat: RealtimeVideoFormat
+  ): void {
     videoFormat.validate();
     const budget: VideoBitrateBudget = EncodingBitratePolicy.resolve(videoFormat);
 
@@ -54,10 +51,18 @@ export class EncodingController implements EncodingControlling {
         preference = VideoEncoderPreference.MAINTAIN_QUALITY;
         break;
       default:
-        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Unsupported video encoder preference');
+        throw new XmaxError(
+          XmaxErrorCode.INVALID_CONFIGURATION,
+          'Unsupported video encoder preference'
+        );
     }
     this.rtcManager.configureVideoEncoding(new VideoEncodingConfiguration(
-      videoFormat.width, videoFormat.height, videoFormat.fps, budget.minimum, budget.maximum, preference
+      videoFormat.width,
+      videoFormat.height,
+      videoFormat.fps,
+      budget.minimum,
+      budget.maximum,
+      preference
     ));
   }
 

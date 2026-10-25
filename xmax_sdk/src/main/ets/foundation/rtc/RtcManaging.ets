@@ -1,10 +1,9 @@
 //
 //  RtcManaging.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -22,96 +21,85 @@ import { RtcQualityListener } from './RtcQualityListener';
 import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 
 /**
- * 远端视频首次完成渲染时接收对应媒体流的回调。
+ * Receives the stream whose first remote frame has been rendered.
  *
- * @param stream 需要绑定或处理的媒体流。
- * @returns 无返回值。
+ * @param stream The remote stream that produced the frame.
  */
-export type RtcRemoteVideoRenderedListener = (stream: RemoteStream) => void;
+export type RtcRemoteVideoRenderedListener = (
+  stream: RemoteStream
+) => void;
 
 /**
- * copyFrame 只能在当前 RTC 回调内调用，按需复制帧数据。
+ * Receives decoded remote frames and an on-demand pixel copier.
  *
- * @param stream 需要绑定或处理的媒体流。
- * @param copyFrame 按需复制当前原生帧的函数；仅可在回调期间调用。
- * @returns 无返回值。
+ * copyFrame is valid only within the RTC callback and copies pixels on demand.
+ *
+ * @param stream The remote stream that produced the frame.
+ * @param copyFrame The on-demand native frame copier, valid only during the callback.
  */
-export type RtcRemoteVideoFrameListener = (stream: RemoteStream, copyFrame: () => RealtimeVideoFrame) => void;
+export type RtcRemoteVideoFrameListener = (
+  stream: RemoteStream,
+  copyFrame: () => RealtimeVideoFrame
+) => void;
 
-/** 定义 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
+/** An interface for RTC engines, rooms, media transport, and rendering. */
 export interface RtcManaging {
 
   /**
-   * 初始化 RTC 引擎。
+   * Initializes the RTC engine.
    *
-   * @returns 初始化完成后的 Promise。
+   * The Promise fulfills after initialization.
    */
   initialize(): Promise<void>;
 
   /**
-   * 销毁 RTC 引擎并释放资源。
+   * Destroys the RTC engine and releases resources.
    *
-   * @returns 资源释放完成后的 Promise。
+   * The Promise fulfills after resources are released.
    */
   destroy(): Promise<void>;
 
   /**
-   * 应用视频编码配置。
+   * Applies video encoder configuration.
    *
-   * @param configuration 视频编码配置。
-   * @returns 无返回值。
+   * @param configuration The video encoder configuration.
    */
-  configureVideoEncoding(configuration: VideoEncodingConfiguration): void;
+  configureVideoEncoding(
+    configuration: VideoEncodingConfiguration
+  ): void;
 
-  /**
-   * 将本地视频源切换为外部视频帧。
-   *
-   * @returns 无返回值。
-   */
+  /** Selects external video frame input. */
   useExternalVideoSource(): void;
 
   /**
-   * 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。
-   *
-   * @returns 无返回值。
+   * Selects internal audio and starts microphone capture; microphone permission must already be
+   * granted.
    */
   startMicrophoneCapture(): void;
 
-  /**
-   * 停止 RTC 麦克风采集。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops RTC microphone capture. */
   stopMicrophoneCapture(): void;
 
-  /**
-   * 启动 RTC 外部音频源。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts external RTC audio input. */
   startExternalAudioSource(): void;
 
-  /**
-   * 停止 RTC 外部音频源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops external RTC audio input. */
   stopExternalAudioSource(): void;
 
   /**
-   * 应用本地视频镜像配置。
+   * Applies local video mirroring.
    *
-   * @param position 相机位置。
-   * @returns 无返回值。
+   * @param position The camera position.
    */
-  configureLocalVideoMirror(position: CameraPosition): void;
+  configureLocalVideoMirror(
+    position: CameraPosition
+  ): void;
 
   /**
-   * 推送一帧外部视频数据。
+   * Submits an external video frame.
    *
-   * @param frame 视频帧。
-   * @param seiData 随视频帧发送的附加数据。
-   * @returns 无返回值。
+   * @param frame The video frame.
+   * @param seiData The metadata sent with the video frame.
    */
   pushExternalVideoFrame(
     frame: VideoFrame,
@@ -119,62 +107,49 @@ export interface RtcManaging {
   ): void;
 
   /**
-   * 推送一帧外部音频数据。
+   * Submits an external audio frame.
    *
-   * @param frame 10ms PCM 音频帧。
-   * @returns 无返回值。
+   * @param frame The 10 ms PCM frame.
    */
-  pushExternalAudioFrame(frame: AudioFrame): void;
+  pushExternalAudioFrame(
+    frame: AudioFrame
+  ): void;
 
   /**
-   * 加入 RTC 房间。
+   * Joins an RTC room.
    *
-   * @param configuration 房间加入配置。
-   * @returns 加入房间完成后的 Promise。
+   * The Promise fulfills after joining the room.
+   *
+   * @param configuration The room join configuration.
    */
-  joinRoom(configuration: RoomJoinConfiguration): Promise<void>;
+  joinRoom(
+    configuration: RoomJoinConfiguration
+  ): Promise<void>;
 
   /**
-   * 离开当前 RTC 房间。
+   * Leaves the current RTC room.
    *
-   * @returns 离开房间完成后的 Promise。
+   * The Promise fulfills after leaving the room.
    */
   leaveRoom(): Promise<void>;
 
-  /**
-   * 发布本地视频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Publishes local video. */
   publishLocalVideo(): void;
 
-  /**
-   * 停止发布本地视频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Unpublishes local video. */
   unpublishLocalVideo(): void;
 
-  /**
-   * 发布本地音频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Publishes local audio. */
   publishLocalAudio(): void;
 
-  /**
-   * 停止发布本地音频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Unpublishes local audio. */
   unpublishLocalAudio(): void;
 
   /**
-   * 更新远端视频流订阅状态。
+   * Updates a remote video subscription.
    *
-   * @param userId 远端用户标识。
-   * @param subscribe 是否订阅视频流。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param subscribe Whether to subscribe to video.
    */
   subscribeRemoteVideo(
     userId: string,
@@ -182,11 +157,10 @@ export interface RtcManaging {
   ): void;
 
   /**
-   * 更新远端音频流订阅状态。
+   * Updates a remote audio subscription.
    *
-   * @param userId 远端用户标识。
-   * @param subscribe 是否订阅音频流。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param subscribe Whether to subscribe to audio.
    */
   subscribeRemoteAudio(
     userId: string,
@@ -194,11 +168,10 @@ export interface RtcManaging {
   ): void;
 
   /**
-   * 设置指定远端用户的音频播放音量。
+   * Sets a remote user's audio playback volume.
    *
-   * @param userId 远端用户标识。
-   * @param volume RTC 音量值，100 表示原始音量。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param volume The RTC volume; 100 represents original volume.
    */
   setRemoteAudioVolume(
     userId: string,
@@ -206,31 +179,25 @@ export interface RtcManaging {
   ): void;
 
   /**
-   * 将本地视频绑定到渲染视图。
+   * Binds local video to a rendering view.
    *
-   * @param viewId 渲染视图标识。
-   * @param contentMode 视频内容显示模式。
-   * @returns 无返回值。
+   * @param viewId The rendering view identifier.
+   * @param contentMode The video content mode.
    */
   bindLocalVideo(
     viewId: string,
     contentMode: VideoContentMode
   ): void;
 
-  /**
-   * 解除本地视频与渲染视图的绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Detaches local video from its rendering view. */
   unbindLocalVideo(): void;
 
   /**
-   * 将远端视频流绑定到渲染视图。
+   * Binds remote video to a rendering view.
    *
-   * @param stream 远端流信息。
-   * @param viewId 渲染视图标识。
-   * @param contentMode 视频内容显示模式。
-   * @returns 无返回值。
+   * @param stream The remote stream information.
+   * @param viewId The rendering view identifier.
+   * @param contentMode The video content mode.
    */
   bindRemoteVideo(
     stream: RemoteStream,
@@ -239,82 +206,98 @@ export interface RtcManaging {
   ): void;
 
   /**
-   * 解除远端视频流与渲染视图的绑定。
+   * Detaches remote video from its rendering view.
    *
-   * @param stream 远端流信息。
-   * @returns 无返回值。
+   * @param stream The remote stream information.
    */
-  unbindRemoteVideo(stream: RemoteStream): void;
+  unbindRemoteVideo(
+    stream: RemoteStream
+  ): void;
 
   /**
-   * 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。
+   * Captures an RTC snapshot. The caller releases the returned PixelMap.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @returns 截图完成后返回由调用方负责释放的 PixelMap；超时或失败时拒绝的 Promise。
+   * @param stream The remote stream identified by room and user.
+   *
+   * @returns The caller-owned snapshot PixelMap; the Promise rejects on failure or timeout.
    */
-  takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap>;
+  takeRemoteSnapshot(
+    stream: RemoteStream
+  ): Promise<image.PixelMap>;
 
   /**
-   * 获取 RTC 渲染库名称。
+   * Returns the RTC rendering library name.
    *
-   * @returns RTC 渲染库名称。
+   * @returns The RTC rendering library name.
    */
   renderLibraryName(): string;
 
   /**
-   * 监听 RTC 已将远端首帧渲染到视图的事件。
+   * Observes the first remote frame rendered to a view.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void;
+  setRemoteVideoRenderedListener(
+    listener: RtcRemoteVideoRenderedListener | null
+  ): void;
 
   /**
-   * 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。
+   * Returns whether the stream rendered a first frame during this publication, supporting view
+   * reattachment.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @returns 指定流在当前发布周期已成功渲染首帧时返回 true。
+   * @param stream The remote stream identified by room and user.
+   *
+   * @returns True if the stream rendered its first frame during the current publication.
    */
-  hasRenderedRemoteVideo(stream: RemoteStream): boolean;
+  hasRenderedRemoteVideo(
+    stream: RemoteStream
+  ): boolean;
 
   /**
-   * 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。
+   * Observes decoded, postprocessed remote frames independently of Surface attachment.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void;
+  setRemoteVideoFrameListener(
+    listener: RtcRemoteVideoFrameListener | null
+  ): void;
 
   /**
-   * 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。
+   * Enables frame callbacks on demand; disable after first-frame confirmation to avoid continued
+   * pixel delivery to ArkTS.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @param enabled 是否开启该能力。
-   * @returns 无返回值。
+   * @param stream The remote stream identified by room and user.
+   * @param enabled Whether to enable this capability.
    */
-  observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void;
+  observeRemoteVideoFrames(
+    stream: RemoteStream,
+    enabled: boolean
+  ): void;
 
   /**
-   * 向当前 RTC 房间发送消息。
+   * Sends a message to the current RTC room.
    *
-   * @param message 消息内容。
-   * @returns 无返回值。
+   * @param message The message content.
    */
-  sendRoomMessage(message: string): void;
+  sendRoomMessage(
+    message: string
+  ): void;
 
   /**
-   * 设置 RTC 事件监听器。
+   * Sets the RTC event listener.
    *
-   * @param listener RTC 事件监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The RTC event listener, or null to remove it.
    */
-  setEventListener(listener: RtcEventListener | null): void;
+  setEventListener(
+    listener: RtcEventListener | null
+  ): void;
 
   /**
-   * 设置 RTC 质量事件监听器。
+   * Sets the RTC quality event listener.
    *
-   * @param listener RTC 质量事件监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The RTC quality listener, or null to remove it.
    */
-  setQualityListener(listener: RtcQualityListener | null): void;
+  setQualityListener(
+    listener: RtcQualityListener | null
+  ): void;
 }

@@ -1,10 +1,9 @@
 //
 //  video_frame_geometry.cpp
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,24 +12,21 @@
 
 namespace xmax {
 namespace internal {
+
 /**
- * 按目标宽高比与旋转方向计算源裁剪矩形及转换几何参数。
+ * Resolves the source crop and conversion geometry for the target aspect ratio and rotation.
  *
- * @param configuration 源图像布局、旋转角度和目标尺寸配置。
- * @returns 可供转换计划使用的源布局、裁剪和目标几何信息。
+ * @param configuration The source layout, rotation, and target dimensions.
+ * @return The source layout, crop, and target geometry for conversion.
  */
 VideoFrameTransformGeometry MakeVideoFrameTransformGeometry(
-    const VideoFrameTransformConfiguration& configuration) {
-  const bool swapsDimensions = configuration.rotation == 90 ||
-      configuration.rotation == 270;
-  const double orientedWidth = static_cast<double>(
-      swapsDimensions ? configuration.sourceHeight :
-          configuration.sourceWidth);
-  const double orientedHeight = static_cast<double>(
-      swapsDimensions ? configuration.sourceWidth :
-          configuration.sourceHeight);
-  const double targetAspect = static_cast<double>(
-      configuration.targetWidth) /
+    const VideoFrameTransformConfiguration &configuration) {
+  const bool swapsDimensions = configuration.rotation == 90 || configuration.rotation == 270;
+  const double orientedWidth =
+      static_cast<double>(swapsDimensions ? configuration.sourceHeight : configuration.sourceWidth);
+  const double orientedHeight =
+      static_cast<double>(swapsDimensions ? configuration.sourceWidth : configuration.sourceHeight);
+  const double targetAspect = static_cast<double>(configuration.targetWidth) /
       static_cast<double>(configuration.targetHeight);
 
   double cropWidth = orientedWidth;
@@ -45,49 +41,37 @@ VideoFrameTransformGeometry MakeVideoFrameTransformGeometry(
   const double cropY = (orientedHeight - cropHeight) / 2.0;
   VideoFrameCropGeometry sourceCrop;
   switch (configuration.rotation) {
-    case 90:
-      sourceCrop = {
-          cropY,
-          static_cast<double>(configuration.sourceHeight) -
-              cropX - cropWidth,
-          cropHeight,
-          cropWidth
-      };
-      break;
-    case 180:
-      sourceCrop = {
-          static_cast<double>(configuration.sourceWidth) -
-              cropX - cropWidth,
-          static_cast<double>(configuration.sourceHeight) -
-              cropY - cropHeight,
-          cropWidth,
-          cropHeight
-      };
-      break;
-    case 270:
-      sourceCrop = {
-          static_cast<double>(configuration.sourceWidth) -
-              cropY - cropHeight,
-          cropX,
-          cropHeight,
-          cropWidth
-      };
-      break;
-    default:
-      sourceCrop = {cropX, cropY, cropWidth, cropHeight};
-      break;
+  case 90:
+    sourceCrop = {cropY,
+        static_cast<double>(configuration.sourceHeight) - cropX - cropWidth,
+        cropHeight,
+        cropWidth};
+    break;
+  case 180:
+    sourceCrop = {static_cast<double>(configuration.sourceWidth) - cropX - cropWidth,
+        static_cast<double>(configuration.sourceHeight) - cropY - cropHeight,
+        cropWidth,
+        cropHeight};
+    break;
+  case 270:
+    sourceCrop = {static_cast<double>(configuration.sourceWidth) - cropY - cropHeight,
+        cropX,
+        cropHeight,
+        cropWidth};
+    break;
+  default:
+    sourceCrop = {cropX, cropY, cropWidth, cropHeight};
+    break;
   }
 
-  return {
-      configuration.sourceWidth,
+  return {configuration.sourceWidth,
       configuration.sourceHeight,
       configuration.sourceStride,
       configuration.sourceChromaStride,
       configuration.rotation,
       configuration.targetWidth,
       configuration.targetHeight,
-      sourceCrop
-  };
+      sourceCrop};
 }
-}  /** namespace internal */
-}  /** namespace xmax */
+} // namespace internal
+} // namespace xmax

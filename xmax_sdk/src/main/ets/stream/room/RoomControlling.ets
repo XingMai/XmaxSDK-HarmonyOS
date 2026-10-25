@@ -1,10 +1,9 @@
 //
 //  RoomControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,24 +15,27 @@ import { RealtimePoint } from '../../service/realtime/RealtimePoint';
 import { RealtimeSessionConnection } from '../../service/realtime/RealtimeSessionConnection';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
-/** 定义 RTC 房间生命周期和房间信令发送能力。 */
+/** An interface for RTC room lifecycle and signaling. */
 export interface RoomControlling {
+
   /**
-   * 只更新回传规格和码率，不改变生成画布。
+   * Updates return format and bitrate without changing the generation canvas.
    *
-   * @param taskId 当前生成任务标识。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @returns 无返回值。
+   * @param taskId The current generation task identifier.
+   * @param targetSize The optional result stream target dimensions.
    */
-  changeTargetSize(taskId: string, targetSize: ImageSize): void;
-
+  changeTargetSize(
+    taskId: string,
+    targetSize: ImageSize
+  ): void;
 
   /**
-   * 加入实时房间。
+   * Joins the realtime room.
    *
-   * @param connection 房间连接信息。
-   * @param ensureActive 用于确认当前连接操作仍然有效的回调。
-   * @returns 加入房间完成后的 Promise。
+   * The Promise fulfills after joining the room.
+   *
+   * @param connection The room connection information.
+   * @param ensureActive The callback checking connection operation validity.
    */
   join(
     connection: RealtimeSessionConnection,
@@ -41,23 +43,22 @@ export interface RoomControlling {
   ): Promise<void>;
 
   /**
-   * 离开实时房间。
+   * Leaves the realtime room.
    *
-   * @returns 离开房间完成后的 Promise。
+   * The Promise fulfills after leaving the room.
    */
   leave(): Promise<void>;
 
   /**
-   * 发送生成开始消息。
+   * Sends a generation start message.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 生成视频格式。
-   * @param context 生成上下文。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The generation video format.
+   * @param context The generation conditions.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   startGeneration(
     taskId: string,
@@ -70,16 +71,15 @@ export interface RoomControlling {
   ): void;
 
   /**
-   * 发送生成条件变更消息。
+   * Sends a generation condition update.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 生成视频格式。
-   * @param context 新的生成上下文。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The generation video format.
+   * @param context The new generation conditions.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   changeGenerationCondition(
     taskId: string,
@@ -92,21 +92,19 @@ export interface RoomControlling {
   ): void;
 
   /**
-   * 发送生成停止消息。
+   * Sends a generation stop message.
    *
-   * @param taskId 生成任务标识。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
    */
   stopGeneration(
     taskId: string
   ): void;
 
   /**
-   * 发送生成任务的交互轨迹。
+   * Sends interaction trajectories to a generation task.
    *
-   * @param taskId 生成任务标识。
-   * @param points 相对于处理后完整媒体区域的 [0, 1] 轨迹点。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param points The trajectory points normalized to the complete processed media in [0, 1].
    */
   sendTracks(
     taskId: string,

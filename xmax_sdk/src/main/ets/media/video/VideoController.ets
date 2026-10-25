@@ -1,10 +1,9 @@
 //
 //  VideoController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -41,74 +40,107 @@ import { StreamControlling } from '../../stream/StreamControlling';
 import { StreamId } from '../../stream/StreamId';
 import { MediaTimeline } from '../MediaTimeline';
 
-/** 协调本地视频文件、音轨、编码、传输和预览资源。 */
+/** Coordinates local video files, audio, encoding, transport, and preview resources. */
 export class VideoController {
 
-  /** 文件媒体、权限与传输依赖 */
-  private readonly rtcManager: RtcManaging;
-  private readonly audioManager: AudioManaging;
-  private readonly permissionManager: PermissionManaging;
-  /**
-   * 交付视频输入或发布过程中的 SDK 错误。
-   *
-   * @param error 导致当前等待或媒体输出失败的 SDK 错误。
-   * @returns 无返回值。
-   */
-  private readonly errorListener: (error: XmaxError) => void;
+  // File media, permission, and transport dependencies
 
-  /** 服务层组件 */
+  /** The adapter for RTC engine, room, and media services. */
+  private readonly rtcManager: RtcManaging;
+
+  /** The player for SDK-managed local PCM preview. */
+  private readonly audioManager: AudioManaging;
+
+  /** The manager checking and requesting platform permissions. */
+  private readonly permissionManager: PermissionManaging;
+
+  /**
+   * Delivers video input or publishing errors.
+   *
+   * @param error The SDK error ending the wait or media output.
+   */
+  private readonly errorListener: (
+    error: XmaxError
+  ) => void;
+
+  // Service components
+
+  /** The service resolving model-specific media dimensions. */
   private readonly mediaService: MediaServicing;
 
-  /** 业务层组件 */
+  // Business components
+
+  /** The controller coordinating file decoding and audio/video playback. */
   private readonly mediaSourceController: MediaSourceControlling;
+
+  /** The controller coordinating RTC rooms, streams, and signaling. */
   private readonly streamController: StreamControlling;
 
-  /** 本地视频轨道与发布状态 */
+  // Local video track and publication state
+
+  /** The local track owned by the current media source. */
   private activeTrack: RealtimeVideoTrack | null = null;
+
+  /** Whether the current source may deliver media frames. */
   private acceptsFrames: boolean = false;
+
+  /** The current local video file playback state. */
   private currentPlaybackState: LocalVideoPlaybackState | undefined = undefined;
 
-  /** 视频缓存与已发布时间戳 */
+  // Video cache and published timestamps
+
+  /** The most recent frame retained for paused publication. */
   private lastVideoFrame: VideoFrame | null = null;
+
+  /** The last submitted video timestamp, in microseconds. */
   private lastVideoTimestampUs: number = -1;
+
+  /** The last submitted audio timestamp, in microseconds. */
   private lastAudioTimestampUs: number = -1;
 
-  /** 暂停期间的静止画面与静音发送 */
+  // Frozen-frame and silent audio delivery while paused
+
+  /** The timer publishing a frozen frame while paused. */
   private frozenVideoTimer: number = -1;
+
+  /** The timer sending silence while local video is paused. */
   private silentAudioTimer: number = -1;
+
+  /** The reusable silent PCM packet for paused publication. */
   private readonly silentAudioData: Uint8Array = new Uint8Array(
     AudioFrame.SAMPLES_PER_FRAME * 2
   );
 
   /**
-   * 创建视频媒体 Controller。
+   * Creates a video media controller.
    *
-   * @param context 申请音频相关权限所需的页面上下文。
-   * @param rtcManager 外部媒体源和本地渲染使用的 RTC 基础能力。
-   * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
-   * @param errorListener 持续媒体输出错误监听器。
-   * @param mediaService 当前模型的媒体输入规则。
-   * @param videoEndedListener 本地视频播放结束时执行的回调。
-   * @returns 新建的 VideoController 实例。
+   * @param context The context for audio-related permissions.
+   * @param rtcManager The RTC services for external media and local rendering.
+   * @param streamController The controller for encoding and audio/video frame transport.
+   * @param errorListener The handler for continuous media output failures.
+   * @param mediaService The model's media sizing service.
+   * @param videoEndedListener The local video playback completion handler.
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
     streamController: StreamControlling,
-    errorListener: (error: XmaxError) => void,
+    errorListener: (
+      error: XmaxError
+    ) => void,
     mediaService: MediaServicing = new MediaService(),
-    videoEndedListener: () => void = (): void => {}
+    videoEndedListener: () => void = (): void => { }
   ) {
-    // 基础层组件
+    // Foundation components
     this.rtcManager = rtcManager;
     this.audioManager = new AudioManager();
     this.permissionManager = new PermissionManager(context);
     this.errorListener = errorListener;
 
-    // 服务层组件
+    // Service components
     this.mediaService = mediaService;
 
-    // 业务层组件
+    // Business components
     this.streamController = streamController;
     this.mediaSourceController = new MediaSourceController(
       this.mediaService,
@@ -141,40 +173,29 @@ export class VideoController {
     );
   }
 
-  /**
-   * 读取当前本地输入提供的视频轨道。
-   *
-   * @returns 当前轨道；尚无本地媒体时返回 null。
-   */
+  /** The current local input track, or null without local media. */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeTrack;
   }
 
-  /**
-   * 获取当前媒体文件是否包含可用音轨。
-   *
-   * @returns 当前视频文件是否包含并输出音轨。
-   */
+  /** Whether the current file source has an available audio track. */
   get hasAudio(): boolean {
     return this.mediaSourceController.hasAudio;
   }
 
-  /**
-   * 读取本地视频的播放状态。
-   *
-   * @returns 播放状态；尚未创建本地视频时返回 undefined。
-   */
+  /** The local video playback state, or undefined before local video creation. */
   get playbackState(): LocalVideoPlaybackState | undefined {
     return this.currentPlaybackState;
   }
 
   /**
-   * 从本地视频文件创建媒体流。
+   * Creates a local stream from a video file.
    *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式；未传入时根据文件信息计算。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 创建完成后的本地视频媒体流。
+   * @param filePath The local video file path.
+   * @param videoFormat The optional output format, resolved from file metadata if omitted.
+   * @param loop Whether to loop after file completion.
+   *
+   * @returns The created local video stream.
    */
   async createLocalVideoStream(
     filePath: string,
@@ -196,9 +217,9 @@ export class VideoController {
   }
 
   /**
-   * 停止视频和音频帧输出并释放预览资源。
+   * Stops video/audio output and releases preview resources.
    *
-   * @returns 停止操作完成后的 Promise。
+   * The Promise fulfills after stopping.
    */
   async stopLocalVideoStream(): Promise<void> {
     const hasAudio: boolean = this.mediaSourceController.hasAudio;
@@ -220,11 +241,7 @@ export class VideoController {
     }
   }
 
-  /**
-   * 立即阻断文件音视频帧输出并解除本地预览绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Blocks file audio/video delivery and detaches preview immediately. */
   prepareForStop(): void {
     this.acceptsFrames = false;
     this.stopFrozenPublishing();
@@ -237,11 +254,7 @@ export class VideoController {
     }
   }
 
-  /**
-   * 暂停文件播放并持续发布最后一帧与静音音频。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Pauses file playback while continuously publishing the last frame and silence. */
   async pauseLocalVideoStream(): Promise<void> {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PAUSE) {
       return;
@@ -265,11 +278,7 @@ export class VideoController {
     this.currentPlaybackState = LocalVideoPlaybackState.PAUSE;
   }
 
-  /**
-   * 停止冻结帧发布并从原媒体位置恢复播放。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops frozen-frame publication and resumes from the paused media position. */
   resumeLocalVideoStream(): void {
     if (this.currentPlaybackState === LocalVideoPlaybackState.PLAYING) {
       return;
@@ -294,41 +303,41 @@ export class VideoController {
   }
 
   /**
-   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
+   * Enables local audio preview without affecting RTC audio output.
    *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setLocalAudioPreviewEnabled(enabled: boolean): void {
+  setLocalAudioPreviewEnabled(
+    enabled: boolean
+  ): void {
     this.mediaSourceController.setLocalAudioPreviewEnabled(enabled);
   }
 
-  /**
-   * 当前配置的本地视频预览音量。
-   *
-   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
-   */
+  /** The configured local file preview volume in 0 to 1; zero mutes and one uses original volume. */
   get localAudioVolume(): number {
     return this.mediaSourceController.localAudioVolume;
   }
 
   /**
-   * 设置本地视频预览音量，未创建媒体源时缓存到后续播放。
+   * Sets local preview volume, caching it before source creation.
    *
-   * @param volume 0～1 的有限数值；0 为静音，1 为原始音量，默认 0.45。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume A finite volume in 0 to 1; zero mutes, one uses original volume, and the default
+   * is 0.45.
    */
-  async setLocalAudioVolume(volume: number): Promise<void> {
+  async setLocalAudioVolume(
+    volume: number
+  ): Promise<void> {
     await this.mediaSourceController.setLocalAudioVolume(volume);
   }
 
   /**
-   * 准备文件媒体来源并装配权限、编码、传输和预览资源。
+   * Prepares file media, permissions, encoding, transport, and preview resources.
    *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 完成底层资源装配后的本地视频媒体流。
+   * @param filePath The local video file path.
+   * @param videoFormat The optional video output format.
+   * @param loop Whether to loop after file completion.
+   *
+   * @returns The local video stream after resource setup.
    */
   private async createStream(
     filePath: string,
@@ -346,7 +355,10 @@ export class VideoController {
           loop
         );
       const resolvedFormat: RealtimeVideoFormat = sourceConfiguration.videoFormat;
-      track = new RealtimeVideoTrack('video0', resolvedFormat);
+      track = new RealtimeVideoTrack(
+        'video0',
+        resolvedFormat
+      );
 
       if (sourceConfiguration.hasAudio) {
         await this.permissionManager.ensureMicrophonePermission();
@@ -369,7 +381,10 @@ export class VideoController {
         this.stopFrozenPublishing();
       }
 
-      return new RealtimeMediaStream(StreamId.LOCAL, track);
+      return new RealtimeMediaStream(
+        StreamId.LOCAL,
+        track
+      );
     } catch (error) {
       this.acceptsFrames = false;
       this.stopFrozenPublishing();
@@ -400,12 +415,13 @@ export class VideoController {
   }
 
   /**
-   * 缓存并向 RTC 提交解码视频帧，保持时间戳递增。
+   * Caches and submits decoded video with increasing timestamps.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @returns 无返回值。
+   * @param frame The decoded file video frame to retain for preview and submit to RTC.
    */
-  private publishDecodedVideoFrame(frame: VideoFrame): void {
+  private publishDecodedVideoFrame(
+    frame: VideoFrame
+  ): void {
     if (!this.acceptsFrames) {
       return;
     }
@@ -425,29 +441,29 @@ export class VideoController {
   }
 
   /**
-   * 向 RTC 提交播放时间轴上的解码音频帧。
+   * Submits decoded audio on the playback timeline.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @returns 无返回值。
+   * @param frame The decoded PCM frame to submit to RTC on the file playback timeline.
    */
-  private publishDecodedAudioFrame(frame: AudioFrame): void {
+  private publishDecodedAudioFrame(
+    frame: AudioFrame
+  ): void {
     if (!this.acceptsFrames) {
       return;
     }
     const hasTimestamp: boolean = Number.isFinite(frame.timestampUs);
     const output: AudioFrame = !hasTimestamp || frame.timestampUs > this.lastAudioTimestampUs ? frame :
-      new AudioFrame(frame.data, this.lastAudioTimestampUs + 1);
+      new AudioFrame(
+        frame.data,
+        this.lastAudioTimestampUs + 1
+      );
     if (hasTimestamp) {
       this.lastAudioTimestampUs = output.timestampUs;
     }
     this.streamController.pushLocalAudioFrame(output);
   }
 
-  /**
-   * 暂停本地视频期间定时发送静止画面和静音，维持传输连续性。
-   *
-   * @returns 无返回值。
-   */
+  /** Publishes a frozen frame and silence periodically while paused. */
   private startFrozenPublishing(): void {
     const track: RealtimeVideoTrack | null = this.activeTrack;
     if (track === null || this.frozenVideoTimer >= 0) {
@@ -455,23 +471,25 @@ export class VideoController {
     }
     const fps: number = track.videoFormat?.fps ?? 30;
     this.publishFrozenVideoFrame();
-    this.frozenVideoTimer = setInterval((): void => {
-      this.publishFrozenVideoFrame();
-    }, 1000 / fps);
+    this.frozenVideoTimer = setInterval(
+      (): void => {
+        this.publishFrozenVideoFrame();
+      },
+      1000 / fps
+    );
 
     if (this.hasAudio) {
       this.publishSilentAudioFrame();
-      this.silentAudioTimer = setInterval((): void => {
-        this.publishSilentAudioFrame();
-      }, 10);
+      this.silentAudioTimer = setInterval(
+        (): void => {
+          this.publishSilentAudioFrame();
+        },
+        10
+      );
     }
   }
 
-  /**
-   * 停止暂停期间的静止画面和静音发送定时器。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops frozen-frame and silent audio timers. */
   private stopFrozenPublishing(): void {
     if (this.frozenVideoTimer >= 0) {
       clearInterval(this.frozenVideoTimer);
@@ -483,11 +501,7 @@ export class VideoController {
     }
   }
 
-  /**
-   * 用递增时间戳重复发送最近一帧，维持暂停期间的视频传输。
-   *
-   * @returns 无返回值。
-   */
+  /** Repeats the last frame with increasing timestamps to preserve paused transport. */
   private publishFrozenVideoFrame(): void {
     const frame: VideoFrame | null = this.lastVideoFrame;
     if (!this.acceptsFrames || frame === null) {
@@ -509,11 +523,7 @@ export class VideoController {
     }
   }
 
-  /**
-   * 发送一帧静音 PCM，维持暂停期间的音频时间轴。
-   *
-   * @returns 无返回值。
-   */
+  /** Sends a silent PCM frame to preserve the paused audio timeline. */
   private publishSilentAudioFrame(): void {
     if (!this.acceptsFrames || !this.hasAudio) {
       return;
@@ -533,23 +543,20 @@ export class VideoController {
   }
 
   /**
-   * 将帧提交异常转换为媒体错误并通知监听器。
+   * Converts frame submission failures into media error notifications.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param error The exception raised while submitting decoded media to RTC.
    */
-  private reportPublishingError(error: Object): void {
+  private reportPublishingError(
+    error: Object
+  ): void {
     this.errorListener(new XmaxError(
       XmaxErrorCode.MEDIA_ERROR,
       XmaxError.from(error).message
     ));
   }
 
-  /**
-   * 清除本地视频缓存帧和已提交的音视频时间戳。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears cached video and submitted audio/video timestamps. */
   private resetPlaybackFrames(): void {
     this.lastVideoFrame = null;
     this.lastVideoTimestampUs = -1;
@@ -557,24 +564,31 @@ export class VideoController {
   }
 
   /**
-   * 为本地视频轨道注册 RTC 预览绑定。
+   * Registers RTC preview for a local video track.
    *
-   * @param track 需要显示的本地视频轨道。
-   * @returns 无返回值。
+   * @param track The local video track to display.
    */
-  private registerPreview(track: RealtimeVideoTrack): void {
-    VideoRenderRegistry.register(track, new VideoRenderBinding(
-      this.rtcManager.renderLibraryName(),
-      (
-        viewId: string,
-        contentMode: VideoContentMode
-      ): void => {
-        this.rtcManager.bindLocalVideo(viewId, contentMode);
-      },
-      (_viewId: string): void => {
-        this.rtcManager.unbindLocalVideo();
-      }
-    ));
+  private registerPreview(
+    track: RealtimeVideoTrack
+  ): void {
+    VideoRenderRegistry.register(
+      track,
+      new VideoRenderBinding(
+        this.rtcManager.renderLibraryName(),
+        (
+          viewId: string,
+          contentMode: VideoContentMode
+        ): void => {
+          this.rtcManager.bindLocalVideo(
+            viewId,
+            contentMode
+          );
+        },
+        (_viewId: string): void => {
+          this.rtcManager.unbindLocalVideo();
+        }
+      )
+    );
   }
 
 }

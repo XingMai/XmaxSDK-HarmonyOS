@@ -17,7 +17,7 @@
     "email": "sdk@xmax.ai"
   },
   "homepage": "https://xmax.ai",
-  "repository": "https://github.com/XingMai/XmaxSDK-HarmonyOS",
+  "repository": "https://github.com/Xmax-AI/XmaxSDK-HarmonyOS",
   "license": "MIT",
   "dependencies": {
     "@bytertc/volcenginertc": "3.60.151950",

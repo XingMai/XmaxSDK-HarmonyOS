@@ -1,10 +1,9 @@
 //
 //  DecodedImage.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -17,22 +16,22 @@ import {
 import { VideoPixelFormat } from '../video/VideoPixelFormat';
 import { ImageVideoFrameData } from './ImageVideoFrameData';
 
-/** 定义 SDK 内部统一使用的已解码图片能力。 */
+/** An interface for a decoded image owned by XmaxSDK. */
 export interface DecodedImage {
 
-  /** 解码图像尺寸 */
-  /** 图片宽度。 */
+  /** The image width. */
   readonly width: number;
 
-  /** 图片高度。 */
+  /** The image height. */
   readonly height: number;
 
   /**
-   * 居中裁剪并缩放图片，生成指定尺寸的视频帧数据。
+   * Crops centrally and scales an image into video frame data.
    *
-   * @param width 目标视频帧宽度。
-   * @param height 目标视频帧高度。
-   * @returns 可直接装配为视频帧的像素数据。
+   * @param width The target video frame width.
+   * @param height The target video frame height.
+   *
+   * @returns The pixels for creating a video frame.
    */
   makeVideoFrameData(
     width: number,
@@ -40,60 +39,59 @@ export interface DecodedImage {
   ): Promise<ImageVideoFrameData>;
 
   /**
-   * 释放已解码图片持有的平台资源。
+   * Releases platform resources held by the decoded image.
    *
-   * @returns 释放完成后的 Promise。
+   * The Promise fulfills after release completes.
    */
   release(): Promise<void>;
 }
 
-/** 使用 SDK 自有 PixelMap 实现已解码图片。 */
+/** A decoded image backed by an SDK-owned PixelMap. */
 export class PixelMapDecodedImage implements DecodedImage {
 
-  /** 平台图像资源 */
+  /** The SDK-owned editable image resource. */
   private readonly pixelMap: image.PixelMap;
 
-  /** 图像尺寸 */
+  /** The decoded image width, in pixels. */
   readonly width: number;
+
+  /** The decoded image height, in pixels. */
   readonly height: number;
 
-  /** 资源释放状态 */
+  /** Whether the owned resource has been released. */
   private isReleased: boolean = false;
 
-  /**
-   * 创建 PixelMap 已解码图片。
-   *
-   * @param pixelMap 由 SDK 创建并负责释放的可编辑 RGBA PixelMap。
-   * @param width 图片宽度。
-   * @param height 图片高度。
-   * @returns 新建的 PixelMapDecodedImage 实例。
-   */
+  /** Creates a decoded PixelMap image. */
   constructor(
     pixelMap: image.PixelMap,
     width: number,
     height: number
   ) {
-    // 平台资源
+    // Platform resources
     this.pixelMap = pixelMap;
 
-    // 图片信息
+    // Image information
     this.width = width;
     this.height = height;
   }
 
   /**
-   * 居中裁剪并缩放图片，生成 RGBA 视频帧数据。
+   * Crops centrally and scales an image into RGBA frame data.
    *
-   * @param width 目标视频帧宽度。
-   * @param height 目标视频帧高度。
-   * @returns 可直接装配为视频帧的像素数据。
+   * @param width The target video frame width.
+   * @param height The target video frame height.
+   *
+   * @returns The pixels for creating a video frame.
    */
   async makeVideoFrameData(
     width: number,
     height: number
   ): Promise<ImageVideoFrameData> {
     this.ensureAvailable();
-    this.validateTargetSize(width, height);
+    this.validateTargetSize(
+      width,
+      height
+    );
 
     try {
       const targetWidth: number = Math.max(Math.round(width), 1);
@@ -146,9 +144,9 @@ export class PixelMapDecodedImage implements DecodedImage {
   }
 
   /**
-   * 释放 SDK 持有的 PixelMap。
+   * Releases the SDK-owned PixelMap.
    *
-   * @returns 释放完成后的 Promise。
+   * The Promise fulfills after release completes.
    */
   async release(): Promise<void> {
     if (this.isReleased) {
@@ -159,11 +157,7 @@ export class PixelMapDecodedImage implements DecodedImage {
     await this.pixelMap.release();
   }
 
-  /**
-   * 确认图片资源仍可使用。
-   *
-   * @returns 无返回值。
-   */
+  /** Verifies that image resources are still usable. */
   private ensureAvailable(): void {
     if (this.isReleased) {
       throw new XmaxError(
@@ -174,13 +168,15 @@ export class PixelMapDecodedImage implements DecodedImage {
   }
 
   /**
-   * 校验目标视频帧尺寸。
+   * Validates the target video frame dimensions.
    *
-   * @param width 目标视频帧宽度。
-   * @param height 目标视频帧高度。
-   * @returns 无返回值。
+   * @param width The target video frame width.
+   * @param height The target video frame height.
    */
-  private validateTargetSize(width: number, height: number): void {
+  private validateTargetSize(
+    width: number,
+    height: number
+  ): void {
     if (!Number.isFinite(width) || !Number.isFinite(height) ||
       width <= 0 || height <= 0) {
       throw new XmaxError(

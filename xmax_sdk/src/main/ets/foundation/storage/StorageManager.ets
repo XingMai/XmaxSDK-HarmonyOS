@@ -1,10 +1,9 @@
 //
 //  StorageManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -35,20 +34,18 @@ import { StorageConfiguration } from './StorageConfiguration';
 import { StorageProgressListener } from './StorageProgressListener';
 import { StoredFile } from './StoredFile';
 
-/** 保存第三方存储上传任务的统一结果。 */
+/** The normalized result of a third-party upload task. */
 class UploadOutcome {
 
-  /** 上传结果与失败说明 */
+  // Upload result and failure details
+
+  /** The successfully uploaded file information, if available. */
   readonly file?: StoredFile;
+
+  /** The readable failure description, if any. */
   readonly errorMessage?: string;
 
-  /**
-   * 创建上传结果。
-   *
-   * @param file 上传成功后的文件信息。
-   * @param errorMessage 上传失败时的错误信息。
-   * @returns 新建的 UploadOutcome 实例。
-   */
+  /** Creates an upload result. */
   constructor(
     file?: StoredFile,
     errorMessage?: string
@@ -58,31 +55,31 @@ class UploadOutcome {
   }
 }
 
-/** 封装第三方对象存储的文件上传和 HTTP 文件下载能力。 */
+/** An adapter for object storage uploads and HTTP file downloads. */
 export class StorageManager implements StorageManaging {
 
-  /** 本地文件与应用目录访问 */
+  // Local file and application directory access
+
+  /** The platform context for SDK resources. */
   private readonly context: common.Context;
 
-  /**
-   * 创建存储 Manager。
-   *
-   * @param context 第三方存储客户端使用的平台上下文。
-   * @returns 新建的 StorageManager 实例。
-   */
-  constructor(context: common.Context) {
+  /** Creates a storage manager. */
+  constructor(
+    context: common.Context
+  ) {
     this.context = context;
   }
 
   /**
-   * 使用临时存储配置上传二进制数据或本地文件。
+   * Uploads encoded data or a local file with temporary storage credentials.
    *
-   * @param source 文件二进制数据或本地文件路径。
-   * @param objectKey 存储对象标识。
-   * @param contentType 文件内容类型。
-   * @param configuration 临时存储配置。
-   * @param progress 上传进度监听器。
-   * @returns 上传后的文件信息。
+   * @param source The file bytes or local path.
+   * @param objectKey The storage object key.
+   * @param contentType The file MIME type.
+   * @param configuration The temporary storage configuration.
+   * @param progress The upload progress handler.
+   *
+   * @returns The uploaded file information.
    */
   async upload(
     source: ArrayBuffer | string,
@@ -95,34 +92,68 @@ export class StorageManager implements StorageManaging {
     let failureLogged: boolean = false;
     try {
       const clientConfiguration = new CosXmlServiceConfig(configuration.region);
-      this.applyEndpoint(clientConfiguration, configuration.endpoint);
+      this.applyEndpoint(
+        clientConfiguration,
+        configuration.endpoint
+      );
 
-      const service = new CosXmlBaseService(this.context, clientConfiguration);
-      const request = new PutObjectRequest(configuration.bucket, objectKey, source);
+      const service = new CosXmlBaseService(
+        this.context,
+        clientConfiguration
+      );
+      const request = new PutObjectRequest(
+        configuration.bucket,
+        objectKey,
+        source
+      );
 
-      request.addHeader('Content-Type', contentType);
+      request.addHeader(
+        'Content-Type',
+        contentType
+      );
       request.credential = this.makeCredential(configuration);
 
       const transferConfiguration = new TransferConfig();
       if (typeof source === 'string') {
         transferConfiguration.simpleUploadLimit = fileIo.statSync(source).size + 1;
       }
-      const task: UploadTask = service.upload(request, undefined, transferConfiguration);
+      const task: UploadTask = service.upload(
+        request,
+        undefined,
+        transferConfiguration
+      );
       task.onProgress = (value: HttpProgress): void => {
-        progress?.(value.complete, value.target);
+        progress?.(
+          value.complete,
+          value.target
+        );
       };
 
       const outcome: UploadOutcome = await new Promise<UploadOutcome>((resolve) => {
         task.onResult = {
           onSuccess: (_request: PutObjectRequest, result: CosXmlUploadTaskResult): void => {
-            const url: string = this.resolveUrl(result.accessUrl, configuration, objectKey);
+            const url: string = this.resolveUrl(
+              result.accessUrl,
+              configuration,
+              objectKey
+            );
             const etag: string | undefined = this.nonEmpty(result.eTag);
-            resolve(new UploadOutcome(new StoredFile(url, objectKey, etag)));
+            resolve(new UploadOutcome(new StoredFile(
+              url,
+              objectKey,
+              etag
+            )));
           },
           onFail: (_request: PutObjectRequest, error: CosError): void => {
             failureLogged = true;
-            this.logUploadFailure(error, startedAt);
-            resolve(new UploadOutcome(undefined, this.errorMessage(error)));
+            this.logUploadFailure(
+              error,
+              startedAt
+            );
+            resolve(new UploadOutcome(
+              undefined,
+              this.errorMessage(error)
+            ));
           }
         };
         task.start();
@@ -141,19 +172,26 @@ export class StorageManager implements StorageManaging {
         throw error;
       }
       if (!failureLogged) {
-        this.logUploadFailure(error, startedAt);
+        this.logUploadFailure(
+          error,
+          startedAt
+        );
       }
-      throw new XmaxError(XmaxErrorCode.UPLOAD_ERROR, this.errorMessage(error));
+      throw new XmaxError(
+        XmaxErrorCode.UPLOAD_ERROR,
+        this.errorMessage(error)
+      );
     }
   }
 
   /**
-   * 下载远端文件并写入指定本地路径。
+   * Downloads a remote file to a local path.
    *
-   * @param remoteUrl 远端文件地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度监听器。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote file URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress handler.
+   *
+   * @returns The downloaded file information.
    */
   async download(
     remoteUrl: string,
@@ -163,10 +201,13 @@ export class StorageManager implements StorageManaging {
     const request = http.createHttp();
 
     try {
-      const response: http.HttpResponse = await request.request(remoteUrl, {
-        method: http.RequestMethod.GET,
-        expectDataType: http.HttpDataType.ARRAY_BUFFER
-      });
+      const response: http.HttpResponse = await request.request(
+        remoteUrl,
+        {
+          method: http.RequestMethod.GET,
+          expectDataType: http.HttpDataType.ARRAY_BUFFER
+        }
+      );
       if (response.responseCode < 200 || response.responseCode >= 300 ||
         !(response.result instanceof ArrayBuffer)) {
         throw new XmaxError(
@@ -182,31 +223,46 @@ export class StorageManager implements StorageManaging {
       );
 
       try {
-        fileIo.writeSync(file.fd, data);
+        fileIo.writeSync(
+          file.fd,
+          data
+        );
       } finally {
         fileIo.closeSync(file);
       }
 
-      progress?.(data.byteLength, data.byteLength);
+      progress?.(
+        data.byteLength,
+        data.byteLength
+      );
 
-      return new DownloadedFile(destinationPath, data.byteLength);
+      return new DownloadedFile(
+        destinationPath,
+        data.byteLength
+      );
     } catch (error) {
       if (error instanceof XmaxError) {
         throw error;
       }
-      throw new XmaxError(XmaxErrorCode.DOWNLOAD_ERROR, this.errorMessage(error));
+      throw new XmaxError(
+        XmaxErrorCode.DOWNLOAD_ERROR,
+        this.errorMessage(error)
+      );
     } finally {
       request.destroy();
     }
   }
 
   /**
-   * 将中性存储配置转换为第三方临时凭证。
+   * Converts neutral storage configuration into vendor credentials.
    *
-   * @param configuration 临时存储配置。
-   * @returns 第三方存储凭证。
+   * @param configuration The temporary storage configuration.
+   *
+   * @returns The vendor storage credentials.
    */
-  private makeCredential(configuration: StorageConfiguration): QCloudCredential {
+  private makeCredential(
+    configuration: StorageConfiguration
+  ): QCloudCredential {
     const credential = new QCloudCredential();
     credential.secretID = configuration.credential.accessKeyId;
     credential.secretKey = configuration.credential.secretAccessKey;
@@ -225,11 +281,10 @@ export class StorageManager implements StorageManaging {
   }
 
   /**
-   * 将中性服务地址应用到第三方存储客户端配置。
+   * Applies a neutral endpoint to vendor storage configuration.
    *
-   * @param configuration 第三方存储客户端配置。
-   * @param endpoint 存储服务地址。
-   * @returns 无返回值。
+   * @param configuration The vendor storage client configuration.
+   * @param endpoint The storage endpoint.
    */
   private applyEndpoint(
     configuration: CosXmlServiceConfig,
@@ -249,17 +304,21 @@ export class StorageManager implements StorageManaging {
     }
 
     const slashIndex: number = value.indexOf('/');
-    const host: string = slashIndex < 0 ? value : value.substring(0, slashIndex);
+    const host: string = slashIndex < 0 ? value : value.substring(
+      0,
+      slashIndex
+    );
     configuration.host = host.startsWith('cos.') ? `\${bucket}.${host}` : host;
   }
 
   /**
-   * 根据上传结果和存储配置解析文件访问地址。
+   * Resolves a file URL from upload results and storage configuration.
    *
-   * @param candidate 第三方上传结果返回的候选地址。
-   * @param configuration 临时存储配置。
-   * @param objectKey 存储对象标识。
-   * @returns 可访问的文件地址。
+   * @param candidate The candidate URL returned by the vendor upload.
+   * @param configuration The temporary storage configuration.
+   * @param objectKey The storage object key.
+   *
+   * @returns The accessible file URL.
    */
   private resolveUrl(
     candidate: string | undefined,
@@ -280,7 +339,10 @@ export class StorageManager implements StorageManaging {
     } else if (!endpoint.includes('://')) {
       endpoint = `https://${endpoint}`;
     }
-    endpoint = endpoint.replace(/\/+$/, '');
+    endpoint = endpoint.replace(
+      /\/+$/,
+      ''
+    );
     const schemeIndex: number = endpoint.indexOf('://');
     const hostStart: number = schemeIndex < 0 ? 0 : schemeIndex + 3;
     const hostAndPath: string = endpoint.substring(hostStart);
@@ -291,58 +353,72 @@ export class StorageManager implements StorageManaging {
   }
 
   /**
-   * 对对象键的各级路径片段进行 URL 编码。
+   * URL-encodes each path segment of an object key.
    *
-   * @param objectKey 原始对象键。
-   * @returns URL 编码后的对象键。
+   * @param objectKey The original object key.
+   *
+   * @returns The URL-encoded object key.
    */
-  private encodeObjectKey(objectKey: string): string {
+  private encodeObjectKey(
+    objectKey: string
+  ): string {
     return objectKey.split('/')
       .map((part: string): string => encodeURIComponent(part))
       .join('/');
   }
 
   /**
-   * 判断地址是否使用 HTTP 或 HTTPS 协议。
+   * Checks whether a URL uses HTTP or HTTPS.
    *
-   * @param value 待检查地址。
-   * @returns 地址使用 HTTP 或 HTTPS 协议时返回 true，否则返回 false。
+   * @param value The URL to check.
+   *
+   * @returns True for HTTP or HTTPS URLs.
    */
-  private isHttpUrl(value: string): boolean {
+  private isHttpUrl(
+    value: string
+  ): boolean {
     const normalized: string = value.toLowerCase();
     return normalized.startsWith('https://') || normalized.startsWith('http://');
   }
 
   /**
-   * 清理字符串并过滤空值。
+   * Trims strings and filters empty values.
    *
-   * @param value 待处理字符串。
-   * @returns 非空字符串；输入无效时返回空值。
+   * @param value The string to process.
+   *
+   * @returns The nonempty string, or undefined for invalid input.
    */
-  private nonEmpty(value: string | undefined): string | undefined {
+  private nonEmpty(
+    value: string | undefined
+  ): string | undefined {
     const normalized: string = value?.trim() ?? '';
     return normalized.length === 0 ? undefined : value;
   }
 
   /**
-   * 获取第三方存储异常的可读错误信息。
+   * Extracts a readable vendor storage error.
    *
-   * @param error 存储异常。
-   * @returns 可读错误信息。
+   * @param error The storage error.
+   *
+   * @returns The readable error message.
    */
-  private errorMessage(error: Object): string {
+  private errorMessage(
+    error: Object
+  ): string {
     const message: string = error instanceof Error ? error.message.trim() : '';
     return message.length > 0 ? message : String(error);
   }
 
   /**
-   * 按第三方错误类型记录结构化上传失败日志。
+   * Logs a structured upload failure by vendor error type.
    *
-   * @param error 上传异常。
-   * @param startedAt 上传开始时间戳。
-   * @returns 无返回值。
+   * @param error The upload error.
+   * @param startedAt The upload start timestamp.
    */
-  private logUploadFailure(error: Object, startedAt: number): void {
+  private logUploadFailure(
+    error: Object,
+    startedAt: number
+  ): void {
     let details: string = '';
     if (error instanceof CosServiceError) {
       details = `${XmaxLogger.localized("├─ HTTP 状态：", "├─ HTTP Status: ")}${error.httpCode}\n` +
@@ -361,12 +437,15 @@ export class StorageManager implements StorageManaging {
   }
 
   /**
-   * 将毫秒耗时格式化为便于阅读的时间文本。
+   * Formats elapsed milliseconds for display.
    *
-   * @param milliseconds 耗时毫秒数。
-   * @returns 格式化后的耗时文本。
+   * @param milliseconds The elapsed milliseconds.
+   *
+   * @returns The formatted duration.
    */
-  private formatDuration(milliseconds: number): string {
+  private formatDuration(
+    milliseconds: number
+  ): string {
     return milliseconds < 1000 ?
       `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(2)} s`;
   }

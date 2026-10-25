@@ -1,51 +1,66 @@
 //
 //  RtcQualityListener.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 import { UplinkVideoStatistics, DownlinkVideoStatistics } from './VideoStatistics';
 
-/** 描述 RTC 单个传输方向的网络质量等级。 */
+/** The network quality level for one RTC direction. */
 export enum RtcQualityLevel {
+
+  /** Network quality is unavailable. */
   UNKNOWN,
+
+  /** Excellent network quality. */
   EXCELLENT,
+
+  /** Good network quality. */
   GOOD,
+
+  /** Poor network quality. */
   POOR,
+
+  /** Bad network quality. */
   BAD,
+
+  /** Very bad network quality. */
   VERY_BAD,
+
+  /** The network is disconnected. */
   DOWN
 }
 
-/** 接收 RTC 网络质量、视频统计和设备性能告警的内部监听接口。 */
+/** An internal listener for RTC quality, video statistics, and device performance alarms. */
 export interface RtcQualityListener {
-  /**
-   * 接收 RTC 当前上行视频统计，供日志或业务监听使用。
-   *
-   * @param statistics 当前发布的上行视频统计。
-   * @returns 无返回值。
-   */
-  onUplinkVideoStatistics(statistics: UplinkVideoStatistics): void;
 
   /**
-   * 接收 RTC 指定远端用户的下行视频统计。
+   * Receives current uplink statistics for logs or application listeners.
    *
-   * @param statistics 对应远端用户的下行视频统计。
-   * @returns 无返回值。
+   * @param statistics The published uplink video statistics.
    */
-  onDownlinkVideoStatistics(statistics: DownlinkVideoStatistics): void;
+  onUplinkVideoStatistics(
+    statistics: UplinkVideoStatistics
+  ): void;
 
   /**
-   * 处理实时网络质量变化。
+   * Receives a remote user's downlink video statistics.
    *
-   * @param uplink 本地上行网络质量等级。
-   * @param downlink 本地下行网络质量等级。
-   * @returns 无返回值。
+   * @param statistics The remote user's downlink video statistics.
+   */
+  onDownlinkVideoStatistics(
+    statistics: DownlinkVideoStatistics
+  ): void;
+
+  /**
+   * Handles network quality changes.
+   *
+   * @param uplink The local uplink quality level.
+   * @param downlink The local downlink quality level.
    */
   onNetworkQuality(
     uplink: RtcQualityLevel,
@@ -53,13 +68,12 @@ export interface RtcQualityListener {
   ): void;
 
   /**
-   * 处理实时性能受限或恢复事件。
+   * Handles device performance limitation and recovery.
    *
-   * @param limited 是否处于性能受限状态。
-   * @param suggestedWidth 建议的视频输入宽度。
-   * @param suggestedHeight 建议的视频输入高度。
-   * @param suggestedFrameRate 建议的视频输入帧率。
-   * @returns 无返回值。
+   * @param limited Whether device performance is limited.
+   * @param suggestedWidth The recommended input width.
+   * @param suggestedHeight The recommended input height.
+   * @param suggestedFrameRate The recommended input frame rate.
    */
   onPerformanceAlarm(
     limited: boolean,

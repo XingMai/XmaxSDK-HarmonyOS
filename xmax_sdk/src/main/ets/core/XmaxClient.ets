@@ -1,10 +1,9 @@
 //
 //  XmaxClient.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -28,32 +27,34 @@ import { XmaxRealtimeManager } from './realtime/XmaxRealtimeManager';
 import { XmaxStorageManaging } from './storage/XmaxStorageManaging';
 import { XmaxStorageManager } from './storage/XmaxStorageManager';
 
-/** SDK 的统一入口，负责创建实时、存储和媒体业务组件。 */
+/** A client that provides access to Xmax realtime generation, storage, and media services. */
 export class XmaxClient {
 
-  /** 全局配置 */
-  /** 客户端使用的全局配置。 */
+  /** The client configuration. */
   readonly configuration: XmaxConfiguration;
 
-  /** 平台资源 */
+  /** The platform context for SDK resources. */
   private readonly context?: common.UIAbilityContext;
 
-  /** 服务依赖 */
+  /** The service sending authenticated Xmax API requests. */
   private readonly apiService: ApiServicing;
 
   /**
-   * 创建 SDK 客户端。
+   * Creates a client.
    *
-   * @param configuration SDK 全局配置。
-   * @param context 可选的平台页面上下文；创建依赖平台能力的 Manager 时必须提供。
-   * @returns 新建的 XmaxClient 实例。
+   * @param configuration The client configuration.
+   * @param context The optional platform context, required when creating managers that use platform
+   * services.
    */
   constructor(
     configuration: XmaxConfiguration,
     context?: common.UIAbilityContext
   ) {
     this.configuration = configuration;
-    XmaxLogger.configure(configuration.loggerOptions, configuration.environment);
+    XmaxLogger.configure(
+      configuration.loggerOptions,
+      configuration.environment
+    );
     this.context = context;
     this.apiService = new ApiService(
       configuration.apiKey,
@@ -62,12 +63,15 @@ export class XmaxClient {
   }
 
   /**
-   * 创建实时生成业务 Manager。
+   * Creates a realtime generation manager.
    *
-   * @param options 实时生成模型等业务配置。
-   * @returns 可用于创建本地流、连接房间和控制生成流程的实时 Manager。
+   * @param options The model and realtime configuration.
+   *
+   * @returns The manager for local streams, connections, and generation.
    */
-  createRealtimeManager(options: RealtimeConfiguration): XmaxRealtimeManaging {
+  createRealtimeManager(
+    options: RealtimeConfiguration
+  ): XmaxRealtimeManaging {
     if (this.context === undefined) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -78,14 +82,21 @@ export class XmaxClient {
     const baseURL: string | undefined = options.model.baseURL;
     const apiService: ApiServicing = baseURL === undefined
       ? this.apiService
-      : new ApiService(this.configuration.apiKey, baseURL);
-    return new XmaxRealtimeManager(this.context, options, apiService);
+      : new ApiService(
+        this.configuration.apiKey,
+        baseURL
+      );
+    return new XmaxRealtimeManager(
+      this.context,
+      options,
+      apiService
+    );
   }
 
   /**
-   * 创建文件存储 Manager。
+   * Creates a storage manager.
    *
-   * @returns 可用于上传和下载媒体文件的存储 Manager。
+   * @returns The manager for media uploads and downloads.
    */
   createStorageManager(): XmaxStorageManaging {
     this.configuration.validate();
@@ -97,16 +108,22 @@ export class XmaxClient {
       );
     }
 
-    return new XmaxStorageManager(this.context.getApplicationContext(), this.apiService);
+    return new XmaxStorageManager(
+      this.context.getApplicationContext(),
+      this.apiService
+    );
   }
 
   /**
-   * 创建媒体业务规则服务。
+   * Creates a media sizing service.
    *
-   * @param model 媒体输入规则使用的模型，默认为 x2.0。
-   * @returns 可用于计算模型输入尺寸的媒体服务。
+   * @param model The model defining media constraints; defaults to x2.0.
+   *
+   * @returns The service for resolving model input dimensions.
    */
-  createMediaService(model: RealtimeModel = RealtimeModel.X2_0): MediaServicing {
+  createMediaService(
+    model: RealtimeModel = RealtimeModel.X2_0
+  ): MediaServicing {
     return new MediaService(RealtimeModels.realtime(model));
   }
 }

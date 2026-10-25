@@ -1,10 +1,9 @@
 //
 //  InteractionControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,33 +11,27 @@
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 import { InteractionFrame } from './InteractionFrame';
 
-/** 定义生成任务的交互输入处理能力。 */
+/** An interface for generation task interaction input. */
 export interface InteractionControlling {
 
   /**
-   * 开始处理生成任务的交互输入。
+   * Starts generation task interaction processing.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 模型输入视频格式。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The model input format.
    */
   start(
     taskId: string,
     videoFormat: RealtimeVideoFormat
   ): void;
 
-  /**
-   * 停止处理交互输入。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops interaction processing. */
   stop(): void;
 
   /**
-   * 提交一帧交互输入。
+   * Submits an interaction frame.
    *
-   * @param frame 当前容器中的交互点和显示信息。
-   * @returns 无返回值。
+   * @param frame The current viewport touch points and display information.
    */
   submit(
     frame: InteractionFrame

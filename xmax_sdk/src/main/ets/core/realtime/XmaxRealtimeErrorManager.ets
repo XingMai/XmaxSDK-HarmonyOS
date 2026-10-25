@@ -1,10 +1,9 @@
 //
 //  XmaxRealtimeErrorManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,36 +13,48 @@ import {
 } from '../../foundation/errors/XmaxError';
 import { XmaxLogger } from '../../foundation/logging/XmaxLogger';
 
-/** 统一记录实时错误；生命周期失败通过 RealtimeState.reason 通知接入方。 */
+/**
+ * Normalizes realtime error logging; lifecycle failures reach your app through
+ * RealtimeState.reason.
+ */
 export class XmaxRealtimeErrorManager {
 
-  /** 已通知错误的去重记录 */
+  /** The error identities already logged during this manager's lifetime. */
   private readonly reportedErrors: WeakSet<XmaxError> = new WeakSet();
 
   /**
-   * 同一个错误只记录一次，并保留原始对象。
+   * Logs each error once while preserving its original identity.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 包含错误码和可读原因的 SDK 错误。
+   * @param error The SDK error to log once and return unchanged.
+   *
+   * @returns The SDK error with its code and readable reason.
    */
-  handle(error: XmaxError): XmaxError {
+  handle(
+    error: XmaxError
+  ): XmaxError {
     if (this.reportedErrors.has(error)) {
       return error;
     }
 
     this.reportedErrors.add(error);
-    XmaxLogger.error((): string => this.format(error), 'Realtime');
+    XmaxLogger.error(
+      (): string => this.format(error),
+      'Realtime'
+    );
 
     return error;
   }
 
   /**
-   * 统一转换异常并生成可读错误信息。
+   * Normalizes an exception into a readable SDK error.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 用于通知接入方的 SDK 错误。
+   * @param error The SDK error whose code and details are formatted.
+   *
+   * @returns The SDK error for your app.
    */
-  private format(error: XmaxError): string {
+  private format(
+    error: XmaxError
+  ): string {
     const details: string[] = [
       `${XmaxLogger.localized("错误码：", "Error Code: ")}${error.code}`,
       `${XmaxLogger.localized("信息：", "Message: ")}${error.message}`

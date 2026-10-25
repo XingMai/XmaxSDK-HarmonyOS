@@ -1,10 +1,9 @@
 //
 //  RenderController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -33,86 +32,112 @@ import {
 const REMOTE_FRAME_TIMEOUT_MS: number = 10000;
 const REMOTE_NEXT_FRAME_TIMEOUT_MS: number = 1500;
 
-/** 保存等待远端画面就绪的超时任务和完成回调。 */
+/** A remote first-frame wait with its timeout and completion handlers. */
 class RemoteFrameWaiter {
 
-  /** 首帧等待超时 */
+  // First-frame timeout
+
+  /** The timer scheduling pending event delivery. */
   timer: number = -1;
 
-  /** 首帧等待结果通知 */
-  /**
-   * 完成当前资源或媒体结果的异步等待。
-   *
-   * @returns 无返回值。
-   */
+  /** Completes an asynchronous resource or media result wait. */
   readonly resolve: () => void;
-  /**
-   * 以指定错误结束当前媒体结果的异步等待。
-   *
-   * @param error 导致当前等待或媒体输出失败的 SDK 错误。
-   * @returns 无返回值。
-   */
-  readonly reject: (error: XmaxError) => void;
 
   /**
-   * 创建远端画面等待记录。
+   * Rejects the current media result wait with an error.
    *
-   * @param resolve 操作成功时完成等待的回调。
-   * @param reject 操作失败时拒绝等待的回调。
-   * @returns 新建的 RemoteFrameWaiter 实例。
+   * @param error The SDK error ending the wait or media output.
    */
-  constructor(resolve: () => void, reject: (error: XmaxError) => void) {
+  readonly reject: (
+    error: XmaxError
+  ) => void;
+
+  /** Creates a remote frame waiter. */
+  constructor(
+    resolve: () => void,
+    reject: (
+      error: XmaxError
+    ) => void
+  ) {
     this.resolve = resolve;
     this.reject = reject;
   }
 }
 
-/** 统一协调视频轨道、RTC 画面和轨迹交互的渲染资源。 */
+/** Coordinates video tracks, RTC rendering, and trajectory rendering resources. */
 export class RenderController implements RenderControlling {
 
-  /** 渲染平台与错误通知 */
+  // Rendering platform and error delivery
+
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
+
+  /** The handler for asynchronous component failures. */
   private readonly errorListener: XmaxErrorListener;
 
-  /** 远端流及其渲染绑定 */
+  // Remote stream and rendering binding
+
+  /** The rendering resources registered for the remote track. */
   private remoteBinding: VideoRenderBinding | null = null;
+
+  /** The current remote result stream. */
   private remoteStream: RemoteStream | null = null;
 
-  /** 画面就绪与帧交付开关 */
+  // Video readiness and frame observation
+
+  /** Whether a usable result frame has arrived for this binding. */
   private remoteFrameReady: boolean = false;
+
+  /** Whether public frame delivery is enabled for the result binding. */
   private remoteFrameDeliveryActive: boolean = false;
 
-  /** 异步帧交付 */
+  // Asynchronous frame delivery
+
+  /** The queue delivering copied frames to your app asynchronously. */
   private readonly frameDispatcher: RealtimeVideoFrameDispatcher = new RealtimeVideoFrameDispatcher();
 
-  /** 首帧等待与错误结果 */
+  // First-frame wait and error result
+
+  /** The fatal error ending pending remote frame waits. */
   private remoteFrameError: XmaxError | null = null;
+
+  /** The pending remote first-frame waits. */
   private readonly remoteFrameWaiters: Set<RemoteFrameWaiter> = new Set();
+
+  /** The pending next-frame wait used to resume frozen video. */
   private nextRemoteFrameWaiter: RemoteFrameWaiter | null = null;
 
-  /** 冻结预览与资源版本 */
+  // Frozen preview and resource revision
+
+  /** The retained snapshot displayed while remote video is frozen. */
   private frozenRemoteFrame: image.PixelMap | null = null;
+
+  /** The revision rejecting stale freeze and resume results. */
   private remoteFreezeVersion: number = 0;
 
-  /** 远端视图绑定控制 */
+  // Remote view binding controller
+
+  /** The controller binding remote streams to native views. */
   private readonly remoteVideoController: RemoteVideoControlling;
 
   /**
-   * 创建渲染层统一 Controller 并完成内部组件装配。
+   * Creates a render controller and its components.
    *
-   * @param rtcManager 提供远端视频绑定能力的 RTC Manager。
-   * @param errorListener 接收渲染视图异步绑定失败。
-   * @returns 新建的 RenderController 实例。
+   * @param rtcManager The RTC manager binding remote video.
+   * @param errorListener The asynchronous view binding failure handler.
    */
   constructor(
     rtcManager: RtcManaging,
-    errorListener: XmaxErrorListener = (_error: XmaxError): void => {}
+    errorListener: XmaxErrorListener = (_error: XmaxError): void => { }
   ) {
     this.rtcManager = rtcManager;
     this.errorListener = errorListener;
-    this.remoteVideoController = new RemoteVideoController(rtcManager, (ready: boolean): void => {
-      this.remoteBinding?.setVideoReady(ready);
-    });
+    this.remoteVideoController = new RemoteVideoController(
+      rtcManager,
+      (ready: boolean): void => {
+        this.remoteBinding?.setVideoReady(ready);
+      }
+    );
     rtcManager.setRemoteVideoFrameListener((stream: RemoteStream, copyFrame: () => RealtimeVideoFrame): void => {
       if (this.remoteStream?.key() !== stream.key() || this.remoteFrameError !== null) {
         return;
@@ -121,7 +146,7 @@ export class RenderController implements RenderControlling {
         this.remoteFrameReady = true;
         this.finishRemoteFrameWaiters();
       }
-      // 恢复播放只需要下一帧到达的通知；只有公开帧监听器需要复制像素。
+      // Resume needs only a next-frame notification; copy pixels only for the public listener.
       this.finishNextRemoteFrameWait();
       const shouldDeliver: boolean = this.frameDispatcher.hasListener && this.remoteFrameDeliveryActive;
       if (!shouldDeliver) {
@@ -132,22 +157,29 @@ export class RenderController implements RenderControlling {
         const frame: RealtimeVideoFrame = copyFrame();
         this.frameDispatcher.dispatch(frame);
       } catch (error) {
-        XmaxLogger.error(`${XmaxLogger.localized("复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ 原因：", "复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Render');
+        XmaxLogger.error(
+          `${XmaxLogger.localized("复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ 原因：", "复制远端视频帧失败 (Remote Video Frame Copy Failed)\n└─ Reason: ")}${XmaxError.from(error).message}`,
+          'Render'
+        );
       }
     });
   }
 
   /**
-   * 设置公开远端帧监听器；null 取消监听并清除待交付帧。
+   * Sets remote frame delivery; null removes the listener and clears pending frames.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoFrameListener(listener: RealtimeVideoFrameListener | null): void {
+  setRemoteVideoFrameListener(
+    listener: RealtimeVideoFrameListener | null
+  ): void {
     const stream: RemoteStream | null = this.remoteStream;
-    // 先开启观察，失败时保留原监听器和已排队的帧。
+    // Enable observation first; preserve the existing listener and pending frames if enabling fails.
     if (listener !== null && stream !== null && this.remoteFrameDeliveryActive && this.remoteFrameError === null) {
-      this.rtcManager.observeRemoteVideoFrames(stream, true);
+      this.rtcManager.observeRemoteVideoFrames(
+        stream,
+        true
+      );
     }
     this.frameDispatcher.setListener(listener);
     if (listener === null && stream !== null && this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
@@ -155,21 +187,13 @@ export class RenderController implements RenderControlling {
     }
   }
 
-  /**
-   * 停止当前流的公开帧交付，直至设置新的远端流。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops public frame delivery until a new remote stream is set. */
   stopRemoteVideoFrameDelivery(): void {
     this.remoteFrameDeliveryActive = false;
     this.frameDispatcher.invalidatePendingFrames();
   }
 
-  /**
-   * 捕获下一张远端帧并以静态覆盖层冻结当前生成画面。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Captures the next remote frame as a frozen result overlay. */
   async freezeRemoteVideo(): Promise<void> {
     const version: number = ++this.remoteFreezeVersion;
     const stream: RemoteStream | null = this.remoteStream;
@@ -199,11 +223,7 @@ export class RenderController implements RenderControlling {
     }
   }
 
-  /**
-   * 收到下一张远端帧后移除静态覆盖层。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Removes the frozen overlay after the next remote frame arrives. */
   async resumeRemoteVideo(): Promise<void> {
     const version: number = ++this.remoteFreezeVersion;
     if (this.frozenRemoteFrame === null) {
@@ -225,30 +245,32 @@ export class RenderController implements RenderControlling {
   }
 
   /**
-   * 更新当前需要渲染的远端 RTC 视频流。
+   * Updates the remote RTC stream to render.
    *
-   * @param stream 远端视频流；传入空值时清除当前流。
-   * @returns 无返回值。
+   * @param stream The remote stream, or null to clear it.
    */
-  setRemoteStream(stream: RemoteStream | null): void {
+  setRemoteStream(
+    stream: RemoteStream | null
+  ): void {
     this.resetRemoteFrameWait();
     this.remoteStream = stream;
     this.remoteFrameDeliveryActive = stream !== null;
     this.remoteVideoController.setRemoteStream(stream);
     if (stream !== null) {
-      this.rtcManager.observeRemoteVideoFrames(stream, true);
+      this.rtcManager.observeRemoteVideoFrames(
+        stream,
+        true
+      );
     }
   }
 
-  /**
-   * 等待本次 SEI 匹配后出现的首个可用远端帧，超时或流被清除时拒绝。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for a usable frame after the current SEI match, rejecting on timeout or stream removal. */
   waitUntilRemoteFrameReady(): Promise<void> {
     if (this.remoteStream === null) {
-      return Promise.reject(new XmaxError(XmaxErrorCode.CANCELLED,
-        'Remote video first frame wait was cancelled'));
+      return Promise.reject(new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'Remote video first frame wait was cancelled'
+      ));
     }
     if (this.remoteFrameError !== null) {
       return Promise.reject(this.remoteFrameError);
@@ -256,25 +278,36 @@ export class RenderController implements RenderControlling {
     if (this.remoteFrameReady) {
       return Promise.resolve();
     }
-    return new Promise<void>((resolve: () => void, reject: (error: XmaxError) => void): void => {
-      const waiter = new RemoteFrameWaiter(resolve, reject);
+    return new Promise<void>((resolve: () => void, reject: (
+      error: XmaxError
+    ) => void): void => {
+      const waiter = new RemoteFrameWaiter(
+        resolve,
+        reject
+      );
       this.remoteFrameWaiters.add(waiter);
-      waiter.timer = setTimeout((): void => {
-        if (this.remoteFrameWaiters.has(waiter)) {
-          this.failRemoteFrameWait(new XmaxError(XmaxErrorCode.TIMEOUT,
-            'Remote video first frame timed out'));
-        }
-      }, REMOTE_FRAME_TIMEOUT_MS);
+      waiter.timer = setTimeout(
+        (): void => {
+          if (this.remoteFrameWaiters.has(waiter)) {
+            this.failRemoteFrameWait(new XmaxError(
+              XmaxErrorCode.TIMEOUT,
+              'Remote video first frame timed out'
+            ));
+          }
+        },
+        REMOTE_FRAME_TIMEOUT_MS
+      );
     });
   }
 
   /**
-   * 使启动期间的异步致命错误立即结束首帧等待。
+   * Ends a startup frame wait immediately on a fatal asynchronous error.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param error The fatal failure rejecting the pending first-frame wait.
    */
-  failRemoteFrameWait(error: XmaxError): void {
+  failRemoteFrameWait(
+    error: XmaxError
+  ): void {
     if (this.remoteStream === null || this.remoteFrameReady || this.remoteFrameError !== null) {
       return;
     }
@@ -285,11 +318,7 @@ export class RenderController implements RenderControlling {
     this.finishNextRemoteFrameWait(error);
   }
 
-  /**
-   * 清除远端首帧状态，并取消未完成的画面等待。
-   *
-   * @returns 无返回值。
-   */
+  /** Clears remote readiness and cancels pending frame waits. */
   private resetRemoteFrameWait(): void {
     ++this.remoteFreezeVersion;
     this.stopRemoteVideoFrameDelivery();
@@ -302,20 +331,23 @@ export class RenderController implements RenderControlling {
       'Remote video next frame wait was cancelled'
     ));
     void this.clearFrozenRemoteFrame();
-    this.finishRemoteFrameWaiters(new XmaxError(XmaxErrorCode.CANCELLED,
-      'Remote video first frame wait was cancelled'));
+    this.finishRemoteFrameWaiters(new XmaxError(
+      XmaxErrorCode.CANCELLED,
+      'Remote video first frame wait was cancelled'
+    ));
     if (stream !== null) {
       this.stopFrameObservation(stream);
     }
   }
 
   /**
-   * 完成或拒绝全部远端首帧等待，并移除超时任务。
+   * Completes or rejects all first-frame waiters and removes timeouts.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param error The failure rejecting all first-frame waits; omission completes them successfully.
    */
-  private finishRemoteFrameWaiters(error?: XmaxError): void {
+  private finishRemoteFrameWaiters(
+    error?: XmaxError
+  ): void {
     this.remoteFrameWaiters.forEach((waiter: RemoteFrameWaiter): void => {
       clearTimeout(waiter.timer);
       if (error === undefined) {
@@ -327,11 +359,7 @@ export class RenderController implements RenderControlling {
     this.remoteFrameWaiters.clear();
   }
 
-  /**
-   * 等待当前远端流的下一帧可用，超时或中断时拒绝。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for the current stream's next frame, rejecting on timeout or interruption. */
   private waitForNextRemoteFrame(): Promise<void> {
     const stream: RemoteStream | null = this.remoteStream;
     if (stream === null || this.remoteFrameError !== null) {
@@ -346,35 +374,47 @@ export class RenderController implements RenderControlling {
     ));
     return new Promise<void>((
       resolve: () => void,
-      reject: (error: XmaxError) => void
+      reject: (
+        error: XmaxError
+      ) => void
     ): void => {
-      const waiter = new RemoteFrameWaiter(resolve, reject);
+      const waiter = new RemoteFrameWaiter(
+        resolve,
+        reject
+      );
       this.nextRemoteFrameWaiter = waiter;
       try {
-        this.rtcManager.observeRemoteVideoFrames(stream, true);
+        this.rtcManager.observeRemoteVideoFrames(
+          stream,
+          true
+        );
       } catch (error) {
         this.nextRemoteFrameWaiter = null;
         reject(XmaxError.from(error));
         return;
       }
-      waiter.timer = setTimeout((): void => {
-        if (this.nextRemoteFrameWaiter === waiter) {
-          this.finishNextRemoteFrameWait(new XmaxError(
-            XmaxErrorCode.TIMEOUT,
-            'Remote video next frame timed out'
-          ));
-        }
-      }, REMOTE_NEXT_FRAME_TIMEOUT_MS);
+      waiter.timer = setTimeout(
+        (): void => {
+          if (this.nextRemoteFrameWaiter === waiter) {
+            this.finishNextRemoteFrameWait(new XmaxError(
+              XmaxErrorCode.TIMEOUT,
+              'Remote video next frame timed out'
+            ));
+          }
+        },
+        REMOTE_NEXT_FRAME_TIMEOUT_MS
+      );
     });
   }
 
   /**
-   * 完成或拒绝下一帧等待，并释放相关定时器。
+   * Completes or rejects the next-frame wait and releases timers.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 无返回值。
+   * @param error The failure rejecting the next-frame wait; omission completes it successfully.
    */
-  private finishNextRemoteFrameWait(error?: XmaxError): void {
+  private finishNextRemoteFrameWait(
+    error?: XmaxError
+  ): void {
     const waiter: RemoteFrameWaiter | null = this.nextRemoteFrameWaiter;
     if (waiter === null) {
       return;
@@ -388,11 +428,7 @@ export class RenderController implements RenderControlling {
     }
   }
 
-  /**
-   * 清除冻结预览并释放所持有的截图资源。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Clears frozen preview and releases its snapshot. */
   private async clearFrozenRemoteFrame(): Promise<void> {
     const frame: image.PixelMap | null = this.frozenRemoteFrame;
     this.frozenRemoteFrame = null;
@@ -403,26 +439,33 @@ export class RenderController implements RenderControlling {
   }
 
   /**
-   * 停止对指定远端流的逐帧回调观察。
+   * Stops frame observation for a remote stream.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @returns 无返回值。
+   * @param stream The media stream to bind or process.
    */
-  private stopFrameObservation(stream: RemoteStream): void {
+  private stopFrameObservation(
+    stream: RemoteStream
+  ): void {
     try {
-      this.rtcManager.observeRemoteVideoFrames(stream, false);
+      this.rtcManager.observeRemoteVideoFrames(
+        stream,
+        false
+      );
     } catch (error) {
-      XmaxLogger.error(`${XmaxLogger.localized("停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ 原因：", "停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ Reason: ")}${XmaxError.from(error).message}`, 'Render');
+      XmaxLogger.error(
+        `${XmaxLogger.localized("停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ 原因：", "停止远端视频帧观察失败 (Failed to Stop Remote Video Frame Observation)\n└─ Reason: ")}${XmaxError.from(error).message}`,
+        'Render'
+      );
     }
   }
 
   /**
-   * 为远端视频轨道注册画面和轨迹交互绑定。
+   * Registers rendering and interaction bindings for a remote track.
    *
-   * @param track 需要注册的远端视频轨道。
-   * @param interactionController 接收轨迹交互输入的统一媒体组件。
-   * @param resolvedMediaSize 处理后的本地媒体尺寸，作为独立于回传分辨率的交互基准。
-   * @returns 无返回值。
+   * @param track The remote track to register.
+   * @param interactionController The media component receiving trajectory interactions.
+   * @param resolvedMediaSize The processed local media dimensions defining interaction coordinates
+   * independently of return resolution.
    */
   registerRemoteTrack(
     track: RealtimeVideoTrack,
@@ -436,7 +479,10 @@ export class RenderController implements RenderControlling {
         contentMode: VideoContentMode
       ): void => {
         try {
-          this.remoteVideoController.attach(viewId, contentMode);
+          this.remoteVideoController.attach(
+            viewId,
+            contentMode
+          );
         } catch (error) {
           binding.setVideoReady(false);
           this.errorListener(XmaxError.from(error));
@@ -447,20 +493,27 @@ export class RenderController implements RenderControlling {
       }
     );
     this.remoteBinding = binding;
-    VideoRenderRegistry.register(track, binding);
+    VideoRenderRegistry.register(
+      track,
+      binding
+    );
     TrajectoryRegistry.register(
       track,
-      new TrajectoryBinding(interactionController, resolvedMediaSize)
+      new TrajectoryBinding(
+        interactionController,
+        resolvedMediaSize
+      )
     );
   }
 
   /**
-   * 注销远端轨道的所有渲染绑定并重置远端画面。
+   * Unregisters remote track bindings and resets remote video.
    *
-   * @param track 需要注销的远端视频轨道；传入空值时仅重置画面。
-   * @returns 无返回值。
+   * @param track The track to unregister; an absent track only resets video.
    */
-  resetRemoteTrack(track: RealtimeVideoTrack | null): void {
+  resetRemoteTrack(
+    track: RealtimeVideoTrack | null
+  ): void {
     this.resetRemoteFrameWait();
     if (track !== null) {
       VideoRenderRegistry.unregister(track);

@@ -1,10 +1,9 @@
 //
 //  video_frame_geometry.h
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -18,47 +17,68 @@
 
 namespace xmax {
 namespace internal {
-/**
- * 以源像素坐标描述需要保留的裁剪区域。
- */
+
+/** A crop rectangle in source pixel coordinates. */
 struct VideoFrameCropGeometry {
 
-  /** 源坐标系内的裁剪矩形 */
+  // Crop rectangle in source coordinates
+
+  /** The horizontal coordinate. */
   double x;
+
+  /** The vertical coordinate. */
   double y;
+
+  /** The image or frame width. */
   double width;
+
+  /** The image or frame height. */
   double height;
 };
 
-/**
- * 描述源帧布局、裁剪区域及目标方向和尺寸，供视频转换计划使用。
- */
+/** The source layout, crop, rotation, and target dimensions for a conversion plan. */
 struct VideoFrameTransformGeometry {
 
-  /** 源图像尺寸与平面布局 */
+  // Source image dimensions and plane layout
+
+  /** The source frame width, in pixels. */
   int32_t sourceWidth;
+
+  /** The source frame height, in pixels. */
   int32_t sourceHeight;
+
+  /** The source luma row stride, in bytes. */
   int32_t sourceStride;
+
+  /** The source chroma row stride, in bytes. */
   int32_t sourceChromaStride;
 
-  /** 目标方向与尺寸 */
+  // Target orientation and dimensions
+
+  /** The clockwise video rotation. */
   int32_t rotation;
+
+  /** The target frame width, in pixels. */
   int32_t targetWidth;
+
+  /** The target frame height, in pixels. */
   int32_t targetHeight;
 
-  /** 源图像裁剪区域 */
+  // Source crop bounds
+
+  /** The retained crop rectangle in source pixels. */
   VideoFrameCropGeometry sourceCrop;
 };
 
 /**
- * 按目标宽高比与旋转方向计算源裁剪矩形及转换几何参数。
+ * Resolves the source crop and conversion geometry for the target aspect ratio and rotation.
  *
- * @param configuration 源图像布局、旋转角度和目标尺寸配置。
- * @returns 可供转换计划使用的源布局、裁剪和目标几何信息。
+ * @param configuration The source layout, rotation, and target dimensions.
+ * @return The source layout, crop, and target geometry for conversion.
  */
 VideoFrameTransformGeometry MakeVideoFrameTransformGeometry(
-    const VideoFrameTransformConfiguration& configuration);
-}  /** namespace internal */
-}  /** namespace xmax */
+    const VideoFrameTransformConfiguration &configuration);
+} // namespace internal
+} // namespace xmax
 
 #endif

@@ -1,18 +1,25 @@
 //
 //  VideoRotation.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 表示视频帧顺时针旋转角度。 */
+/** A clockwise video frame rotation. */
 export enum VideoRotation {
+
+  /** A clockwise rotation of 0 degrees. */
   ROTATION_0 = 0,
+
+  /** A clockwise rotation of 90 degrees. */
   ROTATION_90 = 90,
+
+  /** A clockwise rotation of 180 degrees. */
   ROTATION_180 = 180,
+
+  /** A clockwise rotation of 270 degrees. */
   ROTATION_270 = 270
 }

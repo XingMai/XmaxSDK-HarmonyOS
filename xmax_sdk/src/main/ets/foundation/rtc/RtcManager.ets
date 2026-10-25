@@ -1,10 +1,9 @@
 //
 //  RtcManager.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -71,48 +70,53 @@ import { VideoEncodingConfiguration } from './VideoEncodingConfiguration';
 const JOIN_TIMEOUT_MS: number = 15000;
 const SNAPSHOT_TIMEOUT_MS: number = 1500;
 
-/** 表示日志格式化所需的房间事件字段。 */
+/** Room event fields used for log formatting. */
 interface LoggedRoomEvent {
 
-  /** 房间信令事件名称 */
+  // Room signaling event name
+
+  /** The room signaling event name. */
   event?: string;
 }
 
-/** 保存远端截图请求的流标识、超时任务和结果回调。 */
+/** A pending remote snapshot with its stream, timeout, and result handlers. */
 class RemoteSnapshotRequest {
 
-  /** 截图超时与目标流 */
+  // Snapshot timeout and target stream
+
+  /** The timer scheduling pending event delivery. */
   timer: number = -1;
+
+  /** The room/user key identifying the remote stream. */
   readonly streamKey: string;
 
-  /** 截图结果通知 */
   /**
-   * 完成当前资源或媒体结果的异步等待。
+   * Completes an asynchronous resource or media result wait.
    *
-   * @param pixelMap 截图结果，由接收方负责释放。
-   * @returns 无返回值。
+   * @param pixelMap The snapshot PixelMap, released by the receiver.
    */
-  readonly resolve: (pixelMap: image.PixelMap) => void;
-  /**
-   * 以指定错误结束当前媒体结果的异步等待。
-   *
-   * @param error 导致当前等待或媒体输出失败的 SDK 错误。
-   * @returns 无返回值。
-   */
-  readonly reject: (error: XmaxError) => void;
+  readonly resolve: (
+    pixelMap: image.PixelMap
+  ) => void;
 
   /**
-   * 创建远端截图等待记录。
+   * Rejects the current media result wait with an error.
    *
-   * @param streamKey 由房间与用户标识组成的远端流键。
-   * @param resolve 操作成功时完成等待的回调。
-   * @param reject 操作失败时拒绝等待的回调。
-   * @returns 新建的 RemoteSnapshotRequest 实例。
+   * @param error The SDK error ending the wait or media output.
    */
+  readonly reject: (
+    error: XmaxError
+  ) => void;
+
+  /** Creates a pending remote snapshot. */
   constructor(
     streamKey: string,
-    resolve: (pixelMap: image.PixelMap) => void,
-    reject: (error: XmaxError) => void
+    resolve: (
+      pixelMap: image.PixelMap
+    ) => void,
+    reject: (
+      error: XmaxError
+    ) => void
   ) {
     this.streamKey = streamKey;
     this.resolve = resolve;
@@ -120,72 +124,90 @@ class RemoteSnapshotRequest {
   }
 }
 
-/** 封装第三方 RTC 引擎、房间、媒体传输和渲染绑定能力。 */
+/** An adapter for third-party RTC engines, rooms, media transport, and rendering. */
 export class RtcManager implements RtcManaging {
 
-  /** 平台上下文与引擎资源 */
+  // Platform context and engine resources
+
+  /** The platform context for SDK resources. */
   private readonly context: common.UIAbilityContext;
 
-  /** 远端发布流记录 */
+  // Remote published stream records
+
+  /** The published remote stream identities in the current room. */
   private readonly remoteStreamKeys: Map<string, RemoteStreamKey> = new Map();
 
-  /** 引擎租约与房间生命周期 */
+  // Engine lease and room lifecycle
+
+  /** The exclusive engine lease held by this RTC manager. */
   private engineLease: RtcEngineLease | null = null;
+
+  /** The current RTC room. */
   private room: RTCRoom | null = null;
+
+  /** The RTC room being joined before connection is committed. */
   private pendingRoom: RTCRoom | null = null;
-  /**
-   * 取消当前尚未完成的 RTC 入房等待。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Cancels the pending RTC room join. */
   private pendingJoinCancellation: (() => void) | null = null;
 
-  /** 房间业务事件监听 */
+  // Room event listener
+
+  /** The currently installed event handler. */
   private listener: RtcEventListener | null = null;
 
-  /** 远端首帧渲染通知 */
+  // Remote first-frame display notification
+
+  /** The handler for remote first-frame display events. */
   private remoteVideoRenderedListener: RtcRemoteVideoRenderedListener | null = null;
+
+  /** The remote streams with a rendered first frame in this publication. */
   private readonly renderedRemoteStreams: Set<string> = new Set();
 
-  /** 逐帧观察与数据交付 */
+  // Frame observation and delivery
+
+  /** The handler observing processed remote video frames. */
   private remoteVideoFrameListener: RtcRemoteVideoFrameListener | null = null;
+
+  /** The remote streams whose processed frames are observed. */
   private readonly observedRemoteStreams: Set<string> = new Set();
 
-  /** 远端截图等待 */
+  // Pending remote snapshot
+
+  /** The pending remote snapshot requests. */
   private readonly snapshotRequests: Map<number, RemoteSnapshotRequest> = new Map();
 
-  /** 网络与性能监控 */
+  // Network and performance monitoring
+
+  /** The handler for RTC quality and device performance events. */
   private qualityListener: RtcQualityListener | null = null;
 
-  /** 本地视频镜像配置 */
+  // Local video mirroring configuration
+
+  /** The mirroring applied to local RTC video. */
   private localVideoMirrorType: MirrorType = MirrorType.kMirrorTypeNone;
 
-  /** 当前房间身份 */
+  // Current room identity
+
+  /** The identifier of the currently joined RTC room. */
   private activeRoomId: string = '';
 
-  /**
-   * 创建 RTC Manager。
-   *
-   * @param context 创建 RTC Engine 使用的平台上下文。
-   * @returns 新建的 RtcManager 实例。
-   */
-  constructor(context: common.UIAbilityContext) {
+  /** Creates an RTC manager. */
+  constructor(
+    context: common.UIAbilityContext
+  ) {
     this.context = context;
   }
 
-  /**
-   * 获取当前租约持有的 RTC Engine。
-   *
-   * @returns 已初始化的 RTC Engine；尚未初始化时返回空值。
-   */
+  /** The engine held by the current lease, or undefined before initialization. */
   private get engine(): RTCEngine | null {
     return this.engineLease?.engine ?? null;
   }
 
   /**
-   * 获取独占 RTC Engine 租约并绑定全局事件。
+   * Acquires an exclusive RTC engine lease and binds global events.
    *
-   * @returns RTC Engine 初始化完成后的 Promise。
+   * The Promise fulfills after RTC engine initialization.
    */
   async initialize(): Promise<void> {
     if (this.engineLease !== null) {
@@ -195,28 +217,46 @@ export class RtcManager implements RtcManaging {
     const lease: RtcEngineLease = await RtcEngineManager.acquire(this.context);
     const engine: RTCEngine = lease.engine;
 
-    engine.on('onSEIMessageReceived', (key: RemoteStreamKey, message: ArrayBuffer): void => {
-      if (this.engine !== engine || key.room_id !== this.activeRoomId ||
-        key.stream_index !== StreamIndex.kStreamIndexMain) {
-        return;
-      }
+    engine.on(
+      'onSEIMessageReceived',
+      (key: RemoteStreamKey, message: ArrayBuffer): void => {
+        if (this.engine !== engine || key.room_id !== this.activeRoomId ||
+          key.stream_index !== StreamIndex.kStreamIndexMain) {
+          return;
+        }
 
-      const stream = new RemoteStream(key.room_id, key.user_id);
-      const decodedMessage: string = util.TextDecoder.create().decodeToString(new Uint8Array(message));
-      this.remoteStreamKeys.set(stream.key(), key);
-      this.listener?.onSeiMessageReceived(stream, decodedMessage);
-    });
-    engine.on('onFirstRemoteVideoFrameRendered',
+        const stream = new RemoteStream(
+          key.room_id,
+          key.user_id
+        );
+        const decodedMessage: string = util.TextDecoder.create().decodeToString(new Uint8Array(message));
+        this.remoteStreamKeys.set(
+          stream.key(),
+          key
+        );
+        this.listener?.onSeiMessageReceived(
+          stream,
+          decodedMessage
+        );
+      }
+    );
+    engine.on(
+      'onFirstRemoteVideoFrameRendered',
       (key: RemoteStreamKey, _info: VideoFrameInfo): void => {
         if (this.engine !== engine || key.room_id !== this.activeRoomId ||
           key.stream_index !== StreamIndex.kStreamIndexMain) {
           return;
         }
-        const stream = new RemoteStream(key.room_id, key.user_id);
+        const stream = new RemoteStream(
+          key.room_id,
+          key.user_id
+        );
         this.renderedRemoteStreams.add(stream.key());
         this.remoteVideoRenderedListener?.(stream);
-      });
-    engine.on('onRemoteVideoFrame',
+      }
+    );
+    engine.on(
+      'onRemoteVideoFrame',
       (key: RemoteStreamKey, position: RemoteVideoSinkPosition, frame: IVideoFrame): void => {
         if (this.engine !== engine || key.room_id !== this.activeRoomId ||
           key.stream_index !== StreamIndex.kStreamIndexMain ||
@@ -224,16 +264,27 @@ export class RtcManager implements RtcManaging {
           frame.width <= 0 || frame.height <= 0) {
           return;
         }
-        const stream = new RemoteStream(key.room_id, key.user_id);
+        const stream = new RemoteStream(
+          key.room_id,
+          key.user_id
+        );
         if (this.observedRemoteStreams.has(stream.key())) {
-          this.remoteVideoFrameListener?.(stream, () => RtcVideoConverter.copyRemoteFrame(frame));
+          this.remoteVideoFrameListener?.(
+            stream,
+            () => RtcVideoConverter.copyRemoteFrame(frame)
+          );
         }
-      });
-    engine.on('onTakeRemoteSnapshotResult',
+      }
+    );
+    engine.on(
+      'onTakeRemoteSnapshotResult',
       (taskId: number, key: RemoteStreamKey, pixelMap: image.PixelMap | null, errorCode: number): void => {
         const request: RemoteSnapshotRequest | undefined = this.snapshotRequests.get(taskId);
         if (this.engine !== engine || request === undefined ||
-          request.streamKey !== new RemoteStream(key.room_id, key.user_id).key() ||
+          request.streamKey !== new RemoteStream(
+            key.room_id,
+            key.user_id
+          ).key() ||
           key.stream_index !== StreamIndex.kStreamIndexMain) {
           this.releaseSnapshot(pixelMap);
           return;
@@ -242,11 +293,15 @@ export class RtcManager implements RtcManaging {
         clearTimeout(request.timer);
         if (errorCode !== 0 || pixelMap === null) {
           this.releaseSnapshot(pixelMap);
-          request.reject(new XmaxError(XmaxErrorCode.RTC_ERROR, `Remote snapshot failed: ${errorCode}`));
+          request.reject(new XmaxError(
+            XmaxErrorCode.RTC_ERROR,
+            `Remote snapshot failed: ${errorCode}`
+          ));
           return;
         }
         request.resolve(pixelMap);
-      });
+      }
+    );
     engine.on(
       'onPerformanceAlarms',
       (
@@ -259,8 +314,14 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
-        VolcRtcStatsLogger.logPerformanceAlarm(reason, data);
-        this.emitPerformanceAlarm(reason, data);
+        VolcRtcStatsLogger.logPerformanceAlarm(
+          reason,
+          data
+        );
+        this.emitPerformanceAlarm(
+          reason,
+          data
+        );
       }
     );
 
@@ -268,9 +329,9 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 离开当前房间、解除全局事件并释放 RTC Engine 租约。
+   * Leaves the room, detaches global events, and releases the engine lease.
    *
-   * @returns RTC 资源释放完成后的 Promise。
+   * The Promise fulfills after RTC resource release.
    */
   async destroy(): Promise<void> {
     const lease: RtcEngineLease | null = this.engineLease;
@@ -285,21 +346,36 @@ export class RtcManager implements RtcManaging {
       if (lease !== null) {
         const engine: RTCEngine = lease.engine;
         try {
-          this.offEngineEventSafely((): void => {
-            engine.off('onSEIMessageReceived');
-          }, 'onSEIMessageReceived');
-          this.offEngineEventSafely((): void => {
-            engine.off('onFirstRemoteVideoFrameRendered');
-          }, 'onFirstRemoteVideoFrameRendered');
-          this.offEngineEventSafely((): void => {
-            engine.off('onRemoteVideoFrame');
-          }, 'onRemoteVideoFrame');
-          this.offEngineEventSafely((): void => {
-            engine.off('onTakeRemoteSnapshotResult');
-          }, 'onTakeRemoteSnapshotResult');
-          this.offEngineEventSafely((): void => {
-            engine.off('onPerformanceAlarms');
-          }, 'onPerformanceAlarms');
+          this.offEngineEventSafely(
+            (): void => {
+              engine.off('onSEIMessageReceived');
+            },
+            'onSEIMessageReceived'
+          );
+          this.offEngineEventSafely(
+            (): void => {
+              engine.off('onFirstRemoteVideoFrameRendered');
+            },
+            'onFirstRemoteVideoFrameRendered'
+          );
+          this.offEngineEventSafely(
+            (): void => {
+              engine.off('onRemoteVideoFrame');
+            },
+            'onRemoteVideoFrame'
+          );
+          this.offEngineEventSafely(
+            (): void => {
+              engine.off('onTakeRemoteSnapshotResult');
+            },
+            'onTakeRemoteSnapshotResult'
+          );
+          this.offEngineEventSafely(
+            (): void => {
+              engine.off('onPerformanceAlarms');
+            },
+            'onPerformanceAlarms'
+          );
         } finally {
           await RtcEngineManager.release(lease);
         }
@@ -308,13 +384,15 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 单个事件解绑失败只记日志，不影响其余解绑和引擎释放。
+   * Log individual detach failures and continue remaining detaches and engine release.
    *
-   * @param action 正在执行的资源操作名称或操作函数。
-   * @param eventName 需要解绑或记录的事件名称。
-   * @returns 无返回值。
+   * @param action The resource operation name or function.
+   * @param eventName The event name to detach or log.
    */
-  private offEngineEventSafely(action: () => void, eventName: string): void {
+  private offEngineEventSafely(
+    action: () => void,
+    eventName: string
+  ): void {
     try {
       action();
     } catch (error) {
@@ -326,12 +404,13 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 将中性视频编码配置应用到 RTC Engine。
+   * Applies neutral encoder settings to the RTC engine.
    *
-   * @param configuration 视频编码配置。
-   * @returns 无返回值。
+   * @param configuration The video encoder configuration.
    */
-  configureVideoEncoding(configuration: VideoEncodingConfiguration): void {
+  configureVideoEncoding(
+    configuration: VideoEncodingConfiguration
+  ): void {
     const engine: RTCEngine = this.requireEngine();
     const encoderConfiguration: VideoEncoderConfig = {
       width: configuration.width,
@@ -347,11 +426,7 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /**
-   * 将主视频流切换为外部视频源并关闭 RTC 镜像处理。
-   *
-   * @returns 无返回值。
-   */
+  /** Selects external primary video input and disables RTC mirroring. */
   useExternalVideoSource(): void {
     const engine: RTCEngine = this.requireEngine();
     this.checkResult(
@@ -370,72 +445,67 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 选择 RTC 内部音频源并启动麦克风采集，调用前须已取得麦克风权限。
-   *
-   * @returns 无返回值。
+   * Selects internal audio and starts microphone capture; microphone permission must already be
+   * granted.
    */
   startMicrophoneCapture(): void {
     this.startAudioSource(AudioSourceType.kAudioSourceTypeInternal);
   }
 
-  /**
-   * 停止 RTC 麦克风采集。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops RTC microphone capture. */
   stopMicrophoneCapture(): void {
     this.stopAudioCapture();
   }
 
-  /**
-   * 启动 RTC 外部音频源。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts external RTC audio input. */
   startExternalAudioSource(): void {
     this.startAudioSource(AudioSourceType.kAudioSourceTypeExternal);
   }
 
-  /**
-   * 停止 RTC 外部音频源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops external RTC audio input. */
   stopExternalAudioSource(): void {
     this.stopAudioCapture();
   }
 
   /**
-   * 显式选择音频来源，避免相机麦克风与文件 PCM 输入互相沿用配置。
+   * Select audio input explicitly so camera microphone and file PCM do not inherit each other's
+   * configuration.
    *
-   * @param source 媒体输入类型，用于选择尺寸处理规则。
-   * @returns 无返回值。
+   * @param source The input source selecting media sizing rules.
    */
-  private startAudioSource(source: AudioSourceType): void {
+  private startAudioSource(
+    source: AudioSourceType
+  ): void {
     const engine: RTCEngine = this.requireEngine();
-    this.checkResult(engine.setAudioSourceType(source), 'setAudioSourceType');
-    this.checkResult(engine.startAudioCapture(), 'startAudioCapture');
+    this.checkResult(
+      engine.setAudioSourceType(source),
+      'setAudioSourceType'
+    );
+    this.checkResult(
+      engine.startAudioCapture(),
+      'startAudioCapture'
+    );
   }
 
-  /**
-   * 停止当前音频采集通道；引擎已经销毁时无需操作。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops audio capture, returning safely if the engine was destroyed. */
   private stopAudioCapture(): void {
     const engine: RTCEngine | null = this.engine;
     if (engine !== null) {
-      this.checkResult(engine.stopAudioCapture(), 'stopAudioCapture');
+      this.checkResult(
+        engine.stopAudioCapture(),
+        'stopAudioCapture'
+      );
     }
   }
 
   /**
-   * 根据摄像头位置更新本地视频镜像配置。
+   * Updates mirroring for the camera position.
    *
-   * @param position 当前摄像头位置。
-   * @returns 无返回值。
+   * @param position The current camera position.
    */
-  configureLocalVideoMirror(position: CameraPosition): void {
+  configureLocalVideoMirror(
+    position: CameraPosition
+  ): void {
     this.localVideoMirrorType = RtcVideoConverter.convertMirrorType(position);
     if (this.engine !== null) {
       this.checkResult(
@@ -446,11 +516,10 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 转换并推送一帧外部视频数据，可同时携带 SEI。
+   * Converts and submits an external video frame with optional SEI.
    *
-   * @param frame 中性视频帧。
-   * @param seiData 随视频帧发送的附加数据。
-   * @returns 无返回值。
+   * @param frame The neutral video frame.
+   * @param seiData The metadata sent with the video frame.
    */
   pushExternalVideoFrame(
     frame: VideoFrame,
@@ -473,12 +542,13 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 将中性 PCM 音频帧转换并推送到 RTC Engine。
+   * Converts and submits neutral PCM to the RTC engine.
    *
-   * @param frame 10ms PCM 音频帧。
-   * @returns 无返回值。
+   * @param frame The 10 ms PCM frame.
    */
-  pushExternalAudioFrame(frame: AudioFrame): void {
+  pushExternalAudioFrame(
+    frame: AudioFrame
+  ): void {
     const externalFrame: ExternalAudioFrame = {
       frame_type: AudioFrameType.kFrameTypePCM16,
       sample_rate: AudioSampleRate.kAudioSampleRate48000,
@@ -501,16 +571,22 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 创建 RTC 房间，绑定房间事件并等待加入结果。
+   * Creates a room, binds its events, and waits for joining.
    *
-   * @param configuration 房间加入配置。
-   * @returns 加入房间完成后的 Promise。
+   * The Promise fulfills after joining the room.
+   *
+   * @param configuration The room join configuration.
    */
-  async joinRoom(configuration: RoomJoinConfiguration): Promise<void> {
+  async joinRoom(
+    configuration: RoomJoinConfiguration
+  ): Promise<void> {
     const engine: RTCEngine = this.requireEngine();
     if (this.room !== null || this.pendingRoom !== null ||
       this.pendingJoinCancellation !== null) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'RTC room is already active');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'RTC room is already active'
+      );
     }
 
     let roomCreationCancelled: boolean = false;
@@ -532,7 +608,10 @@ export class RtcManager implements RtcManaging {
 
     if (roomCreationCancelled || this.pendingJoinCancellation !== cancelRoomCreation) {
       await room.destroy();
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'RTC join room was cancelled');
+      throw new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'RTC join room was cancelled'
+      );
     }
 
     this.pendingRoom = room;
@@ -548,9 +627,17 @@ export class RtcManager implements RtcManaging {
     };
 
     try {
-      await this.waitForJoin(room, configuration.token, userInfo, roomConfiguration);
+      await this.waitForJoin(
+        room,
+        configuration.token,
+        userInfo,
+        roomConfiguration
+      );
       if (this.pendingRoom !== room) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'RTC join room was cancelled');
+        throw new XmaxError(
+          XmaxErrorCode.CANCELLED,
+          'RTC join room was cancelled'
+        );
       }
 
       this.pendingRoom = null;
@@ -569,14 +656,17 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 取消进行中的加入操作并销毁当前 RTC 房间资源。
+   * Cancels joining and destroys current room resources.
    *
-   * @returns 离开房间完成后的 Promise。
+   * The Promise fulfills after leaving the room.
    */
   async leaveRoom(): Promise<void> {
     this.snapshotRequests.forEach((request: RemoteSnapshotRequest): void => {
       clearTimeout(request.timer);
-      request.reject(new XmaxError(XmaxErrorCode.CANCELLED, 'RTC room closed during snapshot'));
+      request.reject(new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'RTC room closed during snapshot'
+      ));
     });
     this.snapshotRequests.clear();
     const room: RTCRoom | null = this.room;
@@ -605,11 +695,7 @@ export class RtcManager implements RtcManaging {
     }
   }
 
-  /**
-   * 应用镜像配置并发布本地主视频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Applies mirroring and publishes primary local video. */
   publishLocalVideo(): void {
     const room: RTCRoom = this.requireRoom();
     this.checkResult(
@@ -623,22 +709,14 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /**
-   * 在房间存在时停止发布本地主视频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Unpublishes primary video if a room exists. */
   unpublishLocalVideo(): void {
     if (this.room !== null) {
       this.room.publishStreamVideo(false);
     }
   }
 
-  /**
-   * 发布本地音频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Publishes local audio. */
   publishLocalAudio(): void {
     this.checkResult(
       this.requireRoom().publishStreamAudio(true),
@@ -646,11 +724,7 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /**
-   * 在房间存在时停止发布本地音频流。
-   *
-   * @returns 无返回值。
-   */
+  /** Unpublishes local audio if a room exists. */
   unpublishLocalAudio(): void {
     if (this.room !== null) {
       this.room.publishStreamAudio(false);
@@ -658,49 +732,55 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 更新指定远端用户的视频订阅状态。
+   * Updates a remote user's video subscription.
    *
-   * @param userId 远端用户标识。
-   * @param subscribe 是否订阅视频流。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param subscribe Whether to subscribe to video.
    */
   subscribeRemoteVideo(
     userId: string,
     subscribe: boolean
   ): void {
     this.checkResult(
-      this.requireRoom().subscribeStreamVideo(userId, subscribe),
+      this.requireRoom().subscribeStreamVideo(
+        userId,
+        subscribe
+      ),
       'subscribeStreamVideo'
     );
     if (!subscribe) {
-      // 重新订阅将产生新的首帧渲染事件，上一轮记录不能让新任务提前显示旧画面。
-      this.renderedRemoteStreams.delete(new RemoteStream(this.activeRoomId, userId).key());
+      // Resubscription produces a fresh display event; prior readiness must not reveal old video for a new task.
+      this.renderedRemoteStreams.delete(new RemoteStream(
+        this.activeRoomId,
+        userId
+      ).key());
     }
   }
 
   /**
-   * 更新指定远端用户的音频订阅状态。
+   * Updates a remote user's audio subscription.
    *
-   * @param userId 远端用户标识。
-   * @param subscribe 是否订阅音频流。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param subscribe Whether to subscribe to audio.
    */
   subscribeRemoteAudio(
     userId: string,
     subscribe: boolean
   ): void {
     this.checkResult(
-      this.requireRoom().subscribeStreamAudio(userId, subscribe),
+      this.requireRoom().subscribeStreamAudio(
+        userId,
+        subscribe
+      ),
       'subscribeStreamAudio'
     );
   }
 
   /**
-   * 设置指定远端用户的音频播放音量。
+   * Sets a remote user's audio playback volume.
    *
-   * @param userId 远端用户标识。
-   * @param volume RTC 音量值，100 表示原始音量。
-   * @returns 无返回值。
+   * @param userId The remote user identifier.
+   * @param volume The RTC volume; 100 represents original volume.
    */
   setRemoteAudioVolume(
     userId: string,
@@ -712,17 +792,19 @@ export class RtcManager implements RtcManaging {
       stream_index: StreamIndex.kStreamIndexMain
     };
     this.checkResult(
-      this.requireEngine().setRemoteAudioPlaybackVolume(key, volume),
+      this.requireEngine().setRemoteAudioPlaybackVolume(
+        key,
+        volume
+      ),
       'setRemoteAudioPlaybackVolume'
     );
   }
 
   /**
-   * 创建 RTC 渲染画布并绑定本地主视频流。
+   * Creates an RTC canvas and binds primary local video.
    *
-   * @param viewId 渲染视图标识。
-   * @param contentMode 视频内容显示模式。
-   * @returns 无返回值。
+   * @param viewId The rendering view identifier.
+   * @param contentMode The video content mode.
    */
   bindLocalVideo(
     viewId: string,
@@ -733,7 +815,10 @@ export class RtcManager implements RtcManaging {
       contentMode
     );
     this.checkResult(
-      this.requireEngine().setLocalVideoCanvas(StreamIndex.kStreamIndexMain, canvas),
+      this.requireEngine().setLocalVideoCanvas(
+        StreamIndex.kStreamIndexMain,
+        canvas
+      ),
       'setLocalVideoCanvas'
     );
 
@@ -743,11 +828,7 @@ export class RtcManager implements RtcManaging {
     );
   }
 
-  /**
-   * 使用隐藏画布解除本地主视频流的渲染绑定。
-   *
-   * @returns 无返回值。
-   */
+  /** Detaches primary local video using a hidden canvas. */
   unbindLocalVideo(): void {
     if (this.engine !== null) {
       this.engine.setLocalVideoCanvas(
@@ -758,12 +839,11 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 将中性远端流映射到 RTC 流键并绑定渲染视图。
+   * Maps a neutral remote stream into an RTC key and binds its view.
    *
-   * @param stream 远端流信息。
-   * @param viewId 渲染视图标识。
-   * @param contentMode 视频内容显示模式。
-   * @returns 无返回值。
+   * @param stream The remote stream information.
+   * @param viewId The rendering view identifier.
+   * @param contentMode The video content mode.
    */
   bindRemoteVideo(
     stream: RemoteStream,
@@ -772,25 +852,32 @@ export class RtcManager implements RtcManaging {
   ): void {
     const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(stream.key());
     if (key === undefined) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'Remote stream is unavailable'
+      );
     }
 
     this.checkResult(
       this.requireEngine().setRemoteVideoCanvas(
         key,
-        RtcVideoConverter.createCanvas(viewId, contentMode)
+        RtcVideoConverter.createCanvas(
+          viewId,
+          contentMode
+        )
       ),
       'setRemoteVideoCanvas'
     );
   }
 
   /**
-   * 使用隐藏画布解除指定远端视频流的渲染绑定。
+   * Detaches remote video using a hidden canvas.
    *
-   * @param stream 远端流信息。
-   * @returns 无返回值。
+   * @param stream The remote stream information.
    */
-  unbindRemoteVideo(stream: RemoteStream): void {
+  unbindRemoteVideo(
+    stream: RemoteStream
+  ): void {
     const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(stream.key());
     if (this.engine !== null && key !== undefined) {
       this.engine.setRemoteVideoCanvas(
@@ -801,89 +888,128 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 使用 RTC 原生截图；调用方负责释放返回的 PixelMap。
+   * Captures an RTC snapshot. The caller releases the returned PixelMap.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @returns 截图完成后返回由调用方负责释放的 PixelMap；超时或失败时拒绝的 Promise。
+   * @param stream The remote stream identified by room and user.
+   *
+   * @returns The caller-owned snapshot PixelMap; the Promise rejects on failure or timeout.
    */
-  takeRemoteSnapshot(stream: RemoteStream): Promise<image.PixelMap> {
+  takeRemoteSnapshot(
+    stream: RemoteStream
+  ): Promise<image.PixelMap> {
     const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(stream.key());
     if (key === undefined || key.room_id !== this.activeRoomId) {
-      return Promise.reject(new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable'));
+      return Promise.reject(new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'Remote stream is unavailable'
+      ));
     }
     return new Promise<image.PixelMap>((
-      resolve: (pixelMap: image.PixelMap) => void,
-      reject: (error: XmaxError) => void
+      resolve: (
+        pixelMap: image.PixelMap
+      ) => void,
+      reject: (
+        error: XmaxError
+      ) => void
     ): void => {
       const taskId: number = this.requireEngine().takeRemoteSnapshot(key);
       if (taskId <= 0) {
-        reject(new XmaxError(XmaxErrorCode.RTC_ERROR, `takeRemoteSnapshot failed: ${taskId}`));
+        reject(new XmaxError(
+          XmaxErrorCode.RTC_ERROR,
+          `takeRemoteSnapshot failed: ${taskId}`
+        ));
         return;
       }
-      const request = new RemoteSnapshotRequest(stream.key(), resolve, reject);
-      this.snapshotRequests.set(taskId, request);
-      request.timer = setTimeout((): void => {
-        if (this.snapshotRequests.get(taskId) !== request) {
-          return;
-        }
-        this.snapshotRequests.delete(taskId);
-        request.reject(new XmaxError(XmaxErrorCode.TIMEOUT, 'Remote snapshot timed out'));
-      }, SNAPSHOT_TIMEOUT_MS);
+      const request = new RemoteSnapshotRequest(
+        stream.key(),
+        resolve,
+        reject
+      );
+      this.snapshotRequests.set(
+        taskId,
+        request
+      );
+      request.timer = setTimeout(
+        (): void => {
+          if (this.snapshotRequests.get(taskId) !== request) {
+            return;
+          }
+          this.snapshotRequests.delete(taskId);
+          request.reject(new XmaxError(
+            XmaxErrorCode.TIMEOUT,
+            'Remote snapshot timed out'
+          ));
+        },
+        SNAPSHOT_TIMEOUT_MS
+      );
     });
   }
 
   /**
-   * 释放不再使用的远端截图，避免持有图像内存。
+   * Releases an unused remote snapshot's image memory.
    *
-   * @param pixelMap 需要持有或释放的平台图像对象。
-   * @returns 无返回值。
+   * @param pixelMap The platform image to retain or release.
    */
-  private releaseSnapshot(pixelMap: image.PixelMap | null): void {
+  private releaseSnapshot(
+    pixelMap: image.PixelMap | null
+  ): void {
     if (pixelMap !== null) {
       void pixelMap.release().catch((error: Object): void => {
-        XmaxLogger.error(`Failed to release RTC snapshot: ${XmaxError.from(error).message}`, 'RTC');
+        XmaxLogger.error(
+          `Failed to release RTC snapshot: ${XmaxError.from(error).message}`,
+          'RTC'
+        );
       });
     }
   }
 
   /**
-   * 监听 RTC 已将远端首帧渲染到视图的事件。
+   * Observes the first remote frame rendered to a view.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoRenderedListener(listener: RtcRemoteVideoRenderedListener | null): void {
+  setRemoteVideoRenderedListener(
+    listener: RtcRemoteVideoRenderedListener | null
+  ): void {
     this.remoteVideoRenderedListener = listener;
   }
 
   /**
-   * 当前发布周期是否曾成功渲染首帧，用于同一流重新挂载视图。
+   * Returns whether the stream rendered a first frame during this publication, supporting view
+   * reattachment.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @returns 指定流在当前发布周期已成功渲染首帧时返回 true。
+   * @param stream The remote stream identified by room and user.
+   *
+   * @returns True if the stream rendered its first frame during the current publication.
    */
-  hasRenderedRemoteVideo(stream: RemoteStream): boolean {
+  hasRenderedRemoteVideo(
+    stream: RemoteStream
+  ): boolean {
     return this.renderedRemoteStreams.has(stream.key());
   }
 
   /**
-   * 监听解码及后处理完成的远端帧，不依赖 Surface 是否挂载。
+   * Observes decoded, postprocessed remote frames independently of Surface attachment.
    *
-   * @param listener 接收事件的监听器；可空接口传入 null 时清除监听器。
-   * @returns 无返回值。
+   * @param listener The event handler, or null to remove it.
    */
-  setRemoteVideoFrameListener(listener: RtcRemoteVideoFrameListener | null): void {
+  setRemoteVideoFrameListener(
+    listener: RtcRemoteVideoFrameListener | null
+  ): void {
     this.remoteVideoFrameListener = listener;
   }
 
   /**
-   * 按需启停远端帧回调；首帧确认后关闭以避免持续传输像素数据到 ArkTS。
+   * Enables frame callbacks on demand; disable after first-frame confirmation to avoid continued
+   * pixel delivery to ArkTS.
    *
-   * @param stream 需要绑定或处理的媒体流。
-   * @param enabled 是否开启该能力。
-   * @returns 无返回值。
+   * @param stream The remote stream identified by room and user.
+   * @param enabled Whether to enable this capability.
    */
-  observeRemoteVideoFrames(stream: RemoteStream, enabled: boolean): void {
+  observeRemoteVideoFrames(
+    stream: RemoteStream,
+    enabled: boolean
+  ): void {
     const streamId: string = stream.key();
     if (!enabled && !this.observedRemoteStreams.delete(streamId)) {
       return;
@@ -893,7 +1019,10 @@ export class RtcManager implements RtcManaging {
       if (!enabled) {
         return;
       }
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'Remote stream is unavailable');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'Remote stream is unavailable'
+      );
     }
     if (enabled && this.observedRemoteStreams.has(streamId)) {
       return;
@@ -902,12 +1031,19 @@ export class RtcManager implements RtcManaging {
       this.observedRemoteStreams.add(streamId);
     }
     try {
-      this.checkResult(this.engine.setRemoteVideoSinkWithConfig(key, {
-        position: RemoteVideoSinkPosition.kRemoteVideoSinkPositionAfterPostProcess,
-        pixel_format: VideoPixelFormat.kVideoPixelFormatI420,
-        apply_rotation: VideoApplyRotation.kVideoApplyRotationDefault,
-        mirror_type: VideoSinkMirrorType.kVideoSinkMirrorTypeOFF
-      }, enabled), 'setRemoteVideoSinkWithConfig');
+      this.checkResult(
+        this.engine.setRemoteVideoSinkWithConfig(
+          key,
+          {
+            position: RemoteVideoSinkPosition.kRemoteVideoSinkPositionAfterPostProcess,
+            pixel_format: VideoPixelFormat.kVideoPixelFormatI420,
+            apply_rotation: VideoApplyRotation.kVideoApplyRotationDefault,
+            mirror_type: VideoSinkMirrorType.kVideoSinkMirrorTypeOFF
+          },
+          enabled
+        ),
+        'setRemoteVideoSinkWithConfig'
+      );
     } catch (error) {
       this.observedRemoteStreams.delete(streamId);
       throw XmaxError.from(error);
@@ -915,21 +1051,22 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 获取 RTC Surface 使用的渲染库名称。
+   * Returns the RTC Surface rendering library name.
    *
-   * @returns RTC 渲染库名称。
+   * @returns The RTC rendering library name.
    */
   renderLibraryName(): string {
     return 'volcenginertc_sdk';
   }
 
   /**
-   * 向当前 RTC 房间发送文本消息。
+   * Sends a text message to the current room.
    *
-   * @param message 消息内容。
-   * @returns 无返回值。
+   * @param message The message content.
    */
-  sendRoomMessage(message: string): void {
+  sendRoomMessage(
+    message: string
+  ): void {
     this.checkResult(
       this.requireRoom().sendRoomMessage(message),
       'sendRoomMessage'
@@ -937,44 +1074,65 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 设置 RTC 媒体和 SEI 事件监听器。
+   * Sets media publication and SEI event delivery.
    *
-   * @param listener RTC 事件监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The RTC event listener, or null to remove it.
    */
-  setEventListener(listener: RtcEventListener | null): void {
+  setEventListener(
+    listener: RtcEventListener | null
+  ): void {
     this.listener = listener;
   }
 
   /**
-   * 设置 RTC 网络质量和性能告警监听器。
+   * Sets network quality and performance alarm delivery.
    *
-   * @param listener RTC 质量事件监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The RTC quality listener, or null to remove it.
    */
-  setQualityListener(listener: RtcQualityListener | null): void {
+  setQualityListener(
+    listener: RtcQualityListener | null
+  ): void {
     this.qualityListener = listener;
   }
 
   /**
-   * 绑定指定 RTC 房间的媒体发布、流统计和网络质量事件。
+   * Binds room publication, stream statistics, and quality events.
    *
-   * @param room 需要绑定事件的 RTC 房间。
-   * @returns 无返回值。
+   * @param room The RTC room to observe.
    */
-  private bindRoomEvents(room: RTCRoom): void {
-    room.on('onRoomMessageReceived', (userId: string, message: string): void => {
-      this.logReceivedRoomSignal(room, message);
-      if (this.room === room) {
-        this.listener?.onRoomSignalReceived?.(userId, message);
+  private bindRoomEvents(
+    room: RTCRoom
+  ): void {
+    room.on(
+      'onRoomMessageReceived',
+      (userId: string, message: string): void => {
+        this.logReceivedRoomSignal(
+          room,
+          message
+        );
+        if (this.room === room) {
+          this.listener?.onRoomSignalReceived?.(
+            userId,
+            message
+          );
+        }
       }
-    });
-    room.on('onUserMessageReceived', (userId: string, message: string): void => {
-      this.logReceivedRoomSignal(room, message);
-      if (this.room === room) {
-        this.listener?.onRoomSignalReceived?.(userId, message);
+    );
+    room.on(
+      'onUserMessageReceived',
+      (userId: string, message: string): void => {
+        this.logReceivedRoomSignal(
+          room,
+          message
+        );
+        if (this.room === room) {
+          this.listener?.onRoomSignalReceived?.(
+            userId,
+            message
+          );
+        }
       }
-    });
+    );
 
     room.on(
       'onUserPublishStreamAudio',
@@ -983,7 +1141,10 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
-        this.listener?.onRemoteAudioPublished(userId, published);
+        this.listener?.onRemoteAudioPublished(
+          userId,
+          published
+        );
       }
     );
 
@@ -995,35 +1156,50 @@ export class RtcManager implements RtcManaging {
         }
 
         if (!published) {
-          this.renderedRemoteStreams.delete(new RemoteStream(this.activeRoomId, userId).key());
+          this.renderedRemoteStreams.delete(new RemoteStream(
+            this.activeRoomId,
+            userId
+          ).key());
         }
-        this.listener?.onRemoteVideoPublished(userId, published);
+        this.listener?.onRemoteVideoPublished(
+          userId,
+          published
+        );
       }
     );
 
-    room.on('onLocalStreamStats', (stats: LocalStreamStats): void => {
-      if (this.room !== room) {
-        return;
-      }
+    room.on(
+      'onLocalStreamStats',
+      (stats: LocalStreamStats): void => {
+        if (this.room !== room) {
+          return;
+        }
 
-      if (!stats.is_screen) {
-        const statistics: UplinkVideoStatistics = RtcQualityConverter.uplinkVideoStatistics(stats.video_stats);
-        RtcStatsLogger.logUplinkVideoStatistics(statistics);
-        this.qualityListener?.onUplinkVideoStatistics(statistics);
+        if (!stats.is_screen) {
+          const statistics: UplinkVideoStatistics = RtcQualityConverter.uplinkVideoStatistics(stats.video_stats);
+          RtcStatsLogger.logUplinkVideoStatistics(statistics);
+          this.qualityListener?.onUplinkVideoStatistics(statistics);
+        }
       }
-    });
+    );
 
-    room.on('onRemoteStreamStats', (stats: RemoteStreamStats): void => {
-      if (this.room !== room) {
-        return;
-      }
+    room.on(
+      'onRemoteStreamStats',
+      (stats: RemoteStreamStats): void => {
+        if (this.room !== room) {
+          return;
+        }
 
-      if (!stats.is_screen) {
-        const statistics: DownlinkVideoStatistics = RtcQualityConverter.downlinkVideoStatistics(stats.uid, stats.video_stats);
-        RtcStatsLogger.logDownlinkVideoStatistics(statistics);
-        this.qualityListener?.onDownlinkVideoStatistics(statistics);
+        if (!stats.is_screen) {
+          const statistics: DownlinkVideoStatistics = RtcQualityConverter.downlinkVideoStatistics(
+            stats.uid,
+            stats.video_stats
+          );
+          RtcStatsLogger.logDownlinkVideoStatistics(statistics);
+          this.qualityListener?.onDownlinkVideoStatistics(statistics);
+        }
       }
-    });
+    );
 
     room.on(
       'onNetworkQuality',
@@ -1035,42 +1211,59 @@ export class RtcManager implements RtcManaging {
           return;
         }
 
-        VolcRtcStatsLogger.logNetworkQuality(localQuality, remoteQualities);
-        this.emitNetworkQuality(localQuality, remoteQualities);
+        VolcRtcStatsLogger.logNetworkQuality(
+          localQuality,
+          remoteQualities
+        );
+        this.emitNetworkQuality(
+          localQuality,
+          remoteQualities
+        );
       }
     );
   }
 
   /**
-   * 记录当前房间收到的业务信令，供接入方查看事件类型与内容。
+   * Logs received room signals for inspecting event types and content.
    *
-   * @param room 当前 RTC 房间实例。
-   * @param message 日志内容、错误说明或收到的信令文本。
-   * @returns 无返回值。
+   * @param room The current RTC room instance.
+   * @param message The received room signal text.
    */
-  private logReceivedRoomSignal(room: RTCRoom, message: string): void {
+  private logReceivedRoomSignal(
+    room: RTCRoom,
+    message: string
+  ): void {
     if (this.room !== room && this.pendingRoom !== room) {
       return;
     }
-    XmaxLogger.debug((): string => {
-      try {
-        const event = JSON.parse(message) as LoggedRoomEvent;
-        const eventType: string = event.event ?? 'unknown';
-        const formattedMessage: string = JSON.stringify(event, null, 2);
-        const indentedMessage: string = formattedMessage.replace(/\n/g, '\n   ');
-        return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n├─ 类型：", "接收房间信令 (Receive Room Signal)\n├─ Type: ")}${eventType}${XmaxLogger.localized("\n└─ 内容：\n   ", "\n└─ Content: \n   ")}${indentedMessage}`;
-      } catch (_error) {
-        return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n└─ 内容：", "接收房间信令 (Receive Room Signal)\n└─ Content: ")}${message}`;
-      }
-    }, 'Room');
+    XmaxLogger.debug(
+      (): string => {
+        try {
+          const event = JSON.parse(message) as LoggedRoomEvent;
+          const eventType: string = event.event ?? 'unknown';
+          const formattedMessage: string = JSON.stringify(
+            event,
+            null,
+            2
+          );
+          const indentedMessage: string = formattedMessage.replace(
+            /\n/g,
+            '\n   '
+          );
+          return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n├─ 类型：", "接收房间信令 (Receive Room Signal)\n├─ Type: ")}${eventType}${XmaxLogger.localized("\n└─ 内容：\n   ", "\n└─ Content: \n   ")}${indentedMessage}`;
+        } catch (_error) {
+          return `${XmaxLogger.localized("接收房间信令 (Receive Room Signal)\n└─ 内容：", "接收房间信令 (Receive Room Signal)\n└─ Content: ")}${message}`;
+        }
+      },
+      'Room'
+    );
   }
 
   /**
-   * 将 RTC 网络质量统计转换后通知质量监听器。
+   * Converts RTC network statistics for the quality listener.
    *
-   * @param localQuality 本地上下行网络质量统计。
-   * @param remoteQualities 远端用户网络质量统计。
-   * @returns 无返回值。
+   * @param localQuality The local uplink and downlink statistics.
+   * @param remoteQualities The remote users' network quality statistics.
    */
   private emitNetworkQuality(
     localQuality: NetworkQualityStats,
@@ -1088,11 +1281,10 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 将 RTC 性能告警转换后通知质量监听器。
+   * Converts an RTC performance alarm for the quality listener.
    *
-   * @param reason RTC 性能告警原因。
-   * @param data RTC 建议的媒体配置。
-   * @returns 无返回值。
+   * @param reason The RTC performance alarm reason.
+   * @param data The RTC recommended media configuration.
    */
   private emitPerformanceAlarm(
     reason: PerformanceAlarmReason,
@@ -1118,13 +1310,14 @@ export class RtcManager implements RtcManaging {
   }
 
   /**
-   * 等待 RTC 房间加入事件，并提供取消和超时保护。
+   * Waits for room join events with cancellation and timeout protection.
    *
-   * @param room 待加入的 RTC 房间。
-   * @param token 房间访问令牌。
-   * @param userInfo 本地用户信息。
-   * @param configuration 房间配置。
-   * @returns 加入房间成功后的 Promise。
+   * The Promise fulfills after successful joining.
+   *
+   * @param room The RTC room to join.
+   * @param token The room access token.
+   * @param userInfo The local user information.
+   * @param configuration The room configuration.
    */
   private waitForJoin(
     room: RTCRoom,
@@ -1132,7 +1325,9 @@ export class RtcManager implements RtcManaging {
     userInfo: UserInfo,
     configuration: RTCRoomConfig
   ): Promise<void> {
-    return new Promise((resolve: () => void, reject: (reason: XmaxError) => void) => {
+    return new Promise((resolve: () => void, reject: (
+      reason: XmaxError
+    ) => void) => {
       let settled: boolean = false;
       let timerId: number = -1;
       this.pendingJoinCancellation = (): void => {
@@ -1142,14 +1337,23 @@ export class RtcManager implements RtcManaging {
 
         settled = true;
         clearTimeout(timerId);
-        reject(new XmaxError(XmaxErrorCode.CANCELLED, 'RTC join room was cancelled'));
+        reject(new XmaxError(
+          XmaxErrorCode.CANCELLED,
+          'RTC join room was cancelled'
+        ));
       };
-      timerId = setTimeout((): void => {
-        if (!settled) {
-          settled = true;
-          reject(new XmaxError(XmaxErrorCode.TIMEOUT, 'RTC join room timed out'));
-        }
-      }, JOIN_TIMEOUT_MS);
+      timerId = setTimeout(
+        (): void => {
+          if (!settled) {
+            settled = true;
+            reject(new XmaxError(
+              XmaxErrorCode.TIMEOUT,
+              'RTC join room timed out'
+            ));
+          }
+        },
+        JOIN_TIMEOUT_MS
+      );
       room.on(
         'onRoomStateChanged',
         (_roomId: string, _userId: string, state: number, _extra: string): void => {
@@ -1168,52 +1372,68 @@ export class RtcManager implements RtcManaging {
           }
         }
       );
-      const result: number = room.joinRoom(token, userInfo, true, configuration);
+      const result: number = room.joinRoom(
+        token,
+        userInfo,
+        true,
+        configuration
+      );
       if (result < 0 && !settled) {
         settled = true;
         clearTimeout(timerId);
-        reject(new XmaxError(XmaxErrorCode.RTC_ERROR, `joinRoom failed: ${result}`));
+        reject(new XmaxError(
+          XmaxErrorCode.RTC_ERROR,
+          `joinRoom failed: ${result}`
+        ));
       }
     });
   }
 
   /**
-   * 获取已初始化的 RTC Engine。
+   * Returns the initialized RTC engine.
    *
-   * @returns 当前 RTC Engine。
+   * @returns The current RTC engine.
    */
   private requireEngine(): RTCEngine {
     if (this.engine === null) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'RTC engine is not initialized');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'RTC engine is not initialized'
+      );
     }
     return this.engine;
   }
 
   /**
-   * 获取已加入的 RTC 房间。
+   * Returns the joined RTC room.
    *
-   * @returns 当前 RTC 房间。
+   * @returns The current RTC room.
    */
   private requireRoom(): RTCRoom {
     if (this.room === null) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'RTC room is not joined');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'RTC room is not joined'
+      );
     }
     return this.room;
   }
 
   /**
-   * 校验 RTC 同步调用返回码。
+   * Validates a synchronous RTC return code.
    *
-   * @param result RTC 调用返回码。
-   * @param operation RTC 操作名称。
-   * @returns 无返回值。
+   * @param result The RTC return code.
+   * @param operation The RTC operation name.
    */
   private checkResult(
     result: number,
     operation: string
   ): void {
     if (result < 0) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, `${operation} failed: ${result}`);
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        `${operation} failed: ${result}`
+      );
     }
   }
 

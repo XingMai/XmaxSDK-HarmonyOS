@@ -1,28 +1,23 @@
 //
 //  RemoteStream.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** 以房间和用户标识定位远端 RTC 媒体流。 */
+/** An RTC stream identified by room and remote user. */
 export class RemoteStream {
 
-  /** 远端流定位信息 */
+  /** The RTC room identifier. */
   readonly roomId: string;
+
+  /** The remote RTC user identifier. */
   readonly userId: string;
 
-  /**
-   * 创建远端媒体流标识。
-   *
-   * @param roomId RTC 房间标识。
-   * @param userId RTC 用户标识。
-   * @returns 新建的 RemoteStream 实例。
-   */
+  /** Creates a remote stream identity. */
   constructor(
     roomId: string,
     userId: string
@@ -32,9 +27,9 @@ export class RemoteStream {
   }
 
   /**
-   * 组合房间与用户标识，生成远端流的查找键。
+   * Combines room and user identifiers into a stream lookup key.
    *
-   * @returns 用于映射和订阅记录的远端流键。
+   * @returns The remote stream key for mapping and subscriptions.
    */
   key(): string {
     return `${this.roomId}:${this.userId}`;

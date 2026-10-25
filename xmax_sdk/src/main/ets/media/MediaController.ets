@@ -1,10 +1,9 @@
 //
 //  MediaController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -35,80 +34,100 @@ import { InteractionFrame } from './interaction/InteractionFrame';
 import { MediaControlling } from './MediaControlling';
 import { VideoController } from './video/VideoController';
 
-/** 可作为本地输入源的摄像头、图片或视频控制器。 */
+/** A local camera, image, or video source controller. */
 type LocalMediaController = CameraController |
   VideoController |
   ImageController;
 
 /**
- * 异步创建并返回本地媒体流的操作。
+ * An asynchronous operation creating a local media stream.
  *
- * @returns 异步返回可用于后续连接、生成或显示的媒体流的 Promise。
+ * @returns The local stream for connection, generation, or display.
  */
 type LocalMediaCreation = () => Promise<RealtimeMediaStream>;
 
-/** 记录当前本地媒体来源及其进行中的创建、相机更新和停止任务。 */
+/** The active local source and its creation, camera update, and stop tasks. */
 class ActiveLocalMediaSource {
 
-  /** 当前媒体控制器 */
+  // Current media controller
+
+  /** The controller owning this local media source. */
   readonly controller: LocalMediaController;
 
-  /** 媒体操作与停止等待 */
+  // Media operation and stop wait
+
+  /** Whether local media ownership is being released. */
   closing: boolean = false;
+
+  /** The in-flight operation on this media source. */
   operationPromise: Promise<RealtimeMediaStream> | null = null;
+
+  /** The shared Promise for stopping the active source. */
   stopPromise: Promise<void> | null = null;
 
-  /**
-   * 创建活动媒体来源记录。
-   *
-   * @param controller 实际管理当前媒体来源的子 Controller。
-   * @returns 新建的 ActiveLocalMediaSource 实例。
-   */
-  constructor(controller: LocalMediaController) {
+  /** Creates an active media source record. */
+  constructor(
+    controller: LocalMediaController
+  ) {
     this.controller = controller;
   }
 }
 
-/** 统一协调相机、视频和图片三类本地媒体来源的所有权与生命周期。 */
+/** Coordinates local media ownership and the RTC engine lifecycle. */
 export class MediaController implements MediaControlling {
 
-  /** 媒体平台与业务组件 */
+  // Platform media and business components
+
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
 
-  /** 本地媒体组件 */
+  // Local media components
+
+  /** The controller owning camera capture and preview. */
   private readonly cameraController: CameraController;
+
+  /** The controller owning local image media. */
   private readonly imageController: ImageController;
+
+  /** The controller mapping and sending task interactions. */
   private readonly interactionController: InteractionControlling;
+
+  /** The controller owning local file video media. */
   private readonly videoController: VideoController;
 
-  /** 当前本地输入与生命周期 */
+  // Current local input and lifecycle
+
+  /** The currently owned local media source. */
   private activeSource: ActiveLocalMediaSource | null = null;
 
   /**
-   * 创建媒体层统一 Controller。
+   * Creates a media controller.
    *
-   * @param context 相机和媒体权限所需的页面上下文。
-   * @param rtcManager 本地媒体来源共享的 RTC 基础能力。
-   * @param streamController 提供编码配置和音视频帧传输能力的统一流组件。
-   * @param errorListener 持续媒体输出错误监听器。
-   * @param mediaService 相机、图片和视频共享的模型输入规则。
-   * @param cameraFormatListener 接收摄像头输出格式变化的监听器。
-   * @param videoEndedListener 本地视频播放结束时执行的回调。
-   * @returns 新建的 MediaController 实例。
+   * @param context The context for camera and media permissions.
+   * @param rtcManager The RTC services shared by local media sources.
+   * @param streamController The controller for encoding and audio/video frame transport.
+   * @param errorListener The handler for continuous media output failures.
+   * @param mediaService The model sizing service shared by camera, image, and video sources.
+   * @param cameraFormatListener The camera output format change handler.
+   * @param videoEndedListener The local video playback completion handler.
    */
   constructor(
     context: common.UIAbilityContext,
     rtcManager: RtcManaging,
     streamController: StreamControlling,
-    errorListener: (error: XmaxError) => void,
+    errorListener: (
+      error: XmaxError
+    ) => void,
     mediaService: MediaServicing = new MediaService(),
-    cameraFormatListener: (format: RealtimeVideoFormat) => void = (_format: RealtimeVideoFormat): void => {},
-    videoEndedListener: () => void = (): void => {}
+    cameraFormatListener: (
+      format: RealtimeVideoFormat
+    ) => void = (_format: RealtimeVideoFormat): void => { },
+    videoEndedListener: () => void = (): void => { }
   ) {
-    // 基础层组件
+    // Foundation components
     this.rtcManager = rtcManager;
 
-    // 本地媒体组件
+    // Local media components
     this.cameraController = new CameraController(
       context,
       rtcManager,
@@ -127,7 +146,10 @@ export class MediaController implements MediaControlling {
       taskId: string,
       points: RealtimePoint[]
     ): void => {
-      streamController.sendTracks(taskId, points);
+      streamController.sendTracks(
+        taskId,
+        points
+      );
     });
     this.videoController = new VideoController(
       context,
@@ -139,39 +161,23 @@ export class MediaController implements MediaControlling {
     );
   }
 
-  /**
-   * 读取当前本地输入提供的视频轨道。
-   *
-   * @returns 当前轨道；尚无本地媒体时返回 null。
-   */
+  /** The current local input track, or null without local media. */
   get currentTrack(): RealtimeVideoTrack | null {
     return this.activeSource?.controller.currentTrack ?? null;
   }
 
-  /**
-   * 读取已配置的摄像头输出格式。
-   *
-   * @returns 当前输出格式；尚未配置时返回 null。
-   */
+  /** The configured camera output format, or null before configuration. */
   get currentVideoFormat(): RealtimeVideoFormat | undefined {
     return this.currentTrack?.videoFormat;
   }
 
-  /**
-   * 判断当前图片或视频输入是否需要按原比例补边。
-   *
-   * @returns 图片和视频输入返回 true，摄像头输入返回 false。
-   */
+  /** Whether input needs aspect-preserving padding; true for images and videos, false for cameras. */
   get usesContainPadding(): boolean {
     const controller = this.activeSource?.controller;
     return controller === this.imageController || controller === this.videoController;
   }
 
-  /**
-   * 获取当前媒体文件是否包含可用音轨。
-   *
-   * @returns 当前来源是否使用相机麦克风或包含文件音轨。
-   */
+  /** Whether the source uses a camera microphone or an available file audio track. */
   get hasAudio(): boolean {
     if (this.activeSource?.controller === this.cameraController) {
       return this.cameraController.useMicrophone;
@@ -180,22 +186,15 @@ export class MediaController implements MediaControlling {
       this.videoController.hasAudio;
   }
 
-  /**
-   * 读取当前本地视频的播放状态。
-   *
-   * @returns 本地视频播放状态；当前输入不是视频时返回 undefined。
-   */
+  /** The local video file playback state, or undefined before creation or for another media source. */
   get localVideoPlaybackState(): LocalVideoPlaybackState | undefined {
     return this.activeSource?.controller === this.videoController ?
       this.videoController.playbackState : undefined;
   }
 
   /**
-   * 立即阻断当前本地媒体输出并解除预览绑定。
-   *
-   * 该方法只执行可同步完成的静默操作，完整资源释放由 `stopLocalStream` 完成。
-   *
-   * @returns 无返回值。
+   * Blocks local frame output and detaches preview immediately. Only synchronous silencing occurs
+   * here; stopLocalStream completes resource release.
    */
   prepareForClose(): void {
     const source: ActiveLocalMediaSource | null = this.activeSource;
@@ -215,11 +214,7 @@ export class MediaController implements MediaControlling {
     }
   }
 
-  /**
-   * 停止当前本地输入，等待采集、解码和发布资源释放完成。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops local input and waits for capture, decoding, and publication resources to release. */
   stopLocalStream(): Promise<void> {
     const source: ActiveLocalMediaSource | null = this.activeSource;
     if (source === null) {
@@ -230,10 +225,9 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 设置摄像头预览就绪监听器。
+   * Sets the camera preview readiness listener.
    *
-   * @param listener 预览就绪监听器；传入空值时清除监听器。
-   * @returns 无返回值。
+   * @param listener The preview readiness handler, or null to remove it.
    */
   setCameraPreviewReadyHandler(
     listener: CameraPreviewReadyHandler | null
@@ -241,44 +235,40 @@ export class MediaController implements MediaControlling {
     this.cameraController.setPreviewReadyListener(listener);
   }
 
-  /**
-   * 开始处理指定生成任务的交互输入。
-   *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 处理后的本地媒体格式，作为固定归一化坐标基准。
-   * @returns 无返回值。
-   */
-  start(taskId: string, videoFormat: RealtimeVideoFormat): void {
-    this.interactionController.start(taskId, videoFormat);
+  /** Starts interaction processing for the generation task. */
+  start(
+    taskId: string,
+    videoFormat: RealtimeVideoFormat
+  ): void {
+    this.interactionController.start(
+      taskId,
+      videoFormat
+    );
   }
 
-  /**
-   * 停止音视频输出并清理媒体文件状态。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops generation interaction processing. */
   stop(): void {
     this.interactionController.stop();
   }
 
-  /**
-   * 将视口触点转换为有效媒体区域的归一化交互点并发送。
-   *
-   * @param frame 当前容器中的交互点和显示信息。
-   * @returns 无返回值。
-   */
-  submit(frame: InteractionFrame): void {
+  /** Submits viewport touches through the interaction controller. */
+  submit(
+    frame: InteractionFrame
+  ): void {
     this.interactionController.submit(frame);
   }
 
   /**
-   * 创建相机媒体来源并取得本地媒体所有权。
+   * Creates and owns a local camera source.
    *
-   * @param videoFormat 相机流使用的视频输出格式。
-   * @param position 初始摄像头位置。
-   * @param useMicrophone 是否使用麦克风；创建时检查权限，连接时启动采集。
-   * @param observeDisplayChange 是否监听屏幕变化；false 时转屏不切换采集比例与方向。
-   * @returns 创建完成后的本地相机媒体流。
+   * @param videoFormat The camera stream output format.
+   * @param position The initial camera position.
+   * @param useMicrophone Whether to use the microphone; creation checks permission and connection
+   * starts capture.
+   * @param observeDisplayChange Whether to observe display changes; false preserves capture aspect
+   * ratio and orientation.
+   *
+   * @returns The created camera stream.
    */
   createLocalCameraStream(
     videoFormat: RealtimeVideoFormat,
@@ -289,37 +279,30 @@ export class MediaController implements MediaControlling {
     return this.createSource(
       this.cameraController,
       (): Promise<RealtimeMediaStream> =>
-        this.cameraController.createLocalCameraStream(videoFormat, position, useMicrophone, observeDisplayChange)
+        this.cameraController.createLocalCameraStream(
+          videoFormat,
+          position,
+          useMicrophone,
+          observeDisplayChange
+        )
     );
   }
 
-  /**
-   * 按当前显示方向同步相机采集及轨道规格；其他来源不操作。
-   *
-   * @returns 无返回值。
-   */
+  /** Updates camera capture and track format for display orientation; other sources are unchanged. */
   updateCameraOrientation(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.updateOrientation();
     }
   }
 
-  /**
-   * 连接时启动当前相机的麦克风；未启用麦克风或其他媒体来源时不操作。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts the current camera microphone on connection, if enabled. */
   startMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.startMicrophoneCapture();
     }
   }
 
-  /**
-   * 停止相机麦克风采集，保留重连所需的配置。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops camera microphone capture while retaining reconnection settings. */
   stopMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
       this.cameraController.stopMicrophoneCapture();
@@ -327,18 +310,18 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 停止本地相机流并释放预览资源。
+   * Stops the local camera stream and releases preview resources.
    *
-   * @returns 当前相机来源停止完成后的 Promise。
+   * The Promise fulfills after the camera source stops.
    */
   stopLocalCameraStream(): Promise<void> {
     return this.stopSource(this.cameraController);
   }
 
   /**
-   * 切换摄像头，生成中切换时保留连接并恢复当前生成条件。
+   * Switches cameras, retaining the connection and restoring cached conditions during generation.
    *
-   * @returns 摄像头切换后的本地媒体流。
+   * @returns The local stream after camera switching.
    */
   switchCamera(): Promise<RealtimeMediaStream> {
     return this.updateCameraSource(
@@ -347,12 +330,13 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 创建视频文件媒体来源并取得本地媒体所有权。
+   * Creates and owns a local video file source.
    *
-   * @param filePath 本地视频文件路径。
-   * @param videoFormat 可选的视频输出格式。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 创建完成后的本地视频媒体流。
+   * @param filePath The local video file path.
+   * @param videoFormat The optional video output format.
+   * @param loop Whether to loop after file completion.
+   *
+   * @returns The created local video stream.
    */
   createLocalVideoStream(
     filePath: string,
@@ -362,24 +346,24 @@ export class MediaController implements MediaControlling {
     return this.createSource(
       this.videoController,
       (): Promise<RealtimeMediaStream> =>
-        this.videoController.createLocalVideoStream(filePath, videoFormat, loop)
+        this.videoController.createLocalVideoStream(
+          filePath,
+          videoFormat,
+          loop
+        )
     );
   }
 
   /**
-   * 停止本地视频流并释放预览资源。
+   * Stops the local video stream and releases preview resources.
    *
-   * @returns 当前视频文件来源停止完成后的 Promise。
+   * The Promise fulfills after the video source stops.
    */
   stopLocalVideoStream(): Promise<void> {
     return this.stopSource(this.videoController);
   }
 
-  /**
-   * 暂停当前视频文件流并开始冻结帧发布。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Pauses the current video source and starts frozen-frame publication. */
   pauseLocalVideoStream(): Promise<void> {
     if (this.activeSource?.controller !== this.videoController) {
       return Promise.reject(new XmaxError(
@@ -390,11 +374,7 @@ export class MediaController implements MediaControlling {
     return this.videoController.pauseLocalVideoStream();
   }
 
-  /**
-   * 从原媒体位置恢复当前视频文件流。
-   *
-   * @returns 无返回值。
-   */
+  /** Resumes the video source at its paused media position. */
   resumeLocalVideoStream(): void {
     if (this.activeSource?.controller !== this.videoController) {
       throw new XmaxError(
@@ -406,11 +386,12 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 创建图片媒体来源并取得本地媒体所有权。
+   * Creates and owns a local image source.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 可选的视频输出格式。
-   * @returns 创建完成后的本地图片媒体流。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The optional video output format.
+   *
+   * @returns The created local image stream.
    */
   createLocalImageStream(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
@@ -419,67 +400,72 @@ export class MediaController implements MediaControlling {
     return this.createSource(
       this.imageController,
       (): Promise<RealtimeMediaStream> =>
-        this.imageController.createLocalImageStream(source, videoFormat)
+        this.imageController.createLocalImageStream(
+          source,
+          videoFormat
+        )
     );
   }
 
   /**
-   * 停止本地图片流并释放预览资源。
+   * Stops the local image stream and releases preview resources.
    *
-   * @returns 当前图片来源停止完成后的 Promise。
+   * The Promise fulfills after the image source stops.
    */
   stopLocalImageStream(): Promise<void> {
     return this.stopSource(this.imageController);
   }
 
   /**
-   * 判断媒体流是否由当前活动来源创建并持有。
+   * Checks whether the active source created and owns a stream.
    *
-   * @param stream 待检查的本地媒体流。
-   * @returns 媒体流属于当前活动来源时返回 `true`。
+   * @param stream The local stream to check.
+   *
+   * @returns True if the stream belongs to the active source.
    */
-  owns(stream: RealtimeMediaStream): boolean {
+  owns(
+    stream: RealtimeMediaStream
+  ): boolean {
     const track: RealtimeVideoTrack | undefined = stream.videoTrack;
     return track !== undefined && this.currentTrack === RealtimeVideoTrack.resolve(track);
   }
 
   /**
-   * 启用或暂停文件视频的本地音频预览，不影响 RTC 音频帧输出。
+   * Enables local file audio preview independently of RTC audio output.
    *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setLocalAudioPreviewEnabled(enabled: boolean): void {
+  setLocalAudioPreviewEnabled(
+    enabled: boolean
+  ): void {
     if (this.activeSource?.controller === this.videoController) {
       this.videoController.setLocalAudioPreviewEnabled(enabled);
     }
   }
 
-  /**
-   * 当前配置的本地视频预览音量。
-   *
-   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
-   */
+  /** The configured local file preview volume in 0 to 1; zero mutes and one uses original volume. */
   get localAudioVolume(): number {
     return this.videoController.localAudioVolume;
   }
 
   /**
-   * 设置并保留本地视频预览音量，范围为 0～1。
+   * Sets and retains local file preview volume in 0 to 1.
    *
-   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume The volume in 0 to 1, from muted to original volume.
    */
-  async setLocalAudioVolume(volume: number): Promise<void> {
+  async setLocalAudioVolume(
+    volume: number
+  ): Promise<void> {
     await this.videoController.setLocalAudioVolume(volume);
   }
 
   /**
-   * 在没有活动来源时创建新的本地媒体来源。
+   * Creates a media source only when no source is active.
    *
-   * @param controller 管理目标媒体类型的子 Controller。
-   * @param create 实际创建本地媒体流的操作。
-   * @returns 创建完成后的本地媒体流。
+   * @param controller The controller for the requested media type.
+   * @param create The operation creating the local stream.
+   *
+   * @returns The created local stream.
    */
   private async createSource(
     controller: LocalMediaController,
@@ -511,10 +497,11 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 在当前相机来源空闲时切换镜头。
+   * Switches lenses while the camera source is idle.
    *
-   * @param update 实际更新相机来源的操作。
-   * @returns 更新完成后的本地媒体流。
+   * @param update The camera source update operation.
+   *
+   * @returns The updated local stream.
    */
   private async updateCameraSource(
     update: LocalMediaCreation
@@ -546,11 +533,12 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 初始化 RTC 后创建首个本地媒体来源。
+   * Initializes RTC before creating the first local source.
    *
-   * @param source 当前活动来源记录。
-   * @param create 实际创建本地媒体流的操作。
-   * @returns 创建完成后的本地媒体流。
+   * @param source The active source record.
+   * @param create The operation creating the local stream.
+   *
+   * @returns The created local stream.
    */
   private async performCreate(
     source: ActiveLocalMediaSource,
@@ -566,12 +554,15 @@ export class MediaController implements MediaControlling {
       return stream;
     } catch (error) {
       if (source.stopPromise === null) {
-        // Coordinator 会先等待创建操作结束再清理。若创建完成时已被关闭，
-        // 必须释放刚创建的媒体，不能仅清除所有权并销毁 RTC。
+        // The coordinator waits for creation before cleanup. If closure wins the race,
+        // release newly created media before clearing ownership and destroying RTC.
         try {
           await this.stopController(source.controller);
         } catch (cleanupError) {
-          XmaxLogger.error(`${XmaxLogger.localized("回滚本地媒体失败 (Local Media Rollback Failed)\n└─ 原因：", "回滚本地媒体失败 (Local Media Rollback Failed)\n└─ Reason: ")}${XmaxError.from(cleanupError).message}`, 'Realtime');
+          XmaxLogger.error(
+            `${XmaxLogger.localized("回滚本地媒体失败 (Local Media Rollback Failed)\n└─ 原因：", "回滚本地媒体失败 (Local Media Rollback Failed)\n└─ Reason: ")}${XmaxError.from(cleanupError).message}`,
+            'Realtime'
+          );
         }
         await this.destroyRtcSafely("本地媒体创建回滚失败 (Local Media Creation Rollback Failed)");
 
@@ -585,12 +576,15 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 获取或创建指定媒体来源的停止任务。
+   * Returns or creates the source's stop task.
    *
-   * @param controller 需要停止的媒体子 Controller。
-   * @returns 媒体来源停止完成后的 Promise。
+   * The Promise fulfills after source stopping.
+   *
+   * @param controller The media controller to stop.
    */
-  private stopSource(controller: LocalMediaController): Promise<void> {
+  private stopSource(
+    controller: LocalMediaController
+  ): Promise<void> {
     const source: ActiveLocalMediaSource | null = this.activeSource;
     if (source === null || source.controller !== controller) {
       return Promise.resolve();
@@ -607,12 +601,15 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 等待进行中的媒体操作结束并释放来源和 RTC 资源。
+   * Waits for media work, then releases source and RTC resources.
    *
-   * @param source 需要停止的活动来源记录。
-   * @returns 全部资源释放完成后的 Promise。
+   * The Promise fulfills after all resources are released.
+   *
+   * @param source The active source to stop.
    */
-  private async performStop(source: ActiveLocalMediaSource): Promise<void> {
+  private async performStop(
+    source: ActiveLocalMediaSource
+  ): Promise<void> {
     const operationPromise: Promise<RealtimeMediaStream> | null =
       source.operationPromise;
     if (operationPromise !== null) {
@@ -642,12 +639,15 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 将停止请求分发给当前媒体类型对应的子 Controller。
+   * Dispatches stop requests to the active source controller.
    *
-   * @param controller 需要停止的媒体子 Controller。
-   * @returns 子 Controller 停止完成后的 Promise。
+   * The Promise fulfills after the source controller stops.
+   *
+   * @param controller The media controller to stop.
    */
-  private stopController(controller: LocalMediaController): Promise<void> {
+  private stopController(
+    controller: LocalMediaController
+  ): Promise<void> {
     if (controller === this.cameraController) {
       return this.cameraController.stopLocalCameraStream();
     }
@@ -659,12 +659,13 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 将同步静默请求分发给当前媒体类型对应的子 Controller。
+   * Dispatches synchronous silencing to the active media controller.
    *
-   * @param controller 需要立即停止输出的媒体子 Controller。
-   * @returns 无返回值。
+   * @param controller The media controller whose output stops immediately.
    */
-  private prepareControllerForStop(controller: LocalMediaController): void {
+  private prepareControllerForStop(
+    controller: LocalMediaController
+  ): void {
     if (controller === this.cameraController) {
       this.cameraController.prepareForStop();
       return;
@@ -678,12 +679,13 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 确保创建或替换任务仍然持有本地媒体所有权。
+   * Verifies creation or replacement still owns local media.
    *
-   * @param source 发起操作时记录的活动来源。
-   * @returns 无返回值。
+   * @param source The active source recorded when the operation began.
    */
-  private ensureCreationActive(source: ActiveLocalMediaSource): void {
+  private ensureCreationActive(
+    source: ActiveLocalMediaSource
+  ): void {
     if (this.activeSource === source && !source.closing &&
       source.stopPromise === null) {
       return;
@@ -696,12 +698,15 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 释放 RTC 资源并记录释放失败，但不覆盖原始业务错误。
+   * Releases RTC and logs failures without replacing the original operation error.
    *
-   * @param message 释放失败时使用的日志说明。
-   * @returns 资源释放尝试完成后的 Promise。
+   * The Promise fulfills after the release attempt.
+   *
+   * @param message The release failure log description.
    */
-  private async destroyRtcSafely(message: string): Promise<void> {
+  private async destroyRtcSafely(
+    message: string
+  ): Promise<void> {
     try {
       await this.rtcManager.destroy();
     } catch (error) {
@@ -715,12 +720,15 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * 判断错误是否表示生命周期操作被主动取消。
+   * Checks whether an error represents lifecycle cancellation.
    *
-   * @param error 待检查的错误对象。
-   * @returns 错误码为 `CANCELLED` 时返回 `true`。
+   * @param error The error to check.
+   *
+   * @returns True if the error code is CANCELLED.
    */
-  private isCancelled(error: Object): boolean {
+  private isCancelled(
+    error: Object
+  ): boolean {
     return error instanceof XmaxError &&
       error.code === XmaxErrorCode.CANCELLED;
   }

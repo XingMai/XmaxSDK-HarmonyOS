@@ -1,10 +1,9 @@
 //
 //  RoomController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -27,46 +26,58 @@ import { RoomEvent } from './RoomEvent';
 import { RoomHeartbeat } from './RoomHeartbeat';
 import { RoomControlling } from './RoomControlling';
 
-/** 表示日志格式化所需的房间事件字段。 */
+/** Room event fields used for log formatting. */
 interface LoggedRoomEvent {
 
-  /** 房间信令事件名称 */
+  // Room signaling event name
+
+  /** The room signaling event name. */
   event?: string;
 }
 
-/** 管理 RTC 房间生命周期、心跳和实时生成信令。 */
+/** Manages RTC room lifecycle, heartbeats, and generation signaling. */
 export class RoomController implements RoomControlling {
 
-  /** 房间传输、心跳与计时依赖 */
+  // Room transport, heartbeat, and timing dependencies
+
+  /** The adapter for RTC engine, room, and media services. */
   private readonly rtcManager: RtcManaging;
 
-  /** 流层组件 */
+  // Stream components
+
+  /** The room heartbeat scheduler. */
   private readonly heartbeat: RoomHeartbeat;
 
+  /** The shared connection and generation startup timing recorder. */
   private readonly timing: RealtimeTiming;
 
-  /** 本地房间用户身份 */
+  // Local room user identity
+
+  /** The current room's local user identifier. */
   private localUserId: string = '';
 
   /**
-   * 创建房间 Controller。
+   * Creates a room controller.
    *
-   * @param rtcManager 提供房间连接和消息发送能力的 RTC Manager。
-   * @param timing 与实时 Manager 共享的启动耗时记录。
-   * @returns 新建的 RoomController 实例。
+   * @param rtcManager The RTC manager for room connections and messaging.
+   * @param timing The startup timing recorder shared with the realtime manager.
    */
-  constructor(rtcManager: RtcManaging, timing: RealtimeTiming = new RealtimeTiming()) {
+  constructor(
+    rtcManager: RtcManaging,
+    timing: RealtimeTiming = new RealtimeTiming()
+  ) {
     this.timing = timing;
     this.rtcManager = rtcManager;
     this.heartbeat = new RoomHeartbeat(rtcManager);
   }
 
   /**
-   * 加入 RTC 房间并启动房间心跳。
+   * Joins the RTC room and starts room heartbeats.
    *
-   * @param connection 房间连接信息。
-   * @param ensureActive 用于确认当前连接操作仍然有效的回调。
-   * @returns 加入房间完成后的 Promise。
+   * The Promise fulfills after joining the room.
+   *
+   * @param connection The room connection information.
+   * @param ensureActive The callback checking connection operation validity.
    */
   async join(
     connection: RealtimeSessionConnection,
@@ -90,9 +101,9 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 停止心跳并离开 RTC 房间。
+   * Stops heartbeats and leaves the RTC room.
    *
-   * @returns 离开房间完成后的 Promise。
+   * The Promise fulfills after leaving the room.
    */
   async leave(): Promise<void> {
     this.heartbeat.stop();
@@ -102,16 +113,15 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 发送实时生成开始信令。
+   * Sends the generation start signal.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 生成视频格式。
-   * @param context 实时生成上下文。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The generation video format.
+   * @param context The realtime generation conditions.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   startGeneration(
     taskId: string,
@@ -135,16 +145,15 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 发送实时生成条件变更信令。
+   * Sends updated realtime generation conditions.
    *
-   * @param taskId 生成任务标识。
-   * @param videoFormat 生成视频格式。
-   * @param context 新的实时生成上下文。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param videoFormat The generation video format.
+   * @param context The new realtime generation conditions.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   changeGenerationCondition(
     taskId: string,
@@ -168,29 +177,39 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 为当前任务提交结果流目标尺寸与码率预算，不等待服务端生效确认。
+   * Submits task result dimensions and bitrate without waiting for server application.
    *
-   * @param taskId 当前生成任务标识。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @returns 无返回值。
+   * @param taskId The current generation task identifier.
+   * @param targetSize The optional result stream target dimensions.
    */
-  changeTargetSize(taskId: string, targetSize: ImageSize): void {
-    this.send(RoomEvent.changeTargetSize(this.requireUserId(), taskId, targetSize));
+  changeTargetSize(
+    taskId: string,
+    targetSize: ImageSize
+  ): void {
+    this.send(RoomEvent.changeTargetSize(
+      this.requireUserId(),
+      taskId,
+      targetSize
+    ));
   }
 
   /**
-   * 尝试发送实时生成停止信令。
+   * Attempts to send the generation stop signal.
    *
-   * @param taskId 生成任务标识。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
    */
-  stopGeneration(taskId: string): void {
+  stopGeneration(
+    taskId: string
+  ): void {
     if (taskId.length === 0 || this.localUserId.length === 0) {
       return;
     }
 
     try {
-      this.send(RoomEvent.stop(this.localUserId, taskId));
+      this.send(RoomEvent.stop(
+        this.localUserId,
+        taskId
+      ));
     } catch (error) {
       const xmaxError: XmaxError = XmaxError.from(error);
       XmaxLogger.error(
@@ -201,11 +220,10 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 发送实时生成任务的交互轨迹。
+   * Sends interaction trajectories to a realtime generation task.
    *
-   * @param taskId 生成任务标识。
-   * @param points 相对于处理后完整媒体区域的 [0, 1] 轨迹点。
-   * @returns 无返回值。
+   * @param taskId The generation task identifier.
+   * @param points The trajectory points normalized to the complete processed media in [0, 1].
    */
   sendTracks(
     taskId: string,
@@ -223,32 +241,46 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 发送房间信令并记录结构化日志。
+   * Sends room signaling with structured logs.
    *
-   * @param message 已序列化的房间信令。
-   * @returns 无返回值。
+   * @param message The serialized room signal.
    */
-  private send(message: string): void {
+  private send(
+    message: string
+  ): void {
     try {
       this.rtcManager.sendRoomMessage(message);
     } catch (error) {
       throw XmaxError.from(error);
     }
-    XmaxLogger.debug((): string => this.formatSignalLog(message), 'Room');
+    XmaxLogger.debug(
+      (): string => this.formatSignalLog(message),
+      'Room'
+    );
   }
 
   /**
-   * 将房间信令格式化为便于阅读的日志文本。
+   * Formats room signaling for readable logs.
    *
-   * @param message 已序列化的房间信令。
-   * @returns 格式化后的日志文本。
+   * @param message The serialized room signal.
+   *
+   * @returns The formatted log text.
    */
-  private formatSignalLog(message: string): string {
+  private formatSignalLog(
+    message: string
+  ): string {
     try {
       const event = JSON.parse(message) as LoggedRoomEvent;
       const eventType: string = event.event ?? 'unknown';
-      const formattedMessage: string = JSON.stringify(event, null, 2);
-      const indentedMessage: string = formattedMessage.replace(/\n/g, '\n   ');
+      const formattedMessage: string = JSON.stringify(
+        event,
+        null,
+        2
+      );
+      const indentedMessage: string = formattedMessage.replace(
+        /\n/g,
+        '\n   '
+      );
 
       return `${XmaxLogger.localized("发送房间信令 (Send Room Signal)\n├─ 类型：", "发送房间信令 (Send Room Signal)\n├─ Type: ")}${eventType}${XmaxLogger.localized("\n└─ 内容：\n   ", "\n└─ Content: \n   ")}${indentedMessage}`;
     } catch (_error) {
@@ -257,13 +289,16 @@ export class RoomController implements RoomControlling {
   }
 
   /**
-   * 获取当前房间的本地用户标识。
+   * Returns the local user identifier for the current room.
    *
-   * @returns 当前本地用户标识。
+   * @returns The current local user identifier.
    */
   private requireUserId(): string {
     if (this.localUserId.length === 0) {
-      throw new XmaxError(XmaxErrorCode.RTC_ERROR, 'RTC room is not joined');
+      throw new XmaxError(
+        XmaxErrorCode.RTC_ERROR,
+        'RTC room is not joined'
+      );
     }
     return this.localUserId;
   }

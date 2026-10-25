@@ -1,10 +1,9 @@
 //
 //  MediaServicing.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,37 +12,63 @@ import { RealtimeMediaSource } from '../realtime/RealtimeMediaSource';
 import { ImageSize } from './ImageSize';
 import { ModelDefinition } from '../../core/realtime/RealtimeModel';
 
-/** 定义与模型输入约束相关的媒体业务规则。 */
+/** The sizing rules for a realtime model's local media, generation canvases, and returned media. */
 export interface MediaServicing {
 
-  /** 模型媒体约束 */
-  /** 当前媒体规则使用的模型定义。 */
+  /** The model definition used for media rules. */
   readonly model: ModelDefinition;
 
   /**
-   * 本地媒体尺寸；摄像头须匹配模型固定桶，图片和视频不受桶约束。
+   * Resolves local dimensions without upscaling and validates camera resolution buckets.
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @param source 媒体输入类型，用于选择尺寸处理规则。
-   * @returns 计算得到的媒体宽高。
+   * @param size The requested camera dimensions or oriented image or video dimensions, in pixels.
+   * @param source The media source; camera dimensions must match a bucket when the model defines
+   * fixed resolutions.
+   *
+   * @returns Dimensions aligned to 4 within the model's maximum pixel area, preserving the exact
+   * aspect ratio when possible and rounding down otherwise. Local media is never upscaled.
+   *
+   * @throws An INVALID_CONFIGURATION error if dimensions or pixel area are invalid, a camera
+   * resolution is unsupported, or no aligned size of at least 4 × 4 pixels fits the limit.
    */
-  resolveMediaSize(size: ImageSize, source: RealtimeMediaSource): ImageSize;
+  resolveMediaSize(
+    size: ImageSize,
+    source: RealtimeMediaSource
+  ): ImageSize;
 
   /**
-   * 按媒体比例选择生成画布，保留独立的本地媒体规格。
+   * Selects a generation canvas by aspect ratio independently of local media dimensions.
    *
-   * @param size 处理后的本地媒体尺寸，用于确定生成画布的比例。
-   * @returns 符合模型固定分辨率桶或像素面积与对齐约束的生成画布尺寸。
+   * @param size The processed local media dimensions defining the generation aspect ratio.
+   *
+   * @returns The canvas matching fixed model dimensions or pixel-area and alignment constraints.
+   *
+   * @throws An INVALID_CONFIGURATION error if dimensions or their pixel area are not positive
+   * safe integers.
    */
-  resolveGenerationSize(size: ImageSize): ImageSize;
+  resolveGenerationSize(
+    size: ImageSize
+  ): ImageSize;
 
   /**
-   * 按比例计算受宽高上限及可选插帧限制约束的回传尺寸。
+   * Resolves aspect-preserving return dimensions within width, height, and optional interpolation
+   * limits.
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @param maximumSize 允许的结果流宽高上限。
-   * @param frameInterpolationEnabled 是否将插帧能力纳入目标尺寸约束。
-   * @returns 计算得到的媒体宽高。
+   * @param size The processed local media dimensions defining the result's aspect ratio.
+   * @param maximumSize The positive, finite maximum result dimensions; fractional pixels are
+   * allowed.
+   * @param frameInterpolationEnabled Whether to cap the returned area at 900000 pixels; defaults
+   * to false. This does not check device interpolation support.
+   *
+   * @returns Dimensions aligned to 4 within the limits, without upscaling local media. The exact
+   * aspect ratio is preserved when possible; otherwise, dimensions are rounded down.
+   *
+   * @throws An INVALID_CONFIGURATION error if source dimensions or pixel area are invalid, bounds
+   * are nonpositive or nonfinite, or the limits cannot fit at least 4 × 4 pixels.
    */
-  resolveTargetSize(size: ImageSize, maximumSize: ImageSize, frameInterpolationEnabled?: boolean): ImageSize;
+  resolveTargetSize(
+    size: ImageSize,
+    maximumSize: ImageSize,
+    frameInterpolationEnabled?: boolean
+  ): ImageSize;
 }

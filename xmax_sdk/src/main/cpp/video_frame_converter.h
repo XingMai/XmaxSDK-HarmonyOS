@@ -1,10 +1,9 @@
 //
 //  video_frame_converter.h
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,78 +15,77 @@
 #include <memory>
 
 namespace xmax {
-/**
- * 描述 NV21 源图像布局及目标 NV12 尺寸和旋转方向。
- */
+
+/** The source NV21 layout and target NV12 dimensions and rotation. */
 struct VideoFrameTransformConfiguration {
 
-  /** 源图像尺寸与平面行跨度 */
+  // Source dimensions and plane strides
+
+  /** The source frame width, in pixels. */
   int32_t sourceWidth;
+
+  /** The source frame height, in pixels. */
   int32_t sourceHeight;
+
+  /** The source luma row stride, in bytes. */
   int32_t sourceStride;
+
+  /** The source chroma row stride, in bytes. */
   int32_t sourceChromaStride;
 
-  /** 目标方向与输出尺寸 */
+  // Target orientation and output dimensions
+
+  /** The clockwise video rotation. */
   int32_t rotation;
+
+  /** The target frame width, in pixels. */
   int32_t targetWidth;
+
+  /** The target frame height, in pixels. */
   int32_t targetHeight;
 };
 
 /**
- * 复用中间缓冲区完成 NV21 到 NV12 的裁剪、缩放和旋转；输入尺寸须为 2～32768 的偶数。
+ * Reuses intermediate buffers to transform NV21 into NV12. Dimensions must be even and within 2 to
+ * 32768.
  */
 class VideoFrameTransformer {
- public:
-  /**
-   * 创建可复用的视频帧转换器。
-   *
-   * @returns 无返回值；完成实例初始化。
-   */
+public:
+  /** Creates a reusable video frame converter. */
   VideoFrameTransformer();
-  /**
-   * 停止媒体输出并释放实例持有的原生资源与缓存。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Releases the cached conversion plan and intermediate buffers. */
   ~VideoFrameTransformer();
 
-  /**
-   * 禁止复制转换器，确保中间缓冲由单个实例独占。
-   *
-   * @returns 无返回值；完成实例初始化。
-   */
-  VideoFrameTransformer(const VideoFrameTransformer&) = delete;
-  /**
-   * 禁止复制转换器，确保中间缓冲和原生状态由单个实例持有。
-   *
-   * @returns 此操作已删除，不提供运行时返回值。
-   */
-  VideoFrameTransformer& operator=(const VideoFrameTransformer&) = delete;
+  /** Prevents copying so one instance exclusively owns the intermediate buffers. */
+  VideoFrameTransformer(const VideoFrameTransformer &) = delete;
+
+  /** Prevents copying of intermediate buffers and native state. */
+  VideoFrameTransformer &operator=(const VideoFrameTransformer &) = delete;
 
   /**
-   * 校验源布局并完成 NV21 到 NV12 的裁剪、缩放和旋转；非法参数或转换失败时抛出异常。
+   * Validates and transforms NV21 into cropped, scaled, rotated NV12; invalid input or conversion
+   * failure throws.
    *
-   * @param sourceLuma 源图像 Y 亮度平面首地址。
-   * @param sourceChroma 源图像交错色度平面首地址。
-   * @param destination 调用方提供的目标 NV12 缓冲区，容量须覆盖目标宽高的 1.5 倍。
-   * @param configuration 源图像布局、旋转角度和目标尺寸配置。
-   * @returns 无返回值。
+   * @param sourceLuma The source Y plane address.
+   * @param sourceChroma The source interleaved chroma plane address.
+   * @param destination The caller-owned NV12 buffer with capacity for 1.5 times the target pixel count.
+   * @param configuration The source layout, rotation, and target dimensions.
    */
-  void TransformNv21ToNv12(
-      const uint8_t* sourceLuma,
-      const uint8_t* sourceChroma,
-      uint8_t* destination,
-      const VideoFrameTransformConfiguration& configuration);
+  void TransformNv21ToNv12(const uint8_t *sourceLuma,
+      const uint8_t *sourceChroma,
+      uint8_t *destination,
+      const VideoFrameTransformConfiguration &configuration);
 
- private:
-  /**
-   * 持有视频转换计划，隔离转换器的缓存实现。
-   */
+private:
+  /** Owns the cached video conversion plan. */
   class Impl;
 
-  /** 转换缓存的独占所有权 */
+  // Exclusive conversion cache ownership
+
+  /** The exclusively owned conversion implementation. */
   std::unique_ptr<Impl> impl_;
 };
-}  /** namespace xmax */
+} // namespace xmax
 
 #endif

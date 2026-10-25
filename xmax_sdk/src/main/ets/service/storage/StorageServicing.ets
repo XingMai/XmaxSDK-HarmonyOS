@@ -1,10 +1,9 @@
 //
 //  StorageServicing.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,17 +12,18 @@ import { DownloadedFile } from '../../foundation/storage/DownloadedFile';
 import { StorageProgressListener } from '../../foundation/storage/StorageProgressListener';
 import { StoredFile } from '../../foundation/storage/StoredFile';
 
-/** 定义图片和视频的上传、下载及图片安全检查能力。 */
+/** An interface for image/video transfers and image content checks. */
 export interface StorageServicing {
 
   /**
-   * 上传图片数据。
+   * Uploads encoded image data.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传后的文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file information.
    */
   uploadImage(
     data: ArrayBuffer,
@@ -33,12 +33,13 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 上传本地图片文件。
+   * Uploads a local image file.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file information.
    */
   uploadImageFile(
     filePath: string,
@@ -47,13 +48,14 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 上传图片数据并执行内容安全检查。
+   * Uploads encoded image data and checks its content.
    *
-   * @param data 图片二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传并通过安全检查后的文件信息。
+   * @param data The encoded image bytes.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file after a successful safety check.
    */
   uploadImageWithSafetyCheck(
     data: ArrayBuffer,
@@ -63,12 +65,13 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 上传本地图片文件并执行内容安全检查。
+   * Uploads a local image file and checks its content.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传并通过安全检查后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file after a successful safety check.
    */
   uploadImageFileWithSafetyCheck(
     filePath: string,
@@ -77,13 +80,14 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 上传视频数据。
+   * Uploads encoded video data.
    *
-   * @param data 视频二进制数据。
-   * @param fileName 文件名称。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传后的文件信息。
+   * @param data The encoded video bytes.
+   * @param fileName The filename.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file information.
    */
   uploadVideo(
     data: ArrayBuffer,
@@ -93,12 +97,13 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 上传本地视频文件。
+   * Uploads a local video file.
    *
-   * @param filePath 本地文件路径。
-   * @param contentType 内容类型。
-   * @param progress 上传进度回调。
-   * @returns 上传后的文件信息。
+   * @param filePath The local file path.
+   * @param contentType The content MIME type.
+   * @param progress The upload progress callback.
+   *
+   * @returns The uploaded file information.
    */
   uploadVideoFile(
     filePath: string,
@@ -107,12 +112,13 @@ export interface StorageServicing {
   ): Promise<StoredFile>;
 
   /**
-   * 下载图片到本地文件。
+   * Downloads an image to a local file.
    *
-   * @param remoteUrl 远端图片地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度回调。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote image URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress callback.
+   *
+   * @returns The downloaded file information.
    */
   downloadImage(
     remoteUrl: string,
@@ -121,12 +127,13 @@ export interface StorageServicing {
   ): Promise<DownloadedFile>;
 
   /**
-   * 下载视频到本地文件。
+   * Downloads a video to a local file.
    *
-   * @param remoteUrl 远端视频地址。
-   * @param destinationPath 本地目标路径。
-   * @param progress 下载进度回调。
-   * @returns 下载后的文件信息。
+   * @param remoteUrl The remote video URL.
+   * @param destinationPath The destination file path.
+   * @param progress The download progress callback.
+   *
+   * @returns The downloaded file information.
    */
   downloadVideo(
     remoteUrl: string,

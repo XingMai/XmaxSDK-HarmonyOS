@@ -1,10 +1,9 @@
 //
 //  ImageSourceControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,47 +14,42 @@ import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
 /**
- * 接收图片源按目标帧率重复输出的视频帧。
+ * Receives repeated image frames at the target rate.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The video frame containing the prepared local image at the current output timestamp.
  */
-export type ImageSourceFrameListener = (frame: VideoFrame) => void;
+export type ImageSourceFrameListener = (
+  frame: VideoFrame
+) => void;
 
 /**
- * 接收图片源准备或帧输出失败的错误。
+ * Receives image preparation or frame output errors.
  *
- * @param error 当前操作失败或终止的原因。
- * @returns 无返回值。
+ * @param error The local image preparation or frame output failure.
  */
-export type ImageSourceErrorListener = (error: XmaxError) => void;
+export type ImageSourceErrorListener = (
+  error: XmaxError
+) => void;
 
-/** 定义本地图片持续输出视频帧的能力。 */
+/** An interface for continuous local image frame output. */
 export interface ImageSourceControlling {
 
   /**
-   * 准备图片和输出格式。
+   * Prepares an image and output format.
    *
-   * @param source 本地文件路径、图片编码数据或平台 PixelMap。
-   * @param videoFormat 期望的视频输出格式；未传入时根据图片尺寸自动计算。
-   * @returns 图片实际使用的视频输出格式。
+   * @param source A local file path, encoded image bytes, or platform PixelMap.
+   * @param videoFormat The requested format, resolved from image dimensions if omitted.
+   *
+   * @returns The resolved image output format.
    */
   prepare(
     source: string | ArrayBuffer | Uint8Array | image.PixelMap,
     videoFormat?: RealtimeVideoFormat
   ): Promise<RealtimeVideoFormat>;
 
-  /**
-   * 开始按目标帧率持续输出图片帧。
-   *
-   * @returns 无返回值。
-   */
+  /** Starts image frame output at the target rate. */
   start(): void;
 
-  /**
-   * 停止输出并释放图片资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops output and releases image resources. */
   stop(): void;
 }

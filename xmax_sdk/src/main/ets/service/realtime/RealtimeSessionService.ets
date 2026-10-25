@@ -1,10 +1,9 @@
 //
 //  RealtimeSessionService.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -23,45 +22,56 @@ import {
 
 const SESSION_HEARTBEAT_INTERVAL_MS: number = 10000;
 
-/** 管理实时生成会话的创建、心跳维持和关闭。 */
+/** Manages realtime session creation, heartbeats, and closure. */
 export class RealtimeSessionService implements RealtimeSessionServicing {
 
-  /** 服务端会话访问 */
+  // Server session access
+
+  /** The service sending authenticated Xmax API requests. */
   private readonly apiService: ApiServicing;
 
-  /** 会话心跳与版本隔离 */
+  // Session heartbeat and revision isolation
+
+  /** The timer scheduling server session heartbeats. */
   private heartbeatTimer: number = -1;
+
+  /** The revision rejecting heartbeat results from earlier cycles. */
   private heartbeatVersion: number = 0;
 
-  /**
-   * 创建实时生成会话 Service。
-   *
-   * @param apiService 提供会话 API 请求能力的 API Service。
-   * @returns 新建的 RealtimeSessionService 实例。
-   */
-  constructor(apiService: ApiServicing) {
+  /** Creates a realtime session service. */
+  constructor(
+    apiService: ApiServicing
+  ) {
     this.apiService = apiService;
   }
 
   /**
-   * 为指定实时生成模型创建会话。
+   * Creates a session for a realtime generation model.
    *
-   * @param model 生成模型名称，用于隔离各模型的历史档位。
-   * @returns 创建的实时生成会话。
+   * @param model The generation model name sent when creating the server session.
+   *
+   * @returns The created realtime session.
    */
-  async createSession(model: string): Promise<RealtimeSession> {
+  async createSession(
+    model: string
+  ): Promise<RealtimeSession> {
     const body: Record<string, string> = { 'model': model };
-    const value = await this.apiService.post<Object>('/session', body);
+    const value = await this.apiService.post<Object>(
+      '/session',
+      body
+    );
 
-    return this.toSession(value, true);
+    return this.toSession(
+      value,
+      true
+    );
   }
 
   /**
-   * 启动指定会话的周期性心跳。
+   * Starts periodic heartbeats for a session.
    *
-   * @param sessionId 实时生成会话标识。
-   * @param onFailure 心跳失败处理方法。
-   * @returns 无返回值。
+   * @param sessionId The realtime generation session identifier.
+   * @param onFailure The heartbeat failure handler.
    */
   startHeartbeat(
     sessionId: string,
@@ -70,14 +80,14 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
     this.stopHeartbeat();
 
     const heartbeatVersion: number = this.heartbeatVersion;
-    this.scheduleHeartbeat(sessionId, onFailure, heartbeatVersion);
+    this.scheduleHeartbeat(
+      sessionId,
+      onFailure,
+      heartbeatVersion
+    );
   }
 
-  /**
-   * 停止当前会话心跳并使已发出的心跳结果失效。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops heartbeats and invalidates pending heartbeat responses. */
   stopHeartbeat(): void {
     this.heartbeatVersion++;
 
@@ -88,12 +98,15 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   }
 
   /**
-   * 请求关闭指定实时生成会话。
+   * Requests closure of a realtime session.
    *
-   * @param sessionId 实时生成会话标识。
-   * @returns 会话关闭完成后的 Promise。
+   * The Promise fulfills after session closure.
+   *
+   * @param sessionId The realtime generation session identifier.
    */
-  async closeSession(sessionId: string): Promise<void> {
+  async closeSession(
+    sessionId: string
+  ): Promise<void> {
     try {
       await this.apiService.delete<Object>(`/session/${sessionId}`);
     } catch (error) {
@@ -102,65 +115,78 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   }
 
   /**
-   * 安排下一次会话心跳，并在失败时终止当前心跳周期。
+   * Schedules the next heartbeat, ending the cycle on failure.
    *
-   * @param sessionId 实时生成会话标识。
-   * @param onFailure 心跳失败处理方法。
-   * @param heartbeatVersion 当前心跳周期版本。
-   * @returns 无返回值。
+   * @param sessionId The realtime generation session identifier.
+   * @param onFailure The heartbeat failure handler.
+   * @param heartbeatVersion The heartbeat cycle revision.
    */
   private scheduleHeartbeat(
     sessionId: string,
     onFailure: RealtimeSessionHeartbeatFailureHandler,
     heartbeatVersion: number
   ): void {
-    this.heartbeatTimer = setTimeout(async () => {
-      this.heartbeatTimer = -1;
+    this.heartbeatTimer = setTimeout(
+      async () => {
+        this.heartbeatTimer = -1;
 
-      try {
-        const session: RealtimeSession = await this.heartbeatSession(sessionId);
-        this.ensureSessionActive(session);
-      } catch (error) {
-        if (heartbeatVersion !== this.heartbeatVersion) {
+        try {
+          const session: RealtimeSession = await this.heartbeatSession(sessionId);
+          this.ensureSessionActive(session);
+        } catch (error) {
+          if (heartbeatVersion !== this.heartbeatVersion) {
+            return;
+          }
+
+          this.stopHeartbeat();
+          await onFailure(
+            sessionId,
+            XmaxError.from(error)
+          );
+
           return;
         }
 
-        this.stopHeartbeat();
-        await onFailure(
-          sessionId,
-          XmaxError.from(error)
-        );
-
-        return;
-      }
-
-      if (heartbeatVersion === this.heartbeatVersion) {
-        this.scheduleHeartbeat(sessionId, onFailure, heartbeatVersion);
-      }
-    }, SESSION_HEARTBEAT_INTERVAL_MS);
+        if (heartbeatVersion === this.heartbeatVersion) {
+          this.scheduleHeartbeat(
+            sessionId,
+            onFailure,
+            heartbeatVersion
+          );
+        }
+      },
+      SESSION_HEARTBEAT_INTERVAL_MS
+    );
   }
 
   /**
-   * 发送一次会话心跳并解析最新会话信息。
+   * Sends a heartbeat and parses current session information.
    *
-   * @param sessionId 实时生成会话标识。
-   * @returns 心跳响应中的实时生成会话。
+   * @param sessionId The realtime generation session identifier.
+   *
+   * @returns The session returned by the heartbeat.
    */
-  private async heartbeatSession(sessionId: string): Promise<RealtimeSession> {
+  private async heartbeatSession(
+    sessionId: string
+  ): Promise<RealtimeSession> {
     const value = await this.apiService.put<Object>(
       `/session/${sessionId}/heartbeat`
     );
 
-    return this.toSession(value, false);
+    return this.toSession(
+      value,
+      false
+    );
   }
 
   /**
-   * 校验心跳返回的会话是否仍处于活动状态。
+   * Verifies that the heartbeat session remains active.
    *
-   * @param session 心跳返回的实时生成会话。
-   * @returns 无返回值。
+   * @param session The session returned by the heartbeat.
    */
-  private ensureSessionActive(session: RealtimeSession): void {
+  private ensureSessionActive(
+    session: RealtimeSession
+  ): void {
     if (session.status !== undefined && session.status !== 'ACTIVE') {
       throw new XmaxError(
         XmaxErrorCode.SESSION_ERROR,
@@ -170,24 +196,34 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   }
 
   /**
-   * 将 API 响应转换为实时生成会话。
+   * Converts an API response into a realtime session.
    *
-   * @param value API 返回的会话数据。
-   * @param requiresConnection 是否要求响应包含完整 RTC 连接信息。
-   * @returns 转换后的实时生成会话。
+   * @param value The API response data.
+   * @param requiresConnection Whether complete RTC connection parameters are required.
+   *
+   * @returns The parsed realtime session.
    */
   private toSession(
     value: Object,
     requiresConnection: boolean
   ): RealtimeSession {
     const record = JSON.parse(JSON.stringify(value)) as Record<string, Object>;
-    const sessionId: string | undefined = this.readString(record, 'sessionUid');
+    const sessionId: string | undefined = this.readString(
+      record,
+      'sessionUid'
+    );
 
     if (sessionId === undefined) {
-      throw new XmaxError(XmaxErrorCode.SESSION_ERROR, 'Invalid session response');
+      throw new XmaxError(
+        XmaxErrorCode.SESSION_ERROR,
+        'Invalid session response'
+      );
     }
 
-    const userId: string | undefined = this.readString(record, 'userUid');
+    const userId: string | undefined = this.readString(
+      record,
+      'userUid'
+    );
     const connection: RealtimeSessionConnection | undefined = this.readConnection(
       record['modelExtra'],
       userId
@@ -200,8 +236,14 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
       );
     }
 
-    const status: string | undefined = this.readString(record, 'status');
-    const closeReason: string | undefined = this.readString(record, 'closeReason');
+    const status: string | undefined = this.readString(
+      record,
+      'status'
+    );
+    const closeReason: string | undefined = this.readString(
+      record,
+      'closeReason'
+    );
 
     return new RealtimeSession(
       sessionId,
@@ -213,11 +255,12 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   }
 
   /**
-   * 从会话扩展数据中解析 RTC 连接信息。
+   * Parses RTC connection information from session extras.
    *
-   * @param raw 原始会话扩展数据。
-   * @param fallbackUserId 缺少用户标识时使用的备用值。
-   * @returns 完整连接信息；数据不完整时返回空值。
+   * @param raw The raw session extras.
+   * @param fallbackUserId The fallback user identifier if absent.
+   *
+   * @returns The complete connection, or undefined if incomplete.
    */
   private readConnection(
     raw: Object | undefined,
@@ -238,9 +281,18 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
       return undefined;
     }
 
-    const roomId: string = this.readString(record, 'room_id') ?? '';
-    const token: string = this.readString(record, 'room_token') ?? '';
-    const userId: string = this.readString(record, 'user_id') ?? fallbackUserId ?? '';
+    const roomId: string = this.readString(
+      record,
+      'room_id'
+    ) ?? '';
+    const token: string = this.readString(
+      record,
+      'room_token'
+    ) ?? '';
+    const userId: string = this.readString(
+      record,
+      'user_id'
+    ) ?? fallbackUserId ?? '';
     if (roomId.length === 0 || token.length === 0 || userId.length === 0) {
       return undefined;
     }
@@ -249,16 +301,20 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
       roomId,
       userId,
       token,
-      this.readString(record, 'bot_name')
+      this.readString(
+        record,
+        'bot_name'
+      )
     );
   }
 
   /**
-   * 读取记录中的非空字符串字段。
+   * Reads a nonempty string field from a record.
    *
-   * @param record 数据记录。
-   * @param key 字段名称。
-   * @returns 规范化后的字符串；字段无效时返回空值。
+   * @param record The data record.
+   * @param key The field name.
+   *
+   * @returns The normalized string, or undefined for an invalid field.
    */
   private readString(
     record: Record<string, Object>,
@@ -269,12 +325,15 @@ export class RealtimeSessionService implements RealtimeSessionServicing {
   }
 
   /**
-   * 清理字符串两端空白并过滤空字符串。
+   * Trims a string and filters blank values.
    *
-   * @param value 待处理字符串。
-   * @returns 非空字符串；输入无效时返回空值。
+   * @param value The string to process.
+   *
+   * @returns The nonempty string, or undefined for invalid input.
    */
-  private nonEmpty(value: string | undefined): string | undefined {
+  private nonEmpty(
+    value: string | undefined
+  ): string | undefined {
     const normalized: string | undefined = value?.trim();
     return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
   }

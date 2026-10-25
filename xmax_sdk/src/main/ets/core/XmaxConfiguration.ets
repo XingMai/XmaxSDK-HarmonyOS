@@ -1,10 +1,9 @@
 //
 //  XmaxConfiguration.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,27 +15,27 @@ import {
 } from '../foundation/errors/XmaxError';
 import { XmaxEnvironment } from './XmaxEnvironment';
 
-/** SDK 全局配置。 */
+/** The credentials, service environment, and logging options for an Xmax client. */
 export class XmaxConfiguration {
 
-  /** 访问凭证与服务环境 */
-  /** 调用 Xmax 服务使用的 API Key。 */
+  /** The API key used to access Xmax services. */
   readonly apiKey: string;
 
-  /** SDK 连接的服务环境；同时决定日志细项语言，国内为中文，海外为英文。日志配置全局生效。 */
+  /**
+   * The service environment and log detail language: Chinese for China, English for global. Logging
+   * configuration is global.
+   */
   readonly environment: XmaxEnvironment;
 
-  /** 日志配置 */
-  /** SDK 全局日志选项；默认为关闭。 */
+  /** The enabled SDK log categories; disabled by default. */
   readonly loggerOptions: XmaxLoggerOption;
 
   /**
-   * 创建 SDK 全局配置。
+   * Creates a client configuration.
    *
-   * @param apiKey 调用 Xmax 服务使用的 API Key。
-   * @param environment SDK 连接的服务环境；省略时使用国内环境。
-   * @param loggerOptions SDK 输出的日志类型，可按位或组合；省略时关闭日志。
-   * @returns 新建的 XmaxConfiguration 实例。
+   * @param apiKey The API key used to access Xmax services.
+   * @param environment The service environment; defaults to China.
+   * @param loggerOptions The log categories combined with bitwise OR; defaults to disabled.
    */
   constructor(
     apiKey: string,
@@ -48,11 +47,7 @@ export class XmaxConfiguration {
     this.loggerOptions = loggerOptions;
   }
 
-  /**
-   * 校验全局配置，配置无效时抛出对应的 `XmaxError`。
-   *
-   * @returns 无返回值。
-   */
+  /** Verifies the configuration, throwing an XmaxError if invalid. */
   validate(): void {
     if (this.apiKey.length === 0) {
       throw new XmaxError(

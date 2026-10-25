@@ -1,10 +1,9 @@
 //
 //  MediaSourceController.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -36,35 +35,37 @@ import { MediaSourceControlling } from './MediaSourceControlling';
 import { MediaTimeline } from './MediaTimeline';
 
 /**
- * 接收按播放时间轴输出的 PCM 音频帧。
+ * Receives PCM frames on the playback timeline.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The decoded 48 kHz mono PCM frame on the shared file playback timeline.
  */
-export type MediaSourceAudioFrameListener = (frame: AudioFrame) => void;
+export type MediaSourceAudioFrameListener = (
+  frame: AudioFrame
+) => void;
 
-/** 保存本地媒体文件的音视频元数据。 */
+/** Audio/video metadata for a local media file. */
 class MediaSourceMetadata {
 
-  /** 原始视频规格与方向 */
+  // Source video format and rotation
+
+  /** The source video width, in pixels. */
   readonly width: number;
+
+  /** The source video height, in pixels. */
   readonly height: number;
+
+  /** The clockwise video rotation. */
   readonly rotation: VideoRotation;
 
-  /** 文件时长与音轨信息 */
+  // File duration and audio track information
+
+  /** The media file duration, in microseconds. */
   readonly durationUs: number;
+
+  /** Whether the media source includes an available audio track. */
   readonly hasAudio: boolean;
 
-  /**
-   * 创建媒体文件元数据。
-   *
-   * @param width 原始视频宽度。
-   * @param height 原始视频高度。
-   * @param rotation 视频源旋转方向。
-   * @param durationUs 媒体文件时长，单位为微秒。
-   * @param hasAudio 媒体文件是否包含可用音轨。
-   * @returns 新建的 MediaSourceMetadata 实例。
-   */
+  /** Creates media file metadata. */
   constructor(
     width: number,
     height: number,
@@ -80,52 +81,72 @@ class MediaSourceMetadata {
   }
 }
 
-/** 协调本地媒体文件的音视频解码、同步和循环输出。 */
+/** Coordinates local media file decoding, synchronization, and looping. */
 export class MediaSourceController implements MediaSourceControlling {
 
-  /** 音视频源与尺寸计算依赖 */
+  // Audio/video source and sizing dependencies
+
+  /** The player for SDK-managed local PCM preview. */
   private readonly audioManager: AudioManaging;
 
-  /** 服务层组件 */
+  // Service components
+
+  /** The service resolving model-specific media dimensions. */
   private readonly mediaService: MediaServicing;
 
-  /** 媒体层组件 */
+  // Media components
+
+  /** The source decoding file video on the shared timeline. */
   private readonly videoSourceController: VideoSourceControlling;
+
+  /** The source decoding file audio on the shared timeline. */
   private readonly audioSourceController: AudioSourceControlling;
 
-  /** 文件元数据与播放时间轴 */
+  // File metadata and playback timeline
+
+  /** The prepared source file metadata. */
   private metadata: MediaSourceMetadata | null = null;
+
+  /** The playback timeline shared by audio and video. */
   private timeline: MediaTimeline | null = null;
 
-  /** 音视频播放及结束协同 */
+  // Playback and completion coordination
+
+  /** Whether media output is paused. */
   private isPaused: boolean = false;
+
+  /** Whether video output has reached the file end. */
   private videoEnded: boolean = false;
+
+  /** Whether audio output has reached the file end. */
   private audioEnded: boolean = false;
+
+  /** Whether track completion is awaiting local audio draining. */
   private completionPending: boolean = false;
+
+  /** Whether playback completion has already been delivered. */
   private completionNotified: boolean = false;
 
-  /** 异步播放版本 */
+  // Asynchronous playback revision
+
+  /** The revision rejecting events from obsolete playback runs. */
   private playbackVersion: number = 0;
 
-  /** 播放结果与错误通知 */
-  /**
-   * 通知本地媒体已完成当前播放。
-   *
-   * @returns 无返回值。
-   */
+  /** Reports local media playback completion. */
   private readonly endedListener: () => void;
+
+  /** The handler for asynchronous component failures. */
   private readonly errorListener: VideoSourceErrorListener;
 
   /**
-   * 创建媒体源 Controller。
+   * Creates a media source controller.
    *
-   * @param mediaService 提供模型输入尺寸计算能力的媒体 Service。
-   * @param audioManager 提供外部音频播放和推送能力的音频 Manager。
-   * @param videoFrameListener 视频帧输出监听器。
-   * @param audioFrameListener 音频帧输出监听器。
-   * @param errorListener 媒体源错误监听器。
-   * @param endedListener 当前媒体播放结束时执行的回调。
-   * @returns 新建的 MediaSourceController 实例。
+   * @param mediaService The service resolving model input dimensions.
+   * @param audioManager The audio manager for external audio playback and delivery.
+   * @param videoFrameListener The video frame handler.
+   * @param audioFrameListener The audio frame handler.
+   * @param errorListener The media source error handler.
+   * @param endedListener The current playback completion handler.
    */
   constructor(
     mediaService: MediaServicing,
@@ -133,17 +154,17 @@ export class MediaSourceController implements MediaSourceControlling {
     videoFrameListener: VideoSourceFrameListener,
     audioFrameListener: MediaSourceAudioFrameListener,
     errorListener: VideoSourceErrorListener,
-    endedListener: () => void = (): void => {}
+    endedListener: () => void = (): void => { }
   ) {
-    // 基础层组件
+    // Foundation components
     this.audioManager = audioManager;
 
-    // 服务层组件
+    // Service components
     this.mediaService = mediaService;
     this.endedListener = endedListener;
     this.errorListener = errorListener;
 
-    // 媒体层组件
+    // Media components
     this.videoSourceController = new VideoSourceController(
       videoFrameListener,
       errorListener,
@@ -165,31 +186,24 @@ export class MediaSourceController implements MediaSourceControlling {
     );
   }
 
-  /**
-   * 获取当前媒体文件是否包含可用音轨。
-   *
-   * @returns 当前媒体文件包含可用音轨时返回 true，否则返回 false。
-   */
+  /** Whether the current file source has an available audio track. */
   get hasAudio(): boolean {
     return this.metadata?.hasAudio ?? false;
   }
 
-  /**
-   * 判断本地文件的音视频输出是否全部结束。
-   *
-   * @returns 所有有效媒体轨道均已结束时返回 true。
-   */
+  /** Whether all available file audio and video tracks have ended. */
   get hasEnded(): boolean {
     return this.completionNotified;
   }
 
   /**
-   * 读取本地媒体文件信息并配置音视频源。
+   * Reads local media metadata and configures audio/video sources.
    *
-   * @param filePath 本地媒体文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 文件实际使用的媒体源配置。
+   * @param filePath The local media file path.
+   * @param videoFormat The requested format, resolved from file metadata if omitted.
+   * @param loop Whether to loop after file completion.
+   *
+   * @returns The resolved media source configuration.
    */
   async prepare(
     filePath: string,
@@ -224,7 +238,10 @@ export class MediaSourceController implements MediaSourceControlling {
       loop
     );
     if (metadata.hasAudio) {
-      this.audioSourceController.configure(filePath, loop);
+      this.audioSourceController.configure(
+        filePath,
+        loop
+      );
     }
 
     this.metadata = metadata;
@@ -235,9 +252,9 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 从文件起点同步输出音频帧和视频帧。
+   * Starts synchronized audio/video output at the file origin.
    *
-   * @returns 媒体源启动完成后的 Promise。
+   * The Promise fulfills after media source startup.
    */
   async start(): Promise<void> {
     const metadata: MediaSourceMetadata = this.requireMetadata();
@@ -252,16 +269,25 @@ export class MediaSourceController implements MediaSourceControlling {
       await this.audioManager.start();
     }
     if (version !== this.playbackVersion) {
-      throw new XmaxError(XmaxErrorCode.CANCELLED, 'Media initialization was cancelled');
+      throw new XmaxError(
+        XmaxErrorCode.CANCELLED,
+        'Media initialization was cancelled'
+      );
     }
 
-    const timeline = new MediaTimeline(0, metadata.durationUs);
+    const timeline = new MediaTimeline(
+      0,
+      metadata.durationUs
+    );
     this.timeline = timeline;
     this.isPaused = false;
     try {
       await this.videoSourceController.start(timeline);
       if (version !== this.playbackVersion) {
-        throw new XmaxError(XmaxErrorCode.CANCELLED, 'Media initialization was cancelled');
+        throw new XmaxError(
+          XmaxErrorCode.CANCELLED,
+          'Media initialization was cancelled'
+        );
       }
       if (metadata.hasAudio) {
         this.audioSourceController.start(timeline);
@@ -280,11 +306,7 @@ export class MediaSourceController implements MediaSourceControlling {
     }
   }
 
-  /**
-   * 暂停文件音视频时间轴并清空本地音频余量。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Pauses the file timeline and clears buffered local audio. */
   async pause(): Promise<void> {
     if (this.isPaused) {
       return;
@@ -323,11 +345,7 @@ export class MediaSourceController implements MediaSourceControlling {
     }
   }
 
-  /**
-   * 从原媒体位置恢复文件音视频时间轴。
-   *
-   * @returns 无返回值。
-   */
+  /** Resumes the file timeline at its paused media position. */
   resume(): void {
     if (!this.isPaused) {
       return;
@@ -348,11 +366,7 @@ export class MediaSourceController implements MediaSourceControlling {
     void this.finishPlaybackIfEnded();
   }
 
-  /**
-   * 在音视频轨道均结束且播放队列排空后通知播放完成。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Notifies playback completion after both tracks end and local audio drains. */
   private async finishPlaybackIfEnded(): Promise<void> {
     if (!this.videoEnded || !this.audioEnded || this.isPaused || this.timeline === null ||
       this.completionPending || this.completionNotified) {
@@ -381,38 +395,36 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
+   * Enables local audio preview without affecting RTC audio output.
    *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setLocalAudioPreviewEnabled(enabled: boolean): void {
+  setLocalAudioPreviewEnabled(
+    enabled: boolean
+  ): void {
     this.audioManager.setPlaybackEnabled(enabled);
   }
 
-  /**
-   * 当前配置的本地视频预览音量。
-   *
-   * @returns 0～1 的本地播放音量，0 为静音，1 为原始音量。
-   */
+  /** The configured local file preview volume in 0 to 1; zero mutes and one uses original volume. */
   get localAudioVolume(): number {
     return this.audioManager.volume;
   }
 
   /**
-   * 设置本地预览音量，不改变输出给其他消费者的音频帧。
+   * Sets preview volume without changing audio frames for other consumers.
    *
-   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume The volume in 0 to 1, from muted to original volume.
    */
-  async setLocalAudioVolume(volume: number): Promise<void> {
+  async setLocalAudioVolume(
+    volume: number
+  ): Promise<void> {
     await this.audioManager.setVolume(volume);
   }
 
   /**
-   * 停止音视频输出并清理媒体文件状态。
+   * Stops audio/video output and clears media file state.
    *
-   * @returns 媒体源停止完成后的 Promise。
+   * The Promise fulfills after media source stopping.
    */
   async stop(): Promise<void> {
     this.playbackVersion++;
@@ -431,9 +443,9 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 获取已准备的媒体文件元数据。
+   * Returns prepared media file metadata.
    *
-   * @returns 当前媒体文件元数据。
+   * @returns The current file metadata.
    */
   private requireMetadata(): MediaSourceMetadata {
     const metadata: MediaSourceMetadata | null = this.metadata;
@@ -448,9 +460,9 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 安全停止本地音频播放并记录停止错误。
+   * Stops local audio playback and logs stopping errors.
    *
-   * @returns 停止处理完成后的 Promise。
+   * The Promise fulfills after the stop attempt.
    */
   private async stopAudioPlayback(): Promise<void> {
     try {
@@ -465,12 +477,15 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 读取本地媒体文件的视频尺寸、旋转、时长和音轨信息。
+   * Reads video dimensions, rotation, duration, and audio availability from a local file.
    *
-   * @param filePath 本地媒体文件路径。
-   * @returns 解析后的媒体文件元数据。
+   * @param filePath The local media file path.
+   *
+   * @returns The parsed media file metadata.
    */
-  private async readMetadata(filePath: string): Promise<MediaSourceMetadata> {
+  private async readMetadata(
+    filePath: string
+  ): Promise<MediaSourceMetadata> {
     const sourceFile: fileIo.File = fileIo.openSync(
       filePath,
       fileIo.OpenMode.READ_ONLY
@@ -523,11 +538,12 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 根据文件显示尺寸和期望格式解析模型输入视频格式。
+   * Resolves model input format from file display size and the requested format.
    *
-   * @param metadata 媒体文件元数据。
-   * @param videoFormat 期望的视频输出格式。
-   * @returns 适配模型输入尺寸后的实际视频格式。
+   * @param metadata The media file metadata.
+   * @param videoFormat The requested video output format.
+   *
+   * @returns The resolved model input format.
    */
   private resolveVideoFormat(
     metadata: MediaSourceMetadata,
@@ -540,36 +556,55 @@ export class MediaSourceController implements MediaSourceControlling {
       this.mediaService.model.defaultFrameRate
     );
     const targetSize: ImageSize = this.mediaService.resolveMediaSize(
-      new ImageSize(requestedFormat.width, requestedFormat.height), RealtimeMediaSource.VIDEO
+      new ImageSize(
+        requestedFormat.width,
+        requestedFormat.height
+      ),
+      RealtimeMediaSource.VIDEO
     );
 
-    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(targetSize.width, targetSize.height);
+    const resolvedFormat: RealtimeVideoFormat = requestedFormat.resized(
+      targetSize.width,
+      targetSize.height
+    );
     resolvedFormat.validate();
     return resolvedFormat;
   }
 
   /**
-   * 根据视频旋转方向计算文件的显示尺寸。
+   * Resolves file display dimensions after rotation.
    *
-   * @param metadata 媒体文件元数据。
-   * @returns 考虑旋转方向后的显示尺寸。
+   * @param metadata The media file metadata.
+   *
+   * @returns The oriented display dimensions.
    */
-  private displaySize(metadata: MediaSourceMetadata): ImageSize {
+  private displaySize(
+    metadata: MediaSourceMetadata
+  ): ImageSize {
     if (metadata.rotation === VideoRotation.ROTATION_90 ||
       metadata.rotation === VideoRotation.ROTATION_270) {
-      return new ImageSize(metadata.height, metadata.width);
+      return new ImageSize(
+        metadata.height,
+        metadata.width
+      );
     }
 
-    return new ImageSize(metadata.width, metadata.height);
+    return new ImageSize(
+      metadata.width,
+      metadata.height
+    );
   }
 
   /**
-   * 将媒体元数据中的角度转换为统一视频旋转方向。
+   * Normalizes metadata rotation into a video rotation.
    *
-   * @param value 媒体元数据中的旋转角度。
-   * @returns 规范化后的视频旋转方向。
+   * @param value The rotation angle from media metadata.
+   *
+   * @returns The normalized video rotation.
    */
-  private resolveRotation(value?: string): VideoRotation {
+  private resolveRotation(
+    value?: string
+  ): VideoRotation {
     const rawRotation: number = Number.parseInt(value ?? '0');
     const normalizedRotation: number = Number.isFinite(rawRotation) ?
       ((rawRotation % 360) + 360) % 360 : 0;
@@ -587,12 +622,15 @@ export class MediaSourceController implements MediaSourceControlling {
   }
 
   /**
-   * 解析媒体元数据中的音轨存在标记。
+   * Parses the audio-track flag from media metadata.
    *
-   * @param value 媒体元数据中的音轨标记。
-   * @returns 文件包含可用音轨时返回 true，否则返回 false。
+   * @param value The metadata audio-track flag.
+   *
+   * @returns True if the file has an available audio track.
    */
-  private resolveHasAudio(value?: string): boolean {
+  private resolveHasAudio(
+    value?: string
+  ): boolean {
     const normalizedValue: string = value?.trim().toLowerCase() ?? '';
     return normalizedValue.length > 0 &&
       normalizedValue !== 'false' &&

@@ -1,92 +1,90 @@
 //
 //  XmaxError.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/** SDK 向接入方暴露的统一错误码。 */
+/** An error code exposed by XmaxSDK. */
 export enum XmaxErrorCode {
 
-  /** API Key 未配置或为空。 */
+  /** The API key is missing or empty. */
   INVALID_API_KEY = 'INVALID_API_KEY',
 
-  /** 调用参数、配置或当前生命周期状态不符合操作要求。 */
+  /** Arguments, configuration, or lifecycle state do not permit the operation. */
   INVALID_CONFIGURATION = 'INVALID_CONFIGURATION',
 
-  /** SDK 内部发生无法归类的非预期错误。 */
+  /** An unexpected SDK failure without a more specific category. */
   INTERNAL_ERROR = 'INTERNAL_ERROR',
 
-  /** 网络不可用、连接失败或 HTTP 请求无法完成。 */
+  /** Network unavailability, connection failure, or an incomplete HTTP request. */
   NETWORK_ERROR = 'NETWORK_ERROR',
 
-  /** Xmax API 返回业务失败，或者响应数据无法正确解析。 */
+  /** An Xmax API failure or invalid response. */
   API_ERROR = 'API_ERROR',
 
-  /** 实时生成会话数据缺失、会话关闭或心跳状态异常。 */
+  /** Missing or closed realtime session data, or an invalid heartbeat state. */
   SESSION_ERROR = 'SESSION_ERROR',
 
-  /** RTC Engine、房间、媒体传输或渲染绑定发生错误。 */
+  /** An RTC engine, room, media transport, or rendering binding failure. */
   RTC_ERROR = 'RTC_ERROR',
 
-  /** 本地媒体采集、读取、解码、同步或帧处理发生错误。 */
+  /** A local capture, file read, decode, synchronization, or frame processing failure. */
   MEDIA_ERROR = 'MEDIA_ERROR',
 
-  /** 接入方未授予相机权限。 */
+  /** Camera access was not granted. */
   CAMERA_PERMISSION_DENIED = 'CAMERA_PERMISSION_DENIED',
 
-  /** 接入方未授予麦克风权限。 */
+  /** Microphone access was not granted. */
   MICROPHONE_PERMISSION_DENIED = 'MICROPHONE_PERMISSION_DENIED',
 
-  /** 文件或二进制数据上传失败。 */
+  /** File or data upload failed. */
   UPLOAD_ERROR = 'UPLOAD_ERROR',
 
-  /** 远端文件下载失败。 */
+  /** Remote file download failed. */
   DOWNLOAD_ERROR = 'DOWNLOAD_ERROR',
 
-  /** 图片未通过内容安全检查。 */
+  /** The image failed a content safety check. */
   UNSAFE_IMAGE = 'UNSAFE_IMAGE',
 
-  /** 操作因生命周期切换或接入方主动终止而正常取消。 */
+  /** The operation was cancelled by lifecycle changes or your app. */
   CANCELLED = 'CANCELLED',
 
-  /** 等待连接、房间事件或生成结果超过规定时间。 */
+  /** Connection, room event, or generation confirmation timed out. */
   TIMEOUT = 'TIMEOUT'
 }
 
 /**
- * SDK 内部组件使用的错误监听器。
+ * An error handler for SDK internal components.
  *
- * @param error 当前操作失败或终止的原因。
- * @returns 无返回值。
+ * @param error The SDK component failure to deliver.
  */
-export type XmaxErrorListener = (error: XmaxError) => void;
+export type XmaxErrorListener = (
+  error: XmaxError
+) => void;
 
-/** 表示 SDK 统一抛出或回调给接入方的错误。 */
+/** An SDK error returned or delivered to your app. */
 export class XmaxError extends Error {
 
-  /** SDK 与服务端错误信息 */
-  /** SDK 统一错误码。 */
+  /** The SDK error code. */
   readonly code: XmaxErrorCode;
 
-  /** Xmax API 返回的业务错误码；非 API 业务错误时为空。 */
+  /** The optional Xmax API business error code. */
   readonly apiCode?: number;
 
-  /** HTTP 响应状态码；请求未获得响应时为空。 */
+  /** The HTTP status code, absent if no response was received. */
   readonly httpStatus?: number;
 
   /**
-   * 创建 SDK 错误。
+   * Creates an SDK error.
    *
-   * @param code SDK 统一错误码。
-   * @param message 面向接入方的错误原因。
-   * @param apiCode Xmax API 返回的可选业务错误码。
-   * @param httpStatus 可选的 HTTP 响应状态码。
-   * @returns 新建的 XmaxError 实例。
+   * @param code The SDK error code.
+   * @param message The failure reason for your app.
+   * @param apiCode The optional Xmax API business error code.
+   * @param httpStatus The optional HTTP response status code.
    */
   constructor(
     code: XmaxErrorCode,
@@ -102,12 +100,15 @@ export class XmaxError extends Error {
   }
 
   /**
-   * 将无法识别的异常转换为 SDK 内部错误，已有 `XmaxError` 原样返回。
+   * Preserves existing XmaxError instances and normalizes unknown failures as internal errors.
    *
-   * @param error 待转换的异常对象。
-   * @returns 可向接入方抛出或回调的统一错误。
+   * @param error The exception to normalize.
+   *
+   * @returns The SDK error to throw or deliver to your app.
    */
-  static from(error: Object): XmaxError {
+  static from(
+    error: Object
+  ): XmaxError {
     if (error instanceof XmaxError) {
       return error;
     }

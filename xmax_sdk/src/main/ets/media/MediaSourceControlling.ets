@@ -1,10 +1,9 @@
 //
 //  MediaSourceControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,26 +11,26 @@
 import { RealtimeVideoFormat } from '../service/realtime/RealtimeVideoFormat';
 import { MediaSourceConfiguration } from './MediaSourceConfiguration';
 
-/** 定义本地媒体文件的音视频输入能力。 */
+/** An interface for local file audio/video input. */
 export interface MediaSourceControlling {
 
-  /** 音频播放与文件状态 */
-  /** 当前本地视频预览音量（0～1），默认 0.45。 */
+  /** The local file preview volume in 0 to 1; defaults to 0.45. */
   readonly localAudioVolume: number;
 
-  /** 当前媒体文件是否包含可用音轨。 */
+  /** Whether the file contains an available audio track. */
   readonly hasAudio: boolean;
 
-  /** 当前文件已自然结束，且本地尾音已排空。 */
+  /** Whether file playback ended naturally and local audio finished draining. */
   readonly hasEnded: boolean;
 
   /**
-   * 准备本地媒体文件和输出格式。
+   * Prepares the local file and output format.
    *
-   * @param filePath 本地媒体文件路径。
-   * @param videoFormat 期望的视频输出格式；未传入时根据文件信息自动计算。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 文件实际使用的媒体源配置。
+   * @param filePath The local media file path.
+   * @param videoFormat The requested format, resolved from file metadata if omitted.
+   * @param loop Whether to loop after file completion.
+   *
+   * @returns The resolved media source configuration.
    */
   prepare(
     filePath: string,
@@ -40,46 +39,40 @@ export interface MediaSourceControlling {
   ): Promise<MediaSourceConfiguration>;
 
   /**
-   * 开始同步输出文件中的音频帧和视频帧。
+   * Starts synchronized file audio/video output.
    *
-   * @returns 媒体源启动完成后的 Promise。
+   * The Promise fulfills after media source startup.
    */
   start(): Promise<void>;
 
-  /**
-   * 暂停文件音视频时间轴并清空本地音频余量。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Pauses the file timeline and clears buffered local audio. */
   pause(): Promise<void>;
 
-  /**
-   * 从原媒体位置恢复文件音视频时间轴。
-   *
-   * @returns 无返回值。
-   */
+  /** Resumes the file timeline at its paused media position. */
   resume(): void;
 
   /**
-   * 启用或暂停本地音频预览，不影响 RTC 音频帧输出。
+   * Enables local audio preview without affecting RTC audio output.
    *
-   * @param enabled 是否播放本地预览音频。
-   * @returns 无返回值。
+   * @param enabled Whether to play local preview audio.
    */
-  setLocalAudioPreviewEnabled(enabled: boolean): void;
+  setLocalAudioPreviewEnabled(
+    enabled: boolean
+  ): void;
 
   /**
-   * 设置本地预览音量，不改变输出给其他消费者的音频帧。
+   * Sets preview volume without changing audio frames for other consumers.
    *
-   * @param volume 音量比例，范围 0～1，0 为静音，1 为原始音量。
-   * @returns 操作完成时兑现的 Promise。
+   * @param volume The volume in 0 to 1, from muted to original volume.
    */
-  setLocalAudioVolume(volume: number): Promise<void>;
+  setLocalAudioVolume(
+    volume: number
+  ): Promise<void>;
 
   /**
-   * 停止输出并释放媒体文件资源。
+   * Stops output and releases media file resources.
    *
-   * @returns 媒体源停止完成后的 Promise。
+   * The Promise fulfills after media source stopping.
    */
   stop(): Promise<void>;
 }

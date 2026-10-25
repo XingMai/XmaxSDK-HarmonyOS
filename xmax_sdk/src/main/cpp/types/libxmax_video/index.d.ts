@@ -1,25 +1,23 @@
 //
 //  index.d.ts
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
 /**
- * 接收原生视频解码帧、文件结束通知或解码错误。
+ * Receives decoded video, file completion, or a decoding error.
  *
- * @param data 当前帧的有效媒体数据。
- * @param width 画面宽度，单位像素。
- * @param height 画面高度，单位像素。
- * @param stride 相邻图像行之间的字节跨度。
- * @param timestampUs 媒体帧时间戳，单位微秒。
- * @param endOfStream 是否已到达文件末尾。
- * @param error 当前操作失败或终止的原因。
- * @returns 无返回值。
+ * @param data The decoded NV12 pixel buffer, or undefined for a completion or error event.
+ * @param width The frame width, in pixels.
+ * @param height The frame height, in pixels.
+ * @param stride The image row stride, in bytes.
+ * @param timestampUs The media frame timestamp, in microseconds.
+ * @param endOfStream Whether the file has reached its end.
+ * @param error The video decoding failure description, when present.
  */
 type NativeVideoFileFrameListener = (
   data: ArrayBuffer | undefined,
@@ -31,39 +29,33 @@ type NativeVideoFileFrameListener = (
   error?: string
 ) => void;
 
-/** 控制原生视频文件解码的暂停、恢复和异步资源释放。 */
+/** Controls native video decoding, playback, and asynchronous release. */
 export interface NativeVideoFileDecoder {
-  /**
-   * 暂停媒体时间轴上的连续解码输出。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Pauses decoded output on the media timeline. */
   pause(): void;
 
   /**
-   * 恢复解码并将播放锚点向后平移本次暂停时长。
+   * Resumes decoding with the playback anchor shifted by the pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void;
+  resume(
+    pausedDurationUs: number
+  ): void;
 
-  /**
-   * 停止连续解码并释放文件、解封装器与解码器资源。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops decoding and releases the file, demuxer, and decoder. */
   release(): Promise<void>;
 }
 
 /**
- * 接收原生音频解码后的 PCM 数据、文件结束通知或错误。
+ * Receives decoded PCM, file completion, or an error.
  *
- * @param data 当前帧的有效媒体数据。
- * @param timestampUs 媒体帧时间戳，单位微秒。
- * @param endOfStream 是否已到达文件末尾。
- * @param error 当前操作失败或终止的原因。
- * @returns 无返回值。
+ * @param data The decoded 48 kHz mono signed 16-bit PCM buffer, or undefined for completion or
+ * failure.
+ * @param timestampUs The media frame timestamp, in microseconds.
+ * @param endOfStream Whether the file has reached its end.
+ * @param error The audio decoding failure description, when present.
  */
 type NativeAudioFileFrameListener = (
   data: ArrayBuffer | undefined,
@@ -72,40 +64,33 @@ type NativeAudioFileFrameListener = (
   error?: string
 ) => void;
 
-/** 控制原生音频文件解码的暂停、恢复和资源释放。 */
+/** Controls native audio decoding, playback, and resource release. */
 export interface NativeAudioFileDecoder {
-  /**
-   * 暂停媒体时间轴上的连续解码输出。
-   *
-   * @returns 无返回值。
-   */
+
+  /** Pauses decoded output on the media timeline. */
   pause(): void;
 
   /**
-   * 恢复解码并将播放锚点向后平移本次暂停时长。
+   * Resumes decoding with the playback anchor shifted by the pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void;
+  resume(
+    pausedDurationUs: number
+  ): void;
 
-  /**
-   * 停止连续解码并释放文件、解封装器与解码器资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops decoding and releases the file, demuxer, and decoder. */
   release(): void;
 }
 
 /**
- * 接收原生摄像头转换后的 NV12 数据或处理错误。
+ * Receives converted camera NV12 data or a processing error.
  *
- * @param data 当前帧的有效媒体数据。
- * @param width 画面宽度，单位像素。
- * @param height 画面高度，单位像素。
- * @param timestampUs 媒体帧时间戳，单位微秒。
- * @param error 当前操作失败或终止的原因。
- * @returns 无返回值。
+ * @param data The converted NV12 pixel buffer, or undefined when no camera frame is available.
+ * @param width The frame width, in pixels.
+ * @param height The frame height, in pixels.
+ * @param timestampUs The media frame timestamp, in microseconds.
+ * @param error The camera frame processing failure description, when present.
  */
 type NativeCameraFrameListener = (
   data: ArrayBuffer | undefined,
@@ -115,24 +100,24 @@ type NativeCameraFrameListener = (
   error?: string
 ) => void;
 
-/** 接收 CameraKit 原始帧，并按目标尺寸、方向和帧率输出。 */
+/** Receives raw CameraKit frames and outputs the configured size, rotation, and frame rate. */
 export interface NativeFrameReceiver {
+
   /**
-   * 返回可绑定到 CameraKit 输出的 Native 接收 Surface。
+   * Returns the native receiving Surface for CameraKit output binding.
    *
-   * @returns 可传给 CameraKit 输出创建接口的原生 Surface 标识。
+   * @returns The native Surface identifier for CameraKit output creation.
    */
   getSurfaceId(): string;
 
   /**
-   * 配置目标尺寸、旋转角度和帧率。
+   * Configures output dimensions, rotation, and frame rate.
    *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @param frameRate 目标视频帧率，单位 fps。
-   * @param captureFrameRate 采集帧率，单位 fps。
-   * @returns 无返回值。
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   * @param rotation The rotation to apply to the video image.
+   * @param frameRate The target video frame rate, in fps.
+   * @param captureFrameRate The capture frame rate, in fps.
    */
   configure(
     width: number,
@@ -142,23 +127,21 @@ export interface NativeFrameReceiver {
     captureFrameRate: number
   ): void;
 
-  /**
-   * 停止帧回调并释放 Native 图像接收资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops frame callbacks and releases native image receiving resources. */
   release(): void;
 }
 
-/** 提供 SDK 原生摄像头接收及音视频文件解码的 ArkTS 桥接入口。 */
+/** ArkTS bridges for native camera receiving and audio/video file decoding. */
 interface XmaxVideoNative {
+
   /**
-   * 创建 CameraKit 原始帧接收器。
+   * Creates a raw CameraKit frame receiver.
    *
-   * @param sourceWidth 原始摄像头帧宽度，单位像素。
-   * @param sourceHeight 原始摄像头帧高度，单位像素。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @returns 可绑定到 CameraKit 输出的原生接收器。
+   * @param sourceWidth The raw camera frame width, in pixels.
+   * @param sourceHeight The raw camera frame height, in pixels.
+   * @param listener The handler for converted NV12 camera frames and processing failures.
+   *
+   * @returns The native receiver for CameraKit output binding.
    */
   createFrameReceiver(
     sourceWidth: number,
@@ -167,19 +150,20 @@ interface XmaxVideoNative {
   ): NativeFrameReceiver;
 
   /**
-   * 后台初始化系统视频解码器；就绪后处于暂停状态，调用 resume 开始输出。
+   * Initializes a paused system decoder on a worker; call resume to start output.
    *
-   * @param fd 已打开的本地文件描述符。
-   * @param size 本地媒体文件的字节长度。
-   * @param playbackAnchorUs 媒体起点对应的单调播放时间，单位微秒。
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @param outputWidth 解码输出宽度，单位像素。
-   * @param outputHeight 解码输出高度，单位像素。
-   * @param frameIntervalUs 视频帧输出间隔，单位微秒。
-   * @param cycleDurationUs 单轮媒体播放时长，单位微秒。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @returns 异步初始化完成的原生视频解码器；初始暂停，需调用 resume 开始输出。
+   * @param fd The open local file descriptor.
+   * @param size The local media file length, in bytes.
+   * @param playbackAnchorUs The monotonic playback time for the media origin, in microseconds.
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param rotation The rotation to apply to the video image.
+   * @param outputWidth The decoded output width, in pixels.
+   * @param outputHeight The decoded output height, in pixels.
+   * @param frameIntervalUs The video output interval, in microseconds.
+   * @param cycleDurationUs The playback cycle duration, in microseconds.
+   * @param listener The handler for decoded NV12 frames, file completion, and decoding failures.
+   *
+   * @returns The initialized, paused native decoder; call resume to start output.
    */
   createVideoFileDecoder(
     fd: number,
@@ -195,15 +179,16 @@ interface XmaxVideoNative {
   ): Promise<NativeVideoFileDecoder>;
 
   /**
-   * 使用系统音频解码器连续输出 48 kHz 单声道 PCM 帧。
+   * Decodes continuous audio into 48 kHz mono PCM frames.
    *
-   * @param fd 已打开的本地文件描述符。
-   * @param size 本地媒体文件的字节长度。
-   * @param playbackAnchorUs 媒体起点对应的单调播放时间，单位微秒。
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param cycleDurationUs 单轮媒体播放时长，单位微秒。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @returns 开始按播放时间轴输出 PCM 帧的原生音频解码器。
+   * @param fd The open local file descriptor.
+   * @param size The local media file length, in bytes.
+   * @param playbackAnchorUs The monotonic playback time for the media origin, in microseconds.
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param cycleDurationUs The playback cycle duration, in microseconds.
+   * @param listener The handler for decoded PCM packets, file completion, and decoding failures.
+   *
+   * @returns The native decoder delivering PCM on the playback timeline.
    */
   createAudioFileDecoder(
     fd: number,

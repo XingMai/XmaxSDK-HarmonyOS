@@ -1,10 +1,9 @@
 //
 //  VideoRenderRegistry.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,97 +14,112 @@ import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { CameraPreviewRatio } from './CameraPreviewRatio';
 
 /**
- * 接收摄像头预览比例更新的回调。
+ * Receives camera preview aspect ratio updates.
  *
- * @param ratio 摄像头预览的显示比例。
- * @returns 无返回值。
+ * @param ratio The camera preview aspect ratio.
  */
-type CameraPreviewRatioListener = (ratio: CameraPreviewRatio) => void;
+type CameraPreviewRatioListener = (
+  ratio: CameraPreviewRatio
+) => void;
 
 /**
- * 接收视频画面是否已可见的状态变化。
+ * Receives changes to displayed video readiness.
  *
- * @param ready 视频画面是否已经可见。
- * @returns 无返回值。
+ * @param ready Whether video is visible.
  */
-export type VideoReadyListener = (ready: boolean) => void;
+export type VideoReadyListener = (
+  ready: boolean
+) => void;
 
 /**
- * 接收预览图片更新；空值表示清除预览。
+ * Receives preview image updates; an absent value clears preview.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The local preview PixelMap, or undefined to clear the displayed image.
  */
-type PreviewFrameListener = (frame: image.PixelMap | undefined) => void;
+type PreviewFrameListener = (
+  frame: image.PixelMap | undefined
+) => void;
 
-/**
- * 视频轨道格式变化后通知视图刷新布局。
- *
- * @returns 无返回值。
- */
+/** Requests view layout updates after track format changes. */
 type VideoFormatListener = () => void;
 
-/** 保存已绑定视图的显示模式及预览、就绪和格式监听器。 */
+/** A bound view's content mode and preview, readiness, and format listeners. */
 interface AttachedVideoView {
 
-  /** 视图显示配置 */
+  // View display configuration
+
+  /** The aspect-fit or aspect-fill display mode. */
   contentMode: VideoContentMode;
 
-  /** 预览、就绪与格式通知 */
+  // Preview, readiness, and format notifications
+
+  /** The camera preview aspect ratio handler. */
   previewRatioListener: CameraPreviewRatioListener;
+
+  /** The preview image update and clearing handler. */
   previewFrameListener: PreviewFrameListener;
+
+  /** The displayed video readiness handler. */
   videoReadyListener?: VideoReadyListener;
+
+  /** The track format change handler. */
   videoFormatListener?: VideoFormatListener;
 }
 
-/** 管理一条视频轨道绑定的视图，并广播预览图片和显示状态。 */
+/** Manages a track's bound views and broadcasts preview and display state. */
 export class VideoRenderBinding {
 
-  /** 原生渲染绑定依赖 */
+  // Native rendering binding dependencies
+
+  /** The native library used by the rendering Surface. */
   readonly libraryName: string;
+
   /**
-   * 将指定媒体流绑定到原生视频视图。
+   * Binds a stream to a native video view.
    *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @returns 无返回值。
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
    */
   private readonly attachHandler: (
     viewId: string,
     contentMode: VideoContentMode
   ) => void;
-  /**
-   * 解除指定原生视频视图的媒体流绑定。
-   *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @returns 无返回值。
-   */
-  private readonly detachHandler: (viewId: string) => void;
 
-  /** 已绑定视图记录 */
+  /**
+   * Detaches a native video view's stream.
+   *
+   * @param viewId The native video view identifier.
+   */
+  private readonly detachHandler: (
+    viewId: string
+  ) => void;
+
+  // Bound view records
+
+  /** The bound views and their rendering listeners. */
   private readonly attachedViews: Map<string, AttachedVideoView> = new Map();
 
-  /** 共享预览与视频就绪状态 */
+  // Shared preview and video readiness state
+
+  /** The configured camera preview aspect ratio. */
   private previewRatio?: CameraPreviewRatio;
+
+  /** The retained preview or frozen result image. */
   private previewFrame?: image.PixelMap;
+
+  /** Whether the bound video is ready to display. */
   private videoReady: boolean = false;
 
-  /**
-   * 创建视频轨道渲染绑定。
-   *
-   * @param libraryName XComponent 使用的原生渲染库名称。
-   * @param attachHandler 将原生视频流绑定到视图的处理函数。
-   * @param detachHandler 解除原生视频视图绑定的处理函数。
-   * @param previewRatio 摄像头预览使用的目标显示比例。
-   * @returns 新建的 VideoRenderBinding 实例。
-   */
+  /** Creates a video track rendering binding. */
   constructor(
     libraryName: string,
     attachHandler: (
       viewId: string,
       contentMode: VideoContentMode
     ) => void,
-    detachHandler: (viewId: string) => void,
+    detachHandler: (
+      viewId: string
+    ) => void,
     previewRatio?: CameraPreviewRatio
   ) {
     this.libraryName = libraryName;
@@ -115,15 +129,14 @@ export class VideoRenderBinding {
   }
 
   /**
-   * 绑定视频视图并同步预览、就绪状态和显示配置。
+   * Attaches a view and synchronizes preview, readiness, and display settings.
    *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @param previewRatioListener 接收摄像头预览比例更新的监听器。
-   * @param previewFrameListener 接收预览图更新或清除通知的监听器。
-   * @param videoReadyListener 接收视频画面就绪状态的监听器。
-   * @param videoFormatListener 轨道视频格式变化时执行的回调。
-   * @returns 无返回值。
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
+   * @param previewRatioListener The camera preview ratio handler.
+   * @param previewFrameListener The preview image update or clearing handler.
+   * @param videoReadyListener The video readiness handler.
+   * @param videoFormatListener The track format change handler.
    */
   attach(
     viewId: string,
@@ -133,13 +146,16 @@ export class VideoRenderBinding {
     videoReadyListener?: VideoReadyListener,
     videoFormatListener?: VideoFormatListener
   ): void {
-    this.attachedViews.set(viewId, {
-      contentMode: contentMode,
-      previewRatioListener: previewRatioListener,
-      previewFrameListener: previewFrameListener,
-      videoReadyListener: videoReadyListener,
-      videoFormatListener: videoFormatListener
-    });
+    this.attachedViews.set(
+      viewId,
+      {
+        contentMode: contentMode,
+        previewRatioListener: previewRatioListener,
+        previewFrameListener: previewFrameListener,
+        videoReadyListener: videoReadyListener,
+        videoFormatListener: videoFormatListener
+      }
+    );
 
     const previewRatio: CameraPreviewRatio | undefined = this.previewRatio;
     if (previewRatio !== undefined) {
@@ -149,16 +165,20 @@ export class VideoRenderBinding {
     videoReadyListener?.(this.videoReady);
     videoFormatListener?.();
 
-    this.attachHandler(viewId, contentMode);
+    this.attachHandler(
+      viewId,
+      contentMode
+    );
   }
 
   /**
-   * 解绑指定视频视图，停止向其发送渲染状态。
+   * Detaches a view and stops its rendering notifications.
    *
-   * @param viewId 渲染容器标识。
-   * @returns 无返回值。
+   * @param viewId The rendering container identifier.
    */
-  detach(viewId: string): void {
+  detach(
+    viewId: string
+  ): void {
     const view: AttachedVideoView | undefined = this.attachedViews.get(viewId);
     if (view === undefined) {
       return;
@@ -169,11 +189,10 @@ export class VideoRenderBinding {
   }
 
   /**
-   * 更新指定视图的视频填充模式。
+   * Updates a view's video content mode.
    *
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @returns 无返回值。
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
    */
   setContentMode(
     viewId: string,
@@ -185,16 +204,20 @@ export class VideoRenderBinding {
     }
 
     attachedView.contentMode = contentMode;
-    this.attachHandler(viewId, contentMode);
+    this.attachHandler(
+      viewId,
+      contentMode
+    );
   }
 
   /**
-   * 更新并广播视频画面可见状态。
+   * Updates and broadcasts video visibility readiness.
    *
-   * @param ready 视频画面是否已经可见。
-   * @returns 无返回值。
+   * @param ready Whether video is visible.
    */
-  setVideoReady(ready: boolean): void {
+  setVideoReady(
+    ready: boolean
+  ): void {
     if (this.videoReady === ready) {
       return;
     }
@@ -204,20 +227,12 @@ export class VideoRenderBinding {
     });
   }
 
-  /**
-   * 通知已绑定视图刷新轨道格式和布局。
-   *
-   * @returns 无返回值。
-   */
+  /** Notifies bound views to refresh track format and layout. */
   notifyVideoFormatChanged(): void {
     this.attachedViews.forEach((view: AttachedVideoView): void => view.videoFormatListener?.());
   }
 
-  /**
-   * 解绑全部视图，释放渲染绑定持有的回调。
-   *
-   * @returns 无返回值。
-   */
+  /** Detaches all views and releases their callbacks. */
   dispose(): void {
     this.setPreviewFrame(undefined);
     this.setVideoReady(false);
@@ -227,21 +242,22 @@ export class VideoRenderBinding {
   }
 
   /**
-   * 读取轨道指定的摄像头预览比例。
+   * Returns the track's camera preview aspect ratio.
    *
-   * @returns 预览比例；非摄像头或未设置时返回 undefined。
+   * @returns The preview ratio, or undefined for non-camera tracks or absent configuration.
    */
   cameraPreviewRatio(): CameraPreviewRatio | undefined {
     return this.previewRatio;
   }
 
   /**
-   * 更新并广播预览图片；空值表示清除。
+   * Updates and broadcasts the preview image; an absent value clears it.
    *
-   * @param frame 需要处理或交付的媒体帧。
-   * @returns 无返回值。
+   * @param frame The local preview PixelMap, or undefined to clear the displayed image.
    */
-  setPreviewFrame(frame?: image.PixelMap): void {
+  setPreviewFrame(
+    frame?: image.PixelMap
+  ): void {
     this.previewFrame = frame;
     this.attachedViews.forEach((attachedView: AttachedVideoView): void => {
       attachedView.previewFrameListener(frame);
@@ -249,64 +265,74 @@ export class VideoRenderBinding {
   }
 }
 
-/** 按视频轨道登记和查找渲染资源，连接媒体控制器与 ArkUI 视频视图。 */
+/** A track rendering registry connecting media controllers to ArkUI video views. */
 export class VideoRenderRegistry {
 
-  /** 轨道到渲染资源的弱引用绑定 */
+  // Weak track-to-rendering bindings
+
+  /** The weak mappings from original tracks to their resource bindings. */
   private static readonly bindings: Map<RealtimeVideoTrack, VideoRenderBinding> = new Map();
 
   /**
-   * 将视频轨道与其绑定资源登记到注册表。
+   * Registers a track and its resource binding.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param binding 需要关联到轨道的资源绑定。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param binding The resource binding to associate with the track.
    */
   static register(
     track: RealtimeVideoTrack,
     binding: VideoRenderBinding
   ): void {
-    VideoRenderRegistry.bindings.set(RealtimeVideoTrack.resolve(track), binding);
+    VideoRenderRegistry.bindings.set(
+      RealtimeVideoTrack.resolve(track),
+      binding
+    );
   }
 
   /**
-   * 移除指定视频轨道的资源绑定。
+   * Removes a track's resource binding.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
    */
-  static unregister(track: RealtimeVideoTrack): void {
+  static unregister(
+    track: RealtimeVideoTrack
+  ): void {
     const originalTrack: RealtimeVideoTrack = RealtimeVideoTrack.resolve(track);
     VideoRenderRegistry.bindings.get(originalTrack)?.dispose();
     VideoRenderRegistry.bindings.delete(originalTrack);
   }
 
   /**
-   * 读取视频轨道所需的原生渲染库名称。
+   * Returns the native rendering library for a track.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @returns 原生库名称；没有渲染绑定时返回空字符串。
+   * @param track The SDK video track handle.
+   *
+   * @returns The native library name, or an empty string without a rendering binding.
    */
-  static libraryName(track: RealtimeVideoTrack): string {
+  static libraryName(
+    track: RealtimeVideoTrack
+  ): string {
     return VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.libraryName ?? '';
   }
 
   /**
-   * 读取轨道指定的摄像头预览比例。
+   * Returns the track's camera preview aspect ratio.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @returns 预览比例；非摄像头或未设置时返回 undefined。
+   * @param track The SDK video track handle.
+   *
+   * @returns The preview ratio, or undefined for non-camera tracks or absent configuration.
    */
-  static cameraPreviewRatio(track: RealtimeVideoTrack): CameraPreviewRatio | undefined {
+  static cameraPreviewRatio(
+    track: RealtimeVideoTrack
+  ): CameraPreviewRatio | undefined {
     return VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.cameraPreviewRatio();
   }
 
   /**
-   * 更新并广播预览图片；空值表示清除。
+   * Updates and broadcasts the preview image; an absent value clears it.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param frame 需要处理或交付的媒体帧。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param frame The local preview PixelMap, or undefined to clear the displayed image.
    */
   static setPreviewFrame(
     track: RealtimeVideoTrack,
@@ -316,16 +342,15 @@ export class VideoRenderRegistry {
   }
 
   /**
-   * 绑定视频视图并同步预览、就绪状态和显示配置。
+   * Attaches a view and synchronizes preview, readiness, and display settings.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @param previewRatioListener 接收摄像头预览比例更新的监听器。
-   * @param previewFrameListener 接收预览图更新或清除通知的监听器。
-   * @param videoReadyListener 接收视频画面就绪状态的监听器。
-   * @param videoFormatListener 轨道视频格式变化时执行的回调。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
+   * @param previewRatioListener The camera preview ratio handler.
+   * @param previewFrameListener The preview image update or clearing handler.
+   * @param videoReadyListener The video readiness handler.
+   * @param videoFormatListener The track format change handler.
    */
   static attach(
     track: RealtimeVideoTrack,
@@ -347,22 +372,22 @@ export class VideoRenderRegistry {
   }
 
   /**
-   * 通知已绑定视图刷新轨道格式和布局。
+   * Notifies bound views to refresh track format and layout.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
    */
-  static notifyVideoFormatChanged(track: RealtimeVideoTrack): void {
+  static notifyVideoFormatChanged(
+    track: RealtimeVideoTrack
+  ): void {
     VideoRenderRegistry.bindings.get(RealtimeVideoTrack.resolve(track))?.notifyVideoFormatChanged();
   }
 
   /**
-   * 更新指定视图的视频填充模式。
+   * Updates a view's video content mode.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param viewId 用于原生视频显示的视图标识。
-   * @param contentMode 媒体在视口中的完整显示或裁剪填充方式。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param viewId The native video view identifier.
+   * @param contentMode The aspect-fit or aspect-fill content mode.
    */
   static setContentMode(
     track: RealtimeVideoTrack,
@@ -376,11 +401,10 @@ export class VideoRenderRegistry {
   }
 
   /**
-   * 解绑指定视频视图，停止向其发送渲染状态。
+   * Detaches a view and stops its rendering notifications.
    *
-   * @param track SDK 返回的视频轨道句柄。
-   * @param viewId 用于原生视频显示的视图标识。
-   * @returns 无返回值。
+   * @param track The SDK video track handle.
+   * @param viewId The native video view identifier.
    */
   static detach(
     track: RealtimeVideoTrack,

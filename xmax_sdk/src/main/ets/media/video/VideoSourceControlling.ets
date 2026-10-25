@@ -1,10 +1,9 @@
 //
 //  VideoSourceControlling.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,34 +13,39 @@ import { VideoFrame } from '../../foundation/media/video/VideoFrame';
 import { MediaTimeline } from '../MediaTimeline';
 
 /**
- * 接收本地视频源按播放时间轴输出的视频帧。
+ * Receives local video frames on the playback timeline.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The oriented file video frame sampled for the configured output frame rate.
  */
-export type VideoSourceFrameListener = (frame: VideoFrame) => void;
+export type VideoSourceFrameListener = (
+  frame: VideoFrame
+) => void;
 
 /**
- * 接收本地视频源配置或解码失败的错误。
+ * Receives local video configuration or decoding errors.
  *
- * @param message 日志内容、错误说明或收到的信令文本。
- * @returns 无返回值。
+ * @param message The local video configuration or decoding failure description.
  */
-export type VideoSourceErrorListener = (message: string) => void;
+export type VideoSourceErrorListener = (
+  message: string
+) => void;
 
-/** 定义本地文件视频轨输出能力。 */
+/** An interface for local file video output. */
 export interface VideoSourceControlling {
 
   /**
-   * 配置待输出的视频轨信息。
+   * Configures the video track for output.
    *
-   * @param filePath 本地视频文件路径。
-   * @param rotation 视频源旋转方向。
-   * @param outputWidth 目标视频宽度。
-   * @param outputHeight 目标视频高度。
-   * @param frameRate 目标视频帧率。
-   * @param loop 是否在文件结束后循环播放。
-   * @returns 旧视频源释放完成后的 Promise。
+   * Stop the current decoder and await its release before reconfiguring this source.
+   *
+   * @param filePath The local video file path.
+   * @param rotation The video source rotation.
+   * @param outputWidth The target video width.
+   * @param outputHeight The target video height.
+   * @param frameRate The target video frame rate.
+   * @param loop Whether to loop after file completion.
+   *
+   * @throws A configuration error if a decoder is active or still being released.
    */
   configure(
     filePath: string,
@@ -53,32 +57,32 @@ export interface VideoSourceControlling {
   ): void;
 
   /**
-   * 按共享时间轴开始输出视频帧。
+   * Starts video output on the shared timeline.
    *
-   * @param timeline 音视频共享播放时间轴。
-   * @returns 后台初始化并开始输出后的 Promise。
+   * The Promise fulfills after background initialization and output startup.
+   *
+   * @param timeline The shared audio/video playback timeline.
    */
-  start(timeline: MediaTimeline): Promise<void>;
+  start(
+    timeline: MediaTimeline
+  ): Promise<void>;
 
-  /**
-   * 暂停当前解码器，保留媒体位置与资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses the decoder while retaining media position and resources. */
   pause(): void;
 
   /**
-   * 使用统一的暂停时长恢复当前解码器。
+   * Resumes the decoder with the shared pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void;
+  resume(
+    pausedDurationUs: number
+  ): void;
 
   /**
-   * 停止输出并释放视频文件资源。
+   * Stops output and releases video file resources.
    *
-   * @returns 视频文件资源释放完成后的 Promise。
+   * The Promise fulfills after video file resources are released.
    */
   stop(): Promise<void>;
 }

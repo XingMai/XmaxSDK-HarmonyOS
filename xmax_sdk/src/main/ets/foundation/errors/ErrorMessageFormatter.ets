@@ -1,10 +1,9 @@
 //
 //  ErrorMessageFormatter.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,23 +11,29 @@
 import { XmaxLogger } from '../logging/XmaxLogger';
 import { XmaxError } from './XmaxError';
 
-/** 提取平台异常中的错误码和可读信息。 */
+/** Extracts platform error codes and readable messages. */
 interface PlatformError {
 
-  /** 平台错误信息 */
+  /** The server business response code. */
   code?: number | string;
+
+  /** The readable error or response message. */
   message?: string;
 }
 
-/** 将平台异常和任意错误值整理为可读的错误说明。 */
+/** Formats platform exceptions and arbitrary errors into readable messages. */
 export class ErrorMessageFormatter {
+
   /**
-   * 从任意错误值中提取可读信息，保留可用的平台错误码。
+   * Extracts a readable error description while preserving available platform codes.
    *
-   * @param error 当前操作失败或终止的原因。
-   * @returns 可展示或记录的错误文本。
+   * @param error The SDK, platform, or application exception to describe.
+   *
+   * @returns The error text for display or logging.
    */
-  static format(error: Object): string {
+  static format(
+    error: Object
+  ): string {
     if (error instanceof XmaxError) {
       const apiCode: string = error.apiCode === undefined ?
         '' : `${XmaxLogger.localized("，业务码 ", ", API Code ")}${error.apiCode}`;

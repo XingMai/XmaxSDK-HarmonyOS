@@ -1,10 +1,9 @@
 //
 //  QualityVideoFormat.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -12,88 +11,137 @@
 import { ImageSize } from '../../service/media/ImageSize';
 import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat';
 
-/** 仅改变传输规格；采集、生成画布和交互坐标基准不随调档改变。 */
+/**
+ * Changes transmission format only, preserving capture, generation canvas, and interaction
+ * coordinates.
+ */
 export class QualityVideoFormat {
 
-  /** 各档位尺寸比例与帧率上限 */
+  /** The dimension scaling factors for each quality level. */
   private static readonly scales: number[] = [1, 0.8, 0.65, 0.5, 0.5];
+
+  /** The frame-rate limits for each quality level. */
   private static readonly frameRates: number[] = [30, 24, 24, 20, 16];
 
   /**
-   * 比较两个传输格式的尺寸、帧率、码率范围和编码偏好。
+   * Compares dimensions, rate, bitrate bounds, and preference of two formats.
    *
-   * @param first 参与比较的第一个视频格式。
-   * @param second 参与比较的第二个视频格式。
-   * @returns 所有编码配置均相同时返回 true。
+   * @param first The first video format.
+   * @param second The second video format.
+   *
+   * @returns True if all encoding settings match.
    */
-  static same(first: RealtimeVideoFormat, second: RealtimeVideoFormat): boolean {
+  static same(
+    first: RealtimeVideoFormat,
+    second: RealtimeVideoFormat
+  ): boolean {
     return first.width === second.width && first.height === second.height && first.fps === second.fps &&
       first.minimumBitrate === second.minimumBitrate && first.maximumBitrate === second.maximumBitrate &&
       first.encoderPreference === second.encoderPreference;
   }
 
   /**
-   * 按下行档位计算尺寸上限，保护短边且避免放大媒体。
+   * Resolves downlink dimension limits while preserving the short side and avoiding upscaling.
    *
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @param level 传输档位，范围 1～5，数值越小质量越高。
-   * @returns 用于结果流目标尺寸计算的宽高上限。
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
+   * @param level The quality level, from 1 to 5; lower values mean higher quality.
+   *
+   * @returns The dimension limits for result target sizing.
    */
-  static resolveDownlinkMaximumSize(baseline: RealtimeVideoFormat, level: number): ImageSize {
+  static resolveDownlinkMaximumSize(
+    baseline: RealtimeVideoFormat,
+    level: number
+  ): ImageSize {
     baseline.validate();
-    const scale: number = QualityVideoFormat.sizeScale(baseline, level);
-    return new ImageSize(baseline.width * scale, baseline.height * scale);
+    const scale: number = QualityVideoFormat.sizeScale(
+      baseline,
+      level
+    );
+    return new ImageSize(
+      baseline.width * scale,
+      baseline.height * scale
+    );
   }
 
   /**
-   * 按档位计算传输尺寸与帧率，保留上行显式编码选项。
+   * Resolves level dimensions and rate, preserving explicit uplink encoder settings.
    *
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @param level 传输档位，范围 1～5，数值越小质量越高。
-   * @param downlink 是否为下行方向；false 表示上行。
-   * @returns 该传输方向与档位对应的视频格式。
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
+   * @param level The quality level, from 1 to 5; lower values mean higher quality.
+   * @param downlink Whether this is downlink; false selects uplink.
+   *
+   * @returns The transmission format for the direction and level.
    */
-  static resolve(baseline: RealtimeVideoFormat, level: number, downlink: boolean): RealtimeVideoFormat {
+  static resolve(
+    baseline: RealtimeVideoFormat,
+    level: number,
+    downlink: boolean
+  ): RealtimeVideoFormat {
     baseline.validate();
     const index: number = QualityVideoFormat.index(level);
-    const scale: number = QualityVideoFormat.sizeScale(baseline, level);
-    const size: ImageSize = QualityVideoFormat.scaledSize(new ImageSize(baseline.width, baseline.height), scale);
-    return new RealtimeVideoFormat(size.width, size.height,
+    const scale: number = QualityVideoFormat.sizeScale(
+      baseline,
+      level
+    );
+    const size: ImageSize = QualityVideoFormat.scaledSize(
+      new ImageSize(
+        baseline.width,
+        baseline.height
+      ),
+      scale
+    );
+    return new RealtimeVideoFormat(
+      size.width,
+      size.height,
       downlink ? 24 : Math.min(baseline.fps, QualityVideoFormat.frameRates[index]),
-      downlink ? undefined : baseline.minimumBitrate, downlink ? undefined : baseline.maximumBitrate,
-      baseline.encoderPreference);
+      downlink ? undefined : baseline.minimumBitrate,
+      downlink ? undefined : baseline.maximumBitrate,
+      baseline.encoderPreference
+    );
   }
 
   /**
-   * 将档位限制在 1～5 并转换为数组索引。
+   * Clamps a level to 1 through 5 and returns its array index.
    *
-   * @param level 传输档位，范围 1～5，数值越小质量越高。
-   * @returns 0～4 的档位索引。
+   * @param level The quality level, from 1 to 5; lower values mean higher quality.
+   *
+   * @returns The level index in 0 to 4.
    */
-  private static index(level: number): number {
+  private static index(
+    level: number
+  ): number {
     return Math.min(5, Math.max(1, Math.round(level))) - 1;
   }
 
   /**
-   * 计算档位缩放比例，保护短边至少为原始短边与 240 像素中的较小值。
+   * Resolves scaling while keeping the short side at least the smaller of its original size and 240
+   * pixels.
    *
-   * @param baseline 保持原始媒体比例与用户编码选项的视频格式基准。
-   * @param level 传输档位，范围 1～5，数值越小质量越高。
-   * @returns 不大于 1 的尺寸缩放比例。
+   * @param baseline The baseline preserving media aspect ratio and explicit encoding settings.
+   * @param level The quality level, from 1 to 5; lower values mean higher quality.
+   *
+   * @returns The dimension scale, not exceeding one.
    */
-  private static sizeScale(baseline: RealtimeVideoFormat, level: number): number {
+  private static sizeScale(
+    baseline: RealtimeVideoFormat,
+    level: number
+  ): number {
     const shortSide: number = Math.min(baseline.width, baseline.height);
     return Math.max(QualityVideoFormat.scales[QualityVideoFormat.index(level)], Math.min(shortSide, 240) / shortSide);
   }
 
   /**
-   * 按档位比例缩小媒体，优先保持精确宽高比并输出偶数尺寸。
+   * Downscales to even dimensions, preserving exact aspect ratio where possible.
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @param scale 应用到媒体宽高的缩放比例。
-   * @returns 可供视频编码使用的偶数宽高。
+   * @param size The unscaled local media dimensions, in pixels.
+   * @param scale The scale applied to width and height.
+   *
+   * @returns The even dimensions suitable for video encoding.
    */
-  private static scaledSize(size: ImageSize, scale: number): ImageSize {
+  private static scaledSize(
+    size: ImageSize,
+    scale: number
+  ): ImageSize {
     let divisor: number = size.width;
     let remainder: number = size.height;
     while (remainder !== 0) {
@@ -103,9 +151,14 @@ export class QualityVideoFormat {
     }
     const units: number = Math.floor(Math.floor(divisor * scale + 0.0000001) / 2) * 2;
     if (units >= 2) {
-      return new ImageSize(size.width / divisor * units, size.height / divisor * units);
+      return new ImageSize(
+        size.width / divisor * units,
+        size.height / divisor * units
+      );
     }
-    return new ImageSize(Math.max(2, Math.floor(size.width * scale / 2) * 2),
-      Math.max(2, Math.floor(size.height * scale / 2) * 2));
+    return new ImageSize(
+      Math.max(2, Math.floor(size.width * scale / 2) * 2),
+      Math.max(2, Math.floor(size.height * scale / 2) * 2)
+    );
   }
 }

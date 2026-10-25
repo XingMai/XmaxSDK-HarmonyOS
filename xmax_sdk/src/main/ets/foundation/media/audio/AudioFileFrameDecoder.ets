@@ -1,10 +1,9 @@
 //
 //  AudioFileFrameDecoder.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -15,48 +14,48 @@ import xmaxVideoNative, {
 } from 'libxmax_video.so';
 import { AudioFrame } from './AudioFrame';
 
-/** 文件音频连续解码事件。 */
+/** Continuous audio file decoding events. */
 export interface AudioFileFrameDecoderListener {
-  /**
-   * 接收按媒体时间轴输出的解码帧。
-   *
-   * @param frame 解码后的音频帧。
-   * @returns 无返回值。
-   */
-  onFrame(frame: AudioFrame): void;
 
   /**
-   * 通知当前文件的解码输出已经结束。
+   * Receives decoded frames on the media timeline.
    *
-   * @returns 无返回值。
+   * @param frame The decoded audio frame.
    */
+  onFrame(
+    frame: AudioFrame
+  ): void;
+
+  /** Reports completion of the current file's decoded output. */
   onEndOfStream(): void;
 
   /**
-   * 通知解码或帧输出失败的原因。
+   * Reports a decoding or frame delivery failure.
    *
-   * @param message 错误信息。
-   * @returns 无返回值。
+   * @param message The error message.
    */
-  onError(message: string): void;
+  onError(
+    message: string
+  ): void;
 }
 
-/** 使用系统音频解码器连续输出 48 kHz 单声道 PCM 帧。 */
+/** Decodes continuous audio into 48 kHz mono PCM frames. */
 export class AudioFileFrameDecoder {
 
-  /** 原生音频解码资源与释放状态 */
+  /** The native file decoder owned by this wrapper. */
   private readonly nativeDecoder: NativeAudioFileDecoder;
+
+  /** Whether the owned resource has been released. */
   private isReleased: boolean = false;
 
   /**
-   * 创建音频文件解码器。
+   * Creates an audio file decoder.
    *
-   * @param filePath 本地媒体文件路径。
-   * @param playbackAnchorUs 媒体起点对应的单调播放时间，单位微秒。
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param cycleDurationUs 单轮媒体播放时长，单位微秒。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @returns 新建的 AudioFileFrameDecoder 实例。
+   * @param filePath The local media file path.
+   * @param playbackAnchorUs The monotonic playback time for the media origin, in microseconds.
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param cycleDurationUs The playback cycle duration, in microseconds.
+   * @param listener The handler for decoded PCM frames, file completion, and decoding failures.
    */
   constructor(
     filePath: string,
@@ -108,11 +107,7 @@ export class AudioFileFrameDecoder {
     }
   }
 
-  /**
-   * 暂停音频文件的连续解码输出。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses continuous file audio decoding. */
   pause(): void {
     if (!this.isReleased) {
       this.nativeDecoder.pause();
@@ -120,22 +115,19 @@ export class AudioFileFrameDecoder {
   }
 
   /**
-   * 恢复音频解码，并按暂停时长平移播放锚点。
+   * Resumes audio decoding with the playback anchor shifted by the pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void {
+  resume(
+    pausedDurationUs: number
+  ): void {
     if (!this.isReleased) {
       this.nativeDecoder.resume(pausedDurationUs);
     }
   }
 
-  /**
-   * 停止音频解码回调并释放原生解码器资源。
-   *
-   * @returns 无返回值。
-   */
+  /** Stops audio callbacks and releases native decoding resources. */
   release(): void {
     if (this.isReleased) {
       return;

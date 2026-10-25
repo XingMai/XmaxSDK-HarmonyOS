@@ -1,10 +1,9 @@
 //
 //  RealtimeVideoFormat.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -14,47 +13,44 @@ import {
   XmaxErrorCode
 } from '../../foundation/errors/XmaxError';
 
-/** 上传编码策略：平衡、帧率优先或分辨率优先。 */
+/** An uplink encoder preference favoring balance, frame rate, or resolution. */
 export enum RealtimeVideoEncoderPreference {
+
+  /** Balances frame rate and resolution. */
   AUTO = 'Auto',
+
+  /** Prioritizes frame rate. */
   MAINTAIN_FRAMERATE = 'MaintainFramerate',
+
+  /** Prioritizes image clarity. */
   MAINTAIN_QUALITY = 'MaintainQuality'
 }
 
-/** 实时视频的尺寸、帧率和上传编码配置。 */
+/** Realtime video dimensions, frame rate, and uplink encoding settings. */
 export class RealtimeVideoFormat {
 
-  /** 画面尺寸与帧率 */
-  /** 视频宽度，单位为像素，必须为正偶数。 */
+  /** The positive even video width, in pixels. */
   readonly width: number;
 
-  /** 视频高度，单位为像素，必须为正偶数。 */
+  /** The positive even video height, in pixels. */
   readonly height: number;
 
-  /** 视频帧率，单位为 fps，必须为正整数。 */
+  /** The positive integer video frame rate, in fps. */
   readonly fps: number;
 
-  /** 上传码率与编码偏好 */
-  /** 最低上传码率，单位 kbps；undefined 使用 100，0 表示不设最低码率。 */
+  /** The minimum uplink bitrate, in kbps; undefined uses 100, zero removes the minimum. */
   readonly minimumBitrate?: number;
 
-  /** 最高上传码率，单位 kbps；undefined 使用最终格式参考上限的 0.6 倍（至少 100），指定时必须大于 0。 */
+  /**
+   * The maximum uplink bitrate, in kbps; undefined uses 0.6 times the final format's reference
+   * maximum, at least 100. Explicit values must be positive.
+   */
   readonly maximumBitrate?: number;
 
-  /** 上传编码策略偏好，默认为 AUTO，平衡帧率和分辨率。 */
+  /** The uplink encoding preference; defaults to AUTO, balancing frame rate and resolution. */
   readonly encoderPreference: RealtimeVideoEncoderPreference;
 
-  /**
-   * 创建实时视频格式。
-   *
-   * @param width 视频宽度，单位为像素，必须为正偶数。
-   * @param height 视频高度，单位为像素，必须为正偶数。
-   * @param fps 视频帧率，单位为 fps，必须为正整数。
-   * @param minimumBitrate 最低上传码率，单位 kbps；undefined 使用 100，0 表示不设最低码率。
-   * @param maximumBitrate 最高上传码率，单位 kbps；undefined 使用最终格式参考上限的 0.6 倍（至少 100），指定时必须大于 0。
-   * @param encoderPreference 上传编码策略偏好，默认为 AUTO，平衡帧率和分辨率。
-   * @returns 新建的 RealtimeVideoFormat 实例。
-   */
+  /** Creates a realtime video format. */
   constructor(
     width: number,
     height: number,
@@ -72,9 +68,8 @@ export class RealtimeVideoFormat {
   }
 
   /**
-   * 校验实时视频的尺寸、帧率、码率和编码偏好；非法时抛出配置错误。
-   *
-   * @returns 无返回值。
+   * Validates dimensions, frame rate, bitrate, and preference, throwing a configuration error if
+   * invalid.
    */
   validate(): void {
     if (!Number.isSafeInteger(this.width) || !Number.isSafeInteger(this.height) ||
@@ -87,18 +82,24 @@ export class RealtimeVideoFormat {
     }
     if (this.minimumBitrate !== undefined &&
       (!Number.isSafeInteger(this.minimumBitrate) || this.minimumBitrate < 0)) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'Minimum bitrate must be a non-negative integer');
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Minimum bitrate must be a non-negative integer'
+      );
     }
     if (this.maximumBitrate !== undefined &&
       (!Number.isSafeInteger(this.maximumBitrate) || this.maximumBitrate <= 0)) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'Maximum bitrate must be a positive integer');
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Maximum bitrate must be a positive integer'
+      );
     }
     if (this.minimumBitrate !== undefined && this.maximumBitrate !== undefined &&
       this.minimumBitrate > this.maximumBitrate) {
-      throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION,
-        'Minimum bitrate must not exceed maximum bitrate');
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Minimum bitrate must not exceed maximum bitrate'
+      );
     }
     switch (this.encoderPreference) {
       case RealtimeVideoEncoderPreference.AUTO:
@@ -106,19 +107,32 @@ export class RealtimeVideoFormat {
       case RealtimeVideoEncoderPreference.MAINTAIN_QUALITY:
         break;
       default:
-        throw new XmaxError(XmaxErrorCode.INVALID_CONFIGURATION, 'Unsupported video encoder preference');
+        throw new XmaxError(
+          XmaxErrorCode.INVALID_CONFIGURATION,
+          'Unsupported video encoder preference'
+        );
     }
   }
 
   /**
-   * 调整尺寸，保留帧率和上传编码配置。
+   * Returns resized dimensions while preserving frame rate and encoding settings.
    *
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @returns 计算或更新后的视频格式。
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   *
+   * @returns The resolved or updated video format.
    */
-  resized(width: number, height: number): RealtimeVideoFormat {
-    return new RealtimeVideoFormat(width, height, this.fps,
-      this.minimumBitrate, this.maximumBitrate, this.encoderPreference);
+  resized(
+    width: number,
+    height: number
+  ): RealtimeVideoFormat {
+    return new RealtimeVideoFormat(
+      width,
+      height,
+      this.fps,
+      this.minimumBitrate,
+      this.maximumBitrate,
+      this.encoderPreference
+    );
   }
 }

@@ -1,10 +1,9 @@
 //
 //  RoomEvent.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -19,45 +18,69 @@ import { RealtimeVideoFormat } from '../../service/realtime/RealtimeVideoFormat'
 
 const GENERATION_MODEL: string = 'default';
 
-/** 为业务房间信令提供统一的运行环境字段。 */
+/** Common runtime fields for room signaling. */
 class RuntimeRoomEvent {
 
-  /** 信令运行环境信息 */
+  // Signal runtime information
+
+  /** The runtime metadata serialized into room signaling. */
   readonly runtime: RuntimeInfoPayload = RuntimeInfo.current.toPayload();
 }
 
-/** 序列化生成画布、生成条件、结果流尺寸和码率预算。 */
+/** Serializable generation canvas, conditions, result dimensions, and bitrate budget. */
 class GenerationParameters {
 
-  /** 生成画布与条件 */
+  // Generation canvas and conditions
+
+  /** The model defining media sizing and generation constraints. */
   model: string = GENERATION_MODEL;
+
+  /** The frame dimensions carried by the request. */
   size: number[];
+
+  /** The prompt describing the desired generation result. */
   prompt: string;
+
+  /** The server-accessible reference image path. */
   ref_image_path?: string;
-  /** 是否启用静态图片生成及其服务端输入地址。 */
+
+  /** Whether static generation is enabled and its server-accessible image URL. */
   static_generate?: boolean;
+
+  /** The server-accessible static generation image path. */
   static_image_path?: string;
+
+  /** The face detection setting sent to the server. */
   detection: boolean;
+
+  /** Whether to restore the original face in generated output. */
   face_replace: boolean;
 
-  /** 结果流目标尺寸与码率 */
+  // Result target dimensions and bitrate
+
+  /** The requested result dimensions and bitrate budget. */
   target_size?: number[];
+
+  /** The minimum result bitrate, in kbps. */
   min_bitrate?: number;
+
+  /** The maximum result bitrate, in kbps. */
   max_bitrate?: number;
 
-  /** 媒体比例与补边策略 */
+  // Media aspect ratio and padding policy
+
+  /** The aspect-preserving input padding policy. */
   padding?: string;
 
   /**
-   * 创建生成信令参数。
+   * Creates generation signal parameters.
    *
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param context 生成提示词、参考图和人脸检测配置。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 新建的 GenerationParameters 实例。
+   * @param videoFormat The media output or transport format.
+   * @param context The prompt, reference image, and face detection configuration.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   constructor(
     videoFormat: RealtimeVideoFormat,
@@ -86,49 +109,71 @@ class GenerationParameters {
   }
 }
 
-/** 序列化结果流目标尺寸及其码率范围，供服务端调节下行输出。 */
+/** Serializable result dimensions and bitrate bounds for server downlink adjustment. */
 class TargetSizeParameters {
 
-  /** 结果流目标尺寸 */
+  // Result stream target dimensions
+
+  /** The requested result dimensions and bitrate budget. */
   readonly target_size: number[];
 
-  /** 结果流码率边界 */
+  // Result stream bitrate bounds
+
+  /** The minimum result bitrate, in kbps. */
   readonly min_bitrate: number = 100;
+
+  /** The maximum result bitrate, in kbps. */
   readonly max_bitrate: number;
 
   /**
-   * 创建结果流尺寸与码率参数。
+   * Creates result dimensions and bitrate parameters.
    *
-   * @param size 需要计算或发送的画面尺寸。
-   * @returns 新建的 TargetSizeParameters 实例。
+   * @param size The requested result stream dimensions, in pixels.
    */
-  constructor(size: ImageSize) {
-    const budget: VideoBitrateBudget = EncodingBitratePolicy.resolve(new RealtimeVideoFormat(size.width, size.height, 24));
+  constructor(
+    size: ImageSize
+  ) {
+    const budget: VideoBitrateBudget = EncodingBitratePolicy.resolve(new RealtimeVideoFormat(
+      size.width,
+      size.height,
+      24
+    ));
     this.target_size = [size.width, size.height];
     this.max_bitrate = Math.min(10000, budget.maximum);
   }
 }
 
-/** 请求调整指定生成任务的结果流目标尺寸和码率。 */
+/** A request to change a task's result dimensions and bitrate. */
 class ChangeTargetSizeRoomEvent extends RuntimeRoomEvent {
 
-  /** 事件路由与任务身份 */
+  // Event routing and task identity
+
+  /** The room signaling event name. */
   readonly event: string = 'change_target_size';
+
+  /** The local room user identifier carried by the signal. */
   readonly user_id: string;
+
+  /** The generation task identifier carried by the signal. */
   readonly uid: string;
 
-  /** 结果流目标配置 */
+  // Result stream target configuration
+
+  /** The generation parameters serialized into the signal. */
   readonly params: TargetSizeParameters;
 
   /**
-   * 创建结果流调档信令。
+   * Creates a result quality change signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param size 需要计算或发送的画面尺寸。
-   * @returns 新建的 ChangeTargetSizeRoomEvent 实例。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param size The requested result stream dimensions, in pixels.
    */
-  constructor(userId: string, taskId: string, size: ImageSize) {
+  constructor(
+    userId: string,
+    taskId: string,
+    size: ImageSize
+  ) {
     super();
     this.user_id = userId;
     this.uid = taskId;
@@ -136,31 +181,38 @@ class ChangeTargetSizeRoomEvent extends RuntimeRoomEvent {
   }
 }
 
-/** 携带任务标识和生成参数的启动信令。 */
+/** A generation start signal with task identity and parameters. */
 class StartRoomEvent extends RuntimeRoomEvent {
 
-  /** 事件类型 */
+  // Event type
+
+  /** The room signaling event name. */
   event: string = 'start';
 
-  /** 生成配置 */
+  // Generation configuration
+
+  /** The generation parameters serialized into the signal. */
   params: GenerationParameters;
 
-  /** 用户与任务身份 */
+  // User and task identity
+
+  /** The local room user identifier carried by the signal. */
   user_id: string;
+
+  /** The generation task identifier carried by the signal. */
   uid: string;
 
   /**
-   * 创建生成启动信令。
+   * Creates a generation start signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param context 生成提示词、参考图和人脸检测配置。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 新建的 StartRoomEvent 实例。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param videoFormat The media output or transport format.
+   * @param context The prompt, reference image, and face detection configuration.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   constructor(
     userId: string,
@@ -173,37 +225,51 @@ class StartRoomEvent extends RuntimeRoomEvent {
     extraParams?: RealtimeGenerationParameters
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams);
+    this.params = new GenerationParameters(
+      videoFormat,
+      context,
+      faceRestoration,
+      targetSize,
+      paddingContain,
+      extraParams
+    );
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-/** 携带任务标识和新生成条件的更新信令。 */
+/** A task signal carrying updated generation conditions. */
 class ChangeConditionRoomEvent extends RuntimeRoomEvent {
 
-  /** 事件类型 */
+  // Event type
+
+  /** The room signaling event name. */
   event: string = 'change_condition';
 
-  /** 生成条件 */
+  // Generation conditions
+
+  /** The generation parameters serialized into the signal. */
   params: GenerationParameters;
 
-  /** 用户与任务身份 */
+  // User and task identity
+
+  /** The local room user identifier carried by the signal. */
   user_id: string;
+
+  /** The generation task identifier carried by the signal. */
   uid: string;
 
   /**
-   * 创建生成条件更新信令。
+   * Creates a generation condition update signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param context 生成提示词、参考图和人脸检测配置。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 新建的 ChangeConditionRoomEvent 实例。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param videoFormat The media output or transport format.
+   * @param context The prompt, reference image, and face detection configuration.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
    */
   constructor(
     userId: string,
@@ -216,26 +282,38 @@ class ChangeConditionRoomEvent extends RuntimeRoomEvent {
     extraParams?: RealtimeGenerationParameters
   ) {
     super();
-    this.params = new GenerationParameters(videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams);
+    this.params = new GenerationParameters(
+      videoFormat,
+      context,
+      faceRestoration,
+      targetSize,
+      paddingContain,
+      extraParams
+    );
     this.user_id = userId;
     this.uid = taskId;
   }
 }
 
-/** 请求停止指定生成任务的信令。 */
+/** A signal requesting termination of a task. */
 class StopRoomEvent extends RuntimeRoomEvent {
 
-  /** 事件类型与任务身份 */
+  // Event type and task identity
+
+  /** The room signaling event name. */
   event: string = 'stop';
+
+  /** The local room user identifier carried by the signal. */
   user_id: string;
+
+  /** The generation task identifier carried by the signal. */
   uid: string;
 
   /**
-   * 创建生成停止信令。
+   * Creates a generation stop signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @returns 新建的 StopRoomEvent 实例。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
    */
   constructor(
     userId: string,
@@ -247,26 +325,33 @@ class StopRoomEvent extends RuntimeRoomEvent {
   }
 }
 
-/** 携带指定任务归一化交互点的轨迹信令。 */
+/** A task signal carrying normalized interaction points. */
 class TracksRoomEvent extends RuntimeRoomEvent {
 
-  /** 事件类型 */
+  // Event type
+
+  /** The room signaling event name. */
   event: string = 'tracks';
 
-  /** 交互触点数据 */
+  // Interaction point data
+
+  /** The normalized touch points sent to the generation task. */
   tracks: number[][];
 
-  /** 用户与任务身份 */
+  // User and task identity
+
+  /** The local room user identifier carried by the signal. */
   user_id: string;
+
+  /** The generation task identifier carried by the signal. */
   uid: string;
 
   /**
-   * 创建交互轨迹信令。
+   * Creates an interaction trajectory signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param points 本次提交或绘制的触点集合。
-   * @returns 新建的 TracksRoomEvent 实例。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param points The touch points to submit or draw.
    */
   constructor(
     userId: string,
@@ -280,51 +365,67 @@ class TracksRoomEvent extends RuntimeRoomEvent {
   }
 }
 
-/** 保持 RTC 房间业务活跃的心跳信令。 */
+/** A heartbeat maintaining room business activity. */
 class HeartbeatRoomEvent extends RuntimeRoomEvent {
 
-  /** 心跳事件与用户身份 */
+  // Heartbeat event and user identity
+
+  /** The room signaling event name. */
   event: string = 'heartbeat';
+
+  /** The local room user identifier carried by the signal. */
   user_id: string;
 
   /**
-   * 创建房间心跳信令。
+   * Creates a room heartbeat signal.
    *
-   * @param userId RTC 用户标识。
-   * @returns 新建的 HeartbeatRoomEvent 实例。
+   * @param userId The RTC user identifier.
    */
-  constructor(userId: string) {
+  constructor(
+    userId: string
+  ) {
     super();
     this.user_id = userId;
   }
 }
 
-/** 将生成、交互、调档和心跳操作编码为带运行环境信息的房间信令。 */
+/** Encodes generation, interaction, quality, and heartbeat signals with runtime fields. */
 export class RoomEvent {
+
   /**
-   * 将结果流目标尺寸与码率预算编码为调档信令。
+   * Encodes target dimensions and bitrate into a quality change signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param size 需要计算或发送的画面尺寸。
-   * @returns 可提交到 RTC 房间的 change_target_size JSON 文本。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param size The requested result stream dimensions, in pixels.
+   *
+   * @returns The change_target_size JSON for RTC room submission.
    */
-  static changeTargetSize(userId: string, taskId: string, size: ImageSize): string {
-    return JSON.stringify(new ChangeTargetSizeRoomEvent(userId, taskId, size));
+  static changeTargetSize(
+    userId: string,
+    taskId: string,
+    size: ImageSize
+  ): string {
+    return JSON.stringify(new ChangeTargetSizeRoomEvent(
+      userId,
+      taskId,
+      size
+    ));
   }
 
   /**
-   * 将生成参数编码为任务启动信令。
+   * Encodes generation parameters into a task start signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param context 生成提示词、参考图和人脸检测配置。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 包含任务、运行环境和生成参数的 JSON 文本。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param videoFormat The media output or transport format.
+   * @param context The prompt, reference image, and face detection configuration.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
+   *
+   * @returns The JSON containing task, runtime, and generation parameters.
    */
   static start(
     userId: string,
@@ -336,21 +437,31 @@ export class RoomEvent {
     paddingContain: boolean = false,
     extraParams?: RealtimeGenerationParameters
   ): string {
-    return JSON.stringify(new StartRoomEvent(userId, taskId, videoFormat, context, faceRestoration, targetSize, paddingContain, extraParams));
+    return JSON.stringify(new StartRoomEvent(
+      userId,
+      taskId,
+      videoFormat,
+      context,
+      faceRestoration,
+      targetSize,
+      paddingContain,
+      extraParams
+    ));
   }
 
   /**
-   * 将新的生成条件编码为更新信令，供当前任务使用。
+   * Encodes updated generation conditions for the current task.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param videoFormat 媒体输出或传输所需的视频规格。
-   * @param context 生成提示词、参考图和人脸检测配置。
-   * @param faceRestoration 是否启用人脸修复。
-   * @param targetSize 可选的生成结果流目标尺寸。
-   * @param paddingContain 是否保持媒体比例并由服务端补边显示。
-   * @param extraParams SDK 内部传递的静态生成配置。
-   * @returns 包含运行环境和生成条件的 JSON 文本。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param videoFormat The media output or transport format.
+   * @param context The prompt, reference image, and face detection configuration.
+   * @param faceRestoration Whether to enable face restoration.
+   * @param targetSize The optional result stream target dimensions.
+   * @param paddingContain Whether to preserve media aspect ratio with server-side padding.
+   * @param extraParams The static generation parameters passed internally by the SDK.
+   *
+   * @returns The JSON containing runtime and generation conditions.
    */
   static changeCondition(
     userId: string,
@@ -375,26 +486,31 @@ export class RoomEvent {
   }
 
   /**
-   * 将任务标识编码为停止生成信令。
+   * Encodes a task identifier into a generation stop signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @returns 包含用户、任务与运行环境的 JSON 文本。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   *
+   * @returns The JSON containing user, task, and runtime information.
    */
   static stop(
     userId: string,
     taskId: string
   ): string {
-    return JSON.stringify(new StopRoomEvent(userId, taskId));
+    return JSON.stringify(new StopRoomEvent(
+      userId,
+      taskId
+    ));
   }
 
   /**
-   * 将归一化交互点编码为当前任务的轨迹信令。
+   * Encodes normalized points into the current task's trajectory signal.
    *
-   * @param userId RTC 用户标识。
-   * @param taskId 当前生成任务标识。
-   * @param points 本次提交或绘制的触点集合。
-   * @returns 包含任务与触点数据的 JSON 文本。
+   * @param userId The RTC user identifier.
+   * @param taskId The current generation task identifier.
+   * @param points The touch points to submit or draw.
+   *
+   * @returns The JSON containing task and touch data.
    */
   static tracks(
     userId: string,
@@ -409,12 +525,15 @@ export class RoomEvent {
   }
 
   /**
-   * 将本地用户标识编码为房间心跳信令。
+   * Encodes the local user into a room heartbeat.
    *
-   * @param userId RTC 用户标识。
-   * @returns 包含运行环境与用户标识的 JSON 文本。
+   * @param userId The RTC user identifier.
+   *
+   * @returns The JSON containing runtime and user identity.
    */
-  static heartbeat(userId: string): string {
+  static heartbeat(
+    userId: string
+  ): string {
     return JSON.stringify(new HeartbeatRoomEvent(userId));
   }
 }

@@ -1,10 +1,9 @@
 //
 //  RealtimeVideoFrame.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -13,42 +12,43 @@ import { VideoFramePlane } from '../../foundation/media/video/VideoFramePlane';
 import { VideoPixelFormat } from '../../foundation/media/video/VideoPixelFormat';
 import { VideoRotation } from '../../foundation/media/video/VideoRotation';
 
-/** RTC 后处理后用于显示的视频帧，不包含视图裁剪、镜像或 UI 叠加。 */
+/** A processed RTC display frame without view cropping, mirroring, or UI overlays. */
 export class RealtimeVideoFrame {
 
-  /** 帧尺寸与像素布局 */
-  /** 像素宽度，旋转前的缓冲区尺寸。 */
+  /** The buffer width before rotation, in pixels. */
   readonly width: number;
 
-  /** 像素高度，旋转前的缓冲区尺寸。 */
+  /** The buffer height before rotation, in pixels. */
   readonly height: number;
 
-  /** 像素格式；当前远端 Sink 输出 I420。 */
+  /** The pixel format; the current remote sink outputs I420. */
   readonly pixelFormat: VideoPixelFormat;
 
-  /** SDK 独立持有的像素平面；I420 按 Y、U、V 排列，可在回调后继续持有。 */
+  /**
+   * The pixel planes, ordered Y, U, V for I420. SDK-delivered buffers remain valid after callback
+   * return.
+   */
   readonly planes: VideoFramePlane[];
 
-  /** 播放时间与旋转方向 */
-  /** 实时视频时间轴中的时间戳，单位微秒；不保证从零开始。 */
+  /** The realtime video timestamp, in microseconds; not necessarily starting at zero. */
   readonly timestampUs: number;
 
-  /** 显示时还需顺时针旋转的角度。 */
+  /** The clockwise rotation still required for display. */
   readonly rotation: VideoRotation;
 
   /**
-   * 创建可交付给接入方的视频帧。
+   * Creates a video frame for application delivery.
    *
-   * @param width 像素宽度，旋转前的缓冲区尺寸。
-   * @param height 像素高度，旋转前的缓冲区尺寸。
-   * @param pixelFormat 像素格式；当前远端 Sink 输出 I420。
-   * @param planes SDK 独立持有的像素平面；I420 按 Y、U、V 排列，可在回调后继续持有。
-   * @param timestampUs 实时视频时间轴中的时间戳，单位微秒；不保证从零开始。
-   * @param rotation 显示时还需顺时针旋转的角度。
-   * @returns 新建的 RealtimeVideoFrame 实例。
+   * Copies the plane list but retains the plane objects and their pixel buffers.
    */
-  constructor(width: number, height: number, pixelFormat: VideoPixelFormat,
-    planes: VideoFramePlane[], timestampUs: number, rotation: VideoRotation) {
+  constructor(
+    width: number,
+    height: number,
+    pixelFormat: VideoPixelFormat,
+    planes: VideoFramePlane[],
+    timestampUs: number,
+    rotation: VideoRotation
+  ) {
     this.width = width;
     this.height = height;
     this.pixelFormat = pixelFormat;
@@ -59,9 +59,11 @@ export class RealtimeVideoFrame {
 }
 
 /**
- * 在 ArkTS 事件循环中按接收顺序异步接收每帧；耗时处理应移交 Worker。
+ * Receives frames asynchronously in order on the ArkTS event loop; move expensive processing to a
+ * Worker.
  *
- * @param frame 需要处理或交付的媒体帧。
- * @returns 无返回值。
+ * @param frame The copied remote RTC video frame before view cropping, mirroring, and UI overlays.
  */
-export type RealtimeVideoFrameListener = (frame: RealtimeVideoFrame) => void;
+export type RealtimeVideoFrameListener = (
+  frame: RealtimeVideoFrame
+) => void;

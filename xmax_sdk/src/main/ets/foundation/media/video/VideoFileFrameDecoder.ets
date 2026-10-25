@@ -1,10 +1,9 @@
 //
 //  VideoFileFrameDecoder.ets
 //  XmaxSDK
-//  Repo: https://github.com/XingMai/XmaxSDK-HarmonyOS
 //
 //  Author: 翁跃庭 (Yueting Weng)
-//  GitHub: https://github.com/WengYuehTing
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-HarmonyOS
 //
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
@@ -16,26 +15,37 @@ import xmaxVideoNative, {
 import { VideoPixelFormat } from './VideoPixelFormat';
 import { VideoRotation } from './VideoRotation';
 
-/** 系统视频解码器连续输出的单个文件视频帧。 */
+/** A decoded file video frame from the system decoder. */
 export class VideoFileDecodedFrame {
 
-  /** 解码像素数据与帧布局 */
+  // Decoded pixels and frame layout
+
+  /** The decoded NV12 frame pixels. */
   readonly data: ArrayBuffer;
+
+  /** The decoded width, in pixels. */
   readonly width: number;
+
+  /** The decoded height, in pixels. */
   readonly height: number;
+
+  /** The plane row stride, in bytes. */
   readonly stride: number;
+
+  /** The frame timestamp, in microseconds. */
   readonly timestampUs: number;
+
+  /** The pixel layout used by the frame buffer. */
   readonly pixelFormat: VideoPixelFormat;
 
   /**
-   * 创建原生解码视频帧。
+   * Creates a native decoded video frame.
    *
-   * @param data 当前帧的有效媒体数据。
-   * @param width 画面宽度，单位像素。
-   * @param height 画面高度，单位像素。
-   * @param stride 相邻图像行之间的字节跨度。
-   * @param timestampUs 媒体帧时间戳，单位微秒。
-   * @returns 新建的 VideoFileDecodedFrame 实例。
+   * @param data The decoded NV12 pixel buffer, retained without copying.
+   * @param width The frame width, in pixels.
+   * @param height The frame height, in pixels.
+   * @param stride The image row stride, in bytes.
+   * @param timestampUs The media frame timestamp, in microseconds.
    */
   constructor(
     data: ArrayBuffer,
@@ -53,65 +63,76 @@ export class VideoFileDecodedFrame {
   }
 }
 
-/** 文件视频连续解码事件。 */
+/** Continuous video file decoding events. */
 export interface VideoFileFrameDecoderListener {
-  /**
-   * 接收按媒体时间轴输出的解码帧。
-   *
-   * @param frame 解码后的音频帧。
-   * @returns 无返回值。
-   */
-  onFrame(frame: VideoFileDecodedFrame): void;
 
   /**
-   * 通知当前文件的解码输出已经结束。
+   * Receives decoded frames on the media timeline.
    *
-   * @returns 无返回值。
+   * @param frame The decoded NV12 video frame with its media timestamp.
    */
+  onFrame(
+    frame: VideoFileDecodedFrame
+  ): void;
+
+  /** Reports completion of the current file's decoded output. */
   onEndOfStream(): void;
 
   /**
-   * 通知解码或帧输出失败的原因。
+   * Reports a decoding or frame delivery failure.
    *
-   * @param message 错误信息。
-   * @returns 无返回值。
+   * @param message The error message.
    */
-  onError(message: string): void;
+  onError(
+    message: string
+  ): void;
 }
 
 /**
- * 使用系统视频解码器按媒体时间戳连续输出已转正的 NV12 帧。
- *
- * 解码结果由媒体层转换为统一视频帧，并交由后续业务链路处理。
+ * Decodes upright NV12 frames paced by media timestamps through the system decoder. The media layer
+ * converts output into neutral video frames for subsequent processing.
  */
 export class VideoFileFrameDecoder {
 
-  /** 解码初始化与原生资源 */
+  // Decoder initialization and native resources
+
+  /** The Promise tracking native decoder initialization. */
   readonly ready: Promise<void>;
+
+  /** The native file decoder owned by this wrapper. */
   private nativeDecoder: NativeVideoFileDecoder | null = null;
 
-  /** 释放状态与异步释放等待 */
+  // Release state and pending asynchronous release
+
+  /** Whether the owned resource has been released. */
   private isReleased: boolean = false;
+
+  /** The shared Promise for pending native resource release. */
   private releasePromise: Promise<void> | null = null;
 
-  /** 输出激活与暂停状态 */
+  // Output activation and pause state
+
+  /** Whether decoded output has been activated on the shared timeline. */
   private isActivated: boolean = false;
+
+  /** Whether media output is paused. */
   private isPaused: boolean = false;
+
+  /** The pending playback anchor adjustment, in microseconds. */
   private activationOffsetUs: number = 0;
 
   /**
-   * 创建视频文件解码器。
+   * Creates a video file decoder.
    *
-   * @param videoUri 需要解码的本地视频文件 URI。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @param outputWidth 解码输出宽度，单位像素。
-   * @param outputHeight 解码输出高度，单位像素。
-   * @param frameIntervalUs 视频帧输出间隔，单位微秒。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @param playbackAnchorUs 媒体起点对应的单调播放时间，单位微秒。
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param cycleDurationUs 单轮媒体播放时长，单位微秒。
-   * @returns 新建的 VideoFileFrameDecoder 实例。
+   * @param videoUri The local video file URI to decode.
+   * @param rotation The rotation to apply to the video image.
+   * @param outputWidth The decoded output width, in pixels.
+   * @param outputHeight The decoded output height, in pixels.
+   * @param frameIntervalUs The video output interval, in microseconds.
+   * @param listener The handler for decoded NV12 frames, file completion, and decoding failures.
+   * @param playbackAnchorUs The monotonic playback time for the media origin, in microseconds.
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param cycleDurationUs The playback cycle duration, in microseconds.
    */
   constructor(
     videoUri: string,
@@ -124,23 +145,31 @@ export class VideoFileFrameDecoder {
     mediaStartUs: number,
     cycleDurationUs: number
   ) {
-    this.ready = this.initialize(videoUri, rotation, outputWidth, outputHeight,
-      frameIntervalUs, listener, playbackAnchorUs, mediaStartUs, cycleDurationUs);
+    this.ready = this.initialize(
+      videoUri,
+      rotation,
+      outputWidth,
+      outputHeight,
+      frameIntervalUs,
+      listener,
+      playbackAnchorUs,
+      mediaStartUs,
+      cycleDurationUs
+    );
   }
 
   /**
-   * 异步创建文件视频解码器，并应用待处理的激活或暂停状态。
+   * Creates a video file decoder asynchronously and applies pending activation or pause state.
    *
-   * @param videoUri 需要解码的本地视频文件 URI。
-   * @param rotation 视频画面需要应用的旋转方向。
-   * @param outputWidth 解码输出宽度，单位像素。
-   * @param outputHeight 解码输出高度，单位像素。
-   * @param frameIntervalUs 视频帧输出间隔，单位微秒。
-   * @param listener 接收媒体帧与解码状态的监听器。
-   * @param playbackAnchorUs 媒体起点对应的单调播放时间，单位微秒。
-   * @param mediaStartUs 媒体时间轴的起始时间，单位微秒。
-   * @param cycleDurationUs 单轮媒体播放时长，单位微秒。
-   * @returns 操作完成时兑现的 Promise。
+   * @param videoUri The local video file URI to decode.
+   * @param rotation The rotation to apply to the video image.
+   * @param outputWidth The decoded output width, in pixels.
+   * @param outputHeight The decoded output height, in pixels.
+   * @param frameIntervalUs The video output interval, in microseconds.
+   * @param listener The handler for decoded NV12 frames, file completion, and decoding failures.
+   * @param playbackAnchorUs The monotonic playback time for the media origin, in microseconds.
+   * @param mediaStartUs The media timeline origin, in microseconds.
+   * @param cycleDurationUs The playback cycle duration, in microseconds.
    */
   private async initialize(
     videoUri: string,
@@ -213,12 +242,13 @@ export class VideoFileFrameDecoder {
   }
 
   /**
-   * 就绪后一次性放行；正在暂停时保留校准量，等待恢复。
+   * Activate output once ready; while paused, retain the anchor adjustment until resume.
    *
-   * @param anchorOffsetUs 相对播放锚点的偏移量，单位微秒。
-   * @returns 无返回值。
+   * @param anchorOffsetUs The offset from the playback anchor, in microseconds.
    */
-  activate(anchorOffsetUs: number): void {
+  activate(
+    anchorOffsetUs: number
+  ): void {
     if (this.isReleased || this.isActivated || this.nativeDecoder === null) {
       return;
     }
@@ -230,11 +260,7 @@ export class VideoFileFrameDecoder {
     }
   }
 
-  /**
-   * 暂停视频文件的连续解码输出。
-   *
-   * @returns 无返回值。
-   */
+  /** Pauses continuous video file decoding. */
   pause(): void {
     this.isPaused = true;
     if (!this.isReleased && this.isActivated && this.nativeDecoder !== null) {
@@ -243,12 +269,13 @@ export class VideoFileFrameDecoder {
   }
 
   /**
-   * 恢复视频解码，并按暂停时长平移播放锚点。
+   * Resumes video decoding with the playback anchor shifted by the pause duration.
    *
-   * @param pausedDurationUs 本次暂停持续时间，单位微秒。
-   * @returns 无返回值。
+   * @param pausedDurationUs The pause duration, in microseconds.
    */
-  resume(pausedDurationUs: number): void {
+  resume(
+    pausedDurationUs: number
+  ): void {
     this.isPaused = false;
     if (!this.isReleased && this.isActivated && this.nativeDecoder !== null) {
       this.nativeDecoder.resume(this.activationOffsetUs + pausedDurationUs);
@@ -256,11 +283,7 @@ export class VideoFileFrameDecoder {
     }
   }
 
-  /**
-   * 停止视频帧输出，并等待原生解码资源释放完成。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Stops video output and waits for native resource release. */
   release(): Promise<void> {
     if (this.releasePromise === null) {
       this.isReleased = true;
@@ -269,11 +292,7 @@ export class VideoFileFrameDecoder {
     return this.releasePromise;
   }
 
-  /**
-   * 等待视频解码器创建结束后释放原生资源。
-   *
-   * @returns 操作完成时兑现的 Promise。
-   */
+  /** Waits for decoder creation before releasing native resources. */
   private async releaseWhenReady(): Promise<void> {
     try {
       await this.ready;
