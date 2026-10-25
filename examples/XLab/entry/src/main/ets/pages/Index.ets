@@ -988,7 +988,7 @@ struct Index {
             categoryLabel: 'SDK MEDIA / EXTERNAL INPUT',
             watermark: 'SRC',
             accentColor: '#FF9A45',
-            icon: $r('app.media.sdk_feature_ui_extension'),
+            icon: $r('app.media.sdk_feature_external_capture'),
             iconLabel: 'SOURCE',
             title: this.text('external_capture'),
             subtitle: this.text('external_capture_description'),
