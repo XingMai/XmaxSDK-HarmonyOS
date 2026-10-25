@@ -11,7 +11,6 @@ component and handle rejected promises.
 - [Service environments](#service-environments)
 - [Reference Image Upload](#reference-image-upload)
 - [Render local preview and generated video](#render-local-preview-and-generated-video)
-- [Receive remote video frames](#receive-remote-video-frames)
 - [Receive remote audio and video frames](#receive-remote-audio-and-video-frames)
 - [Start generation in one call](#start-generation-in-one-call)
 - [Touch Interaction](#touch-interaction)
@@ -296,47 +295,6 @@ the last input frame and silent audio with advancing timestamps, and overlays a
 still image on the generated video. The generation task remains active. Resuming
 continues file playback from the paused position.
 
-## Receive remote video frames
-
-Register a listener before or during generation to receive RTC post-processed
-video frames. No public listener means no pixel copy for frame delivery.
-
-```ts
-import { RealtimeVideoFrame } from '@xmax/sdk';
-
-realtime.setRemoteVideoFrameListener((frame: RealtimeVideoFrame): void => {
-  // I420 planes are ordered Y, U, V. Each plane exposes data, stride,
-  // byteOffset and byteLength. Buffers remain valid after this callback returns.
-  const yPlane = frame.planes[0];
-  const yBytes = new Uint8Array(yPlane.data, yPlane.byteOffset, yPlane.byteLength);
-  // Use frame.width, frame.height, frame.rotation and frame.timestampUs
-  // when handing pixels to your recorder or image-processing worker.
-});
-
-// Stop public delivery and discard queued frames:
-realtime.setRemoteVideoFrameListener(null);
-```
-
-`RealtimeVideoFrame` exposes `width`, `height`, `pixelFormat`, `planes`,
-`timestampUs` and `rotation`. The current output format is `VideoPixelFormat.I420`.
-Dimensions describe the pixel buffer before applying its clockwise rotation.
-These frames exclude view-level FIT/FILL cropping, mirroring and UI overlays.
-Timestamps are in microseconds and need not start at zero; use the first received
-frame as the recording timeline origin.
-
-The SDK copies visible pixels into independent buffers before the RTC callback
-returns. Each successfully converted frame is delivered asynchronously in receive
-order on the ArkTS event loop; pending frames are not merged or replaced by newer
-ones. This does not recover frames dropped upstream by RTC. Keep the callback
-short and move expensive processing to a Worker to avoid blocking the event loop
-and accumulating queued frames.
-
-Stopping generation, disconnecting, closing, replacing the stream or changing the
-listener invalidates pending delivery. The listener remains configured across
-sessions until explicitly removed. Sink activation failures throw `XmaxError`
-from the setter; exceptions thrown by the listener are logged without stopping
-generation.
-
 ## Receive remote audio and video frames
 
 Use one listener for copied remote PCM and post-processed video from the current
@@ -369,8 +327,7 @@ subscribe to audio, change playback volume, or change whether remote sound plays
 It receives the bound user's subscribed, unmixed PCM in its actual sample rate
 and channel layout. Video excludes view-level cropping, mirroring and overlays.
 Buffers are copied before the native RTC callback returns and remain valid
-after your callback. Treat all delivered data as read-only, including video
-frames shared with an independently registered `setRemoteVideoFrameListener`.
+after your callback. Treat all delivered data as read-only.
 
 Each result binding gets a new `streamId`, even when it reuses the same RTC user.
 The first event of each track, format changes, timestamp discontinuities and
@@ -397,9 +354,24 @@ does not guarantee synchronized recording. Validate their cross-track offset on
 target devices before using them for that purpose; do not independently reset
 each track's first timestamp to zero.
 
-The existing video-only listener remains independently available with its
-existing delivery behavior; the unified queue limits apply only to this new
-listener.
+### XLab recording example
+
+The Realtime page's **Record** button is available while generating. It installs
+the unified listener only during recording, encodes the generated I420 video as
+H.264 and remote PCM as AAC, and removes the listener on stop. Playback volume
+does not change the recorded audio. Without remote PCM, the output is video-only.
+The saved video contains generated frames, not UI overlays or a screen capture.
+
+Tap **Stop** to finalize MP4 in the background and choose whether to save it
+through the system photo-library dialog. Ending generation also finalizes the
+recording. Leaving the page or backgrounding the app cancels an unfinished
+recording and cleans up its temporary files without opening a save dialog.
+Changing the result binding, video format or audio timeline ends recording with
+an error rather than combining incompatible media. Clearly incompatible native
+audio/video clock origins are also rejected, rather than corrected using arrival
+times. Recording failures do not
+stop generation. The timestamp limitation above still applies; verify audio/video
+sync on target devices.
 
 ## Start generation in one call
 

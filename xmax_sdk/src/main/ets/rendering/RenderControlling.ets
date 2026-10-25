@@ -9,7 +9,6 @@
 //
 
 import { ImageSize } from '../service/media/ImageSize';
-import { RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
 import { RealtimeMediaFrameListener } from '../service/realtime/RealtimeMediaFrame';
 import { RemoteStream } from '../foundation/rtc/RemoteStream';
 import { XmaxError } from '../foundation/errors/XmaxError';
@@ -18,15 +17,6 @@ import { RealtimeVideoTrack } from '../service/realtime/RealtimeVideoTrack';
 
 /** The rendering layer interface used by Core. */
 export interface RenderControlling {
-
-  /**
-   * Sets remote frame delivery; null removes the listener and clears pending frames.
-   *
-   * @param listener The event handler, or null to remove it.
-   */
-  setRemoteVideoFrameListener(
-    listener: RealtimeVideoFrameListener | null
-  ): void;
 
   /** Sets unified remote PCM and video delivery without changing playback or subscriptions. */
   setRemoteMediaFrameListener(

@@ -64,7 +64,7 @@ test('resuming frozen video waits for the next frame without copying its pixels'
   assert.equal(f.snapshot.releases, 0);
   assert.equal(f.timers.size, 1);
   // Removing a public listener must not disable the internal resume wait.
-  f.render.setRemoteVideoFrameListener(null);
+  f.render.setRemoteMediaFrameListener(null);
   assert.deepEqual(f.observations.at(-1), [f.stream.key(), true]);
   f.frame(new f.RemoteStream('other-room', 'bot'), () => assert.fail('wrong stream copied'));
   assert.equal(f.timers.size, 1);
@@ -78,7 +78,7 @@ test('resuming frozen video waits for the next frame without copying its pixels'
 
 test('a resume frame is copied once only when a public listener also needs it', async () => {
   const f = frozenFixture(), delivered = [];
-  f.render.setRemoteVideoFrameListener(frame => delivered.push(frame));
+  f.render.setRemoteMediaFrameListener(frame => delivered.push(frame));
   const pending = f.render.resumeRemoteVideo();
   let copies = 0;
   f.frame(f.stream, () => { copies++; return f.convert(rawFrame()); });
@@ -153,19 +153,19 @@ test('no public listener means no pixel copy and observation stops after first-f
 
 test('public listening keeps the sink after readiness and delivers every queued frame in receive order', async () => {
   const f = fixture();
-  f.render.setRemoteVideoFrameListener(frame => f.received.push(frame.timestampUs));
+  f.render.setRemoteMediaFrameListener(frame => f.received.push(frame.timestampUs));
   f.render.setRemoteStream(f.stream);
   const ready = f.render.waitUntilRemoteFrameReady();
   for (let i = 0; i < 20; i++) f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: i }));
   await ready;
   assert.deepEqual(f.received, []);
   assert.equal(f.timers.size, 1);
-  f.flush();
+  f.flush(); f.flush();
   assert.deepEqual(f.received, Array.from({ length: 20 }, (_, i) => i));
   assert.equal(f.observations.some(([, enabled]) => !enabled), false);
-  f.render.setRemoteVideoFrameListener(null);
+  f.render.setRemoteMediaFrameListener(null);
   assert.deepEqual(f.observations.at(-1), ['room:bot', false]);
-  f.render.setRemoteVideoFrameListener(frame => f.received.push(frame.timestampUs));
+  f.render.setRemoteMediaFrameListener(frame => f.received.push(frame.timestampUs));
   assert.deepEqual(f.observations.at(-1), ['room:bot', true]);
   f.frame(); f.flush();
   assert.deepEqual(f.received, [...Array.from({ length: 20 }, (_, i) => i), 123456]);
@@ -174,9 +174,9 @@ test('public listening keeps the sink after readiness and delivers every queued 
 
 test('listener removal before readiness does not stop required first-frame observation', async () => {
   const f = fixture();
-  f.render.setRemoteVideoFrameListener(() => {});
+  f.render.setRemoteMediaFrameListener(() => {});
   f.render.setRemoteStream(f.stream);
-  f.render.setRemoteVideoFrameListener(null);
+  f.render.setRemoteMediaFrameListener(null);
   assert.deepEqual(f.observations, [['room:bot', true]]);
   const ready = f.render.waitUntilRemoteFrameReady();
   f.frame(); await ready;
@@ -185,7 +185,7 @@ test('listener removal before readiness does not stop required first-frame obser
 
 test('receive order survives repeated timestamps, a throwing callback and frames arriving during delivery', () => {
   const f = fixture();
-  f.render.setRemoteVideoFrameListener(frame => {
+  f.render.setRemoteMediaFrameListener(frame => {
     f.received.push(frame.timestampUs);
     if (f.received.length === 1) {
       f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 7 }));
@@ -198,7 +198,7 @@ test('receive order survives repeated timestamps, a throwing callback and frames
   }
   assert.deepEqual(f.received, []);
   f.flush();
-  assert.deepEqual(f.received, [9, 8, 8]);
+  assert.deepEqual(f.received, [9, 8, 8, 7]);
   assert.match(f.logs.at(-1), /first callback failed/);
   f.flush();
   assert.deepEqual(f.received, [9, 8, 8, 7]);
@@ -209,19 +209,19 @@ test('receive order survives repeated timestamps, a throwing callback and frames
 for (const action of ['replace listener', 'remove listener', 'reset stream', 'stop delivery', 'reset track']) {
   test(`${action} inside the callback invalidates the rest of its batch and any queued follow-up`, () => {
     const f = fixture();
+    let staleTimer;
     const next = frame => f.received.push(`new:${frame.timestampUs}`);
-    f.render.setRemoteVideoFrameListener(frame => {
+    f.render.setRemoteMediaFrameListener(frame => {
       f.received.push(frame.timestampUs);
       f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 4 }));
-      const staleTimer = [...f.timers.values()][0].callback;
       switch (action) {
-        case 'replace listener': f.render.setRemoteVideoFrameListener(next); break;
-        case 'remove listener': f.render.setRemoteVideoFrameListener(null); break;
+        case 'replace listener': f.render.setRemoteMediaFrameListener(next); break;
+        case 'remove listener': f.render.setRemoteMediaFrameListener(null); break;
         case 'reset stream': f.render.setRemoteStream(f.stream); break;
         case 'stop delivery': f.render.stopRemoteFrameDelivery(); break;
         case 'reset track': f.render.resetRemoteTrack(null); break;
       }
-      f.render.setRemoteVideoFrameListener(next);
+      f.render.setRemoteMediaFrameListener(next);
       f.render.setRemoteStream(f.stream);
       f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: 5 }));
       staleTimer(); // An already queued old callback cannot drain or clear the new batch.
@@ -230,6 +230,7 @@ for (const action of ['replace listener', 'remove listener', 'reset stream', 'st
     for (const timestamp of [1, 2, 3]) {
       f.frame(f.stream, () => f.convert({ ...rawFrame(), timestamp_us: timestamp }));
     }
+    staleTimer = [...f.timers.values()][0].callback;
     f.flush();
     assert.deepEqual(f.received, [1]);
     f.flush();
@@ -241,11 +242,11 @@ for (const action of ['replace listener', 'remove listener', 'reset stream', 'st
 
 test('replacement, stream reset and stop invalidate pending callbacks, including a reused stream ID', () => {
   const f = fixture();
-  f.render.setRemoteVideoFrameListener(() => f.received.push('old'));
+  f.render.setRemoteMediaFrameListener(() => f.received.push('old'));
   f.render.setRemoteStream(f.stream);
   f.frame();
   const staleTimer = [...f.timers.values()][0].callback;
-  f.render.setRemoteVideoFrameListener(() => f.received.push('new'));
+  f.render.setRemoteMediaFrameListener(() => f.received.push('new'));
   staleTimer(); f.flush();
   assert.deepEqual(f.received, []);
   f.frame();
@@ -267,13 +268,13 @@ test('replacement, stream reset and stop invalidate pending callbacks, including
 
 test('conversion and consumer failures are contained, and later frames still arrive', () => {
   const f = fixture();
-  f.render.setRemoteVideoFrameListener(() => { throw new Error('consumer failed'); });
+  f.render.setRemoteMediaFrameListener(() => { throw new Error('consumer failed'); });
   f.render.setRemoteStream(f.stream);
   f.frame(f.stream, () => { throw new Error('copy failed'); });
   assert.match(f.logs.at(-1), /copy failed/);
   f.frame(); assert.doesNotThrow(() => f.flush());
   assert.match(f.logs.at(-1), /consumer failed/);
-  f.render.setRemoteVideoFrameListener(frame => f.received.push(frame));
+  f.render.setRemoteMediaFrameListener(frame => f.received.push(frame));
   f.frame(); f.flush();
   assert.equal(f.received.length, 1);
   assert.deepEqual(f.failures, []);
@@ -283,10 +284,10 @@ test('conversion and consumer failures are contained, and later frames still arr
 test('failed sink reactivation preserves listener state and can be retried', () => {
   const f = fixture(); f.render.setRemoteStream(f.stream); f.frame();
   const failure = new Error('sink failed'); f.failSink(failure);
-  assert.throws(() => f.render.setRemoteVideoFrameListener(frame => f.received.push(frame)), error => error === failure);
-  assert.equal(f.render.frameDispatcher.hasListener, false);
+  assert.throws(() => f.render.setRemoteMediaFrameListener(frame => f.received.push(frame)), error => error === failure);
+  assert.equal(f.render.mediaFrameDispatcher.hasListener, false);
   f.failSink(null);
-  f.render.setRemoteVideoFrameListener(frame => f.received.push(frame));
+  f.render.setRemoteMediaFrameListener(frame => f.received.push(frame));
   f.frame(); f.flush(); assert.equal(f.received.length, 1);
   f.render.resetRemoteTrack(null);
 });

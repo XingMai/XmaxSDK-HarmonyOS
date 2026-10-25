@@ -1,6 +1,7 @@
 import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
+import { RealtimeRecordingState } from '../../recording/RealtimeRecordingState';
 
 @Observed
 export class RealtimeReferenceItemState {
@@ -61,6 +62,7 @@ export class RealtimeViewState {
   uplinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
   downlinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
   isQualityChanging: boolean = false;
+  recordingState: RealtimeRecordingState = RealtimeRecordingState.IDLE;
   isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
   isMoxGenerationActive: boolean = false;

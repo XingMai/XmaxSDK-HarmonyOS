@@ -57,13 +57,3 @@ export class RealtimeVideoFrame {
     this.rotation = rotation;
   }
 }
-
-/**
- * Receives frames asynchronously in order on the ArkTS event loop; move expensive processing to a
- * Worker.
- *
- * @param frame The copied remote RTC video frame before view cropping, mirroring, and UI overlays.
- */
-export type RealtimeVideoFrameListener = (
-  frame: RealtimeVideoFrame
-) => void;

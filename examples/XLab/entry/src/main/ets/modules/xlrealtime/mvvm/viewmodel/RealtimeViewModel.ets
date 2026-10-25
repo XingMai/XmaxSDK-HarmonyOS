@@ -13,6 +13,7 @@ import {
   RealtimeReasonKind,
   RealtimeContext,
   RealtimeMediaStream,
+  RealtimeMediaFrame,
   RealtimeModels,
   RealtimeState,
   XmaxClient,
@@ -28,6 +29,8 @@ import { ReferenceCategory } from '../../reference/ReferenceCategory';
 import { ReferenceDataSource } from '../../reference/ReferenceDataSource';
 import { ReferenceUploading } from '../../reference/ReferenceUploader';
 import { RealtimeReferenceItemState, RealtimeViewState } from '../model/RealtimeViewState';
+import { RealtimeVideoRecorder } from '../../recording/RealtimeVideoRecorder';
+import { RealtimeRecordingState } from '../../recording/RealtimeRecordingState';
 
 const LOG_DOMAIN: number = 0x0000;
 const LOG_TAG: string = 'RealtimeViewModel';
@@ -71,6 +74,9 @@ export class RealtimeViewModel {
   private localImagePath: string = '';
   private moxReferenceSourcePath: string = '';
   private moxReferenceRemoteUrl: string = '';
+  private recorder: RealtimeVideoRecorder | null = null;
+  private recordingRevision: number = 0;
+  private recordingCompletion: Promise<void> | null = null;
 
   constructor(categories: ReferenceCategory[] = ReferenceDataSource.categories()) {
     this.state = new RealtimeViewState(categories);
@@ -78,6 +84,88 @@ export class RealtimeViewModel {
 
   setReferenceUploader(uploader: ReferenceUploading): void {
     this.referenceUploader = uploader;
+  }
+
+  toggleRecording(context: common.Context): void {
+    if (this.state.recordingState === RealtimeRecordingState.RECORDING) {
+      void this.stopRecording(context);
+      return;
+    }
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    if (manager === null || this.state.recordingState !== RealtimeRecordingState.IDLE ||
+      this.state.connectionState !== RealtimeConnectionState.GENERATING) {
+      return;
+    }
+
+    const recorder: RealtimeVideoRecorder = new RealtimeVideoRecorder(context);
+    this.recorder = recorder;
+    this.recordingRevision++;
+    try {
+      recorder.start((message: string): void => this.failRecording(recorder, message));
+      manager.setRemoteMediaFrameListener((frame: RealtimeMediaFrame): void => {
+        if (this.realtimeManager !== manager || this.recorder !== recorder) {
+          return;
+        }
+        try {
+          recorder.append(frame);
+        } catch (error) {
+          this.failRecording(recorder, this.errorMessage(error));
+        }
+      });
+      this.state.recordingState = RealtimeRecordingState.RECORDING;
+    } catch (error) {
+      this.failRecording(recorder, this.errorMessage(error));
+    }
+  }
+
+  private failRecording(recorder: RealtimeVideoRecorder, message: string): void {
+    if (this.recorder !== recorder) {
+      return;
+    }
+    this.recorder = null;
+    this.realtimeManager?.setRemoteMediaFrameListener(null);
+    this.recordingRevision++;
+    this.state.recordingState = RealtimeRecordingState.SAVING;
+    this.onMessage?.(XLabLocalization.format('record_failed', [message]));
+    this.recordingCompletion = recorder.cancel().finally((): void => {
+      this.state.recordingState = RealtimeRecordingState.IDLE;
+      this.recordingCompletion = null;
+    });
+  }
+
+  private stopRecording(context: common.Context): Promise<void> {
+    const recorder: RealtimeVideoRecorder | null = this.recorder;
+    if (recorder === null) {
+      return this.recordingCompletion ?? Promise.resolve();
+    }
+
+    const revision: number = this.recordingRevision;
+    this.recorder = null;
+    this.realtimeManager?.setRemoteMediaFrameListener(null);
+    this.state.recordingState = RealtimeRecordingState.SAVING;
+    const completion: Promise<void> = (async (): Promise<void> => {
+      try {
+        await recorder.stop();
+        if (revision !== this.recordingRevision) {
+          return;
+        }
+        const saved: boolean = await recorder.saveToAlbum(context);
+        if (revision === this.recordingRevision) {
+          this.onMessage?.(XLabLocalization.text(saved ? 'record_saved' : 'record_save_cancelled'));
+        }
+      } catch (error) {
+        await recorder.cancel();
+        if (revision === this.recordingRevision) {
+          this.onMessage?.(XLabLocalization.format('record_failed', [this.errorMessage(error)]));
+        }
+      } finally {
+        await recorder.removeOutput();
+        this.state.recordingState = RealtimeRecordingState.IDLE;
+        this.recordingCompletion = null;
+      }
+    })();
+    this.recordingCompletion = completion;
+    return completion;
   }
 
   refreshQualityLevels(): void {
@@ -278,6 +366,9 @@ export class RealtimeViewModel {
         if (this.realtimeManager !== manager) {
           return;
         }
+        if (state.connectionState !== RealtimeConnectionState.GENERATING && this.recorder !== null) {
+          void this.stopRecording(context);
+        }
         const terminal: boolean = state.connectionState === RealtimeConnectionState.READY ||
           state.connectionState === RealtimeConnectionState.IDLE;
         if (terminal || state.connectionState === RealtimeConnectionState.DISCONNECTING) {
@@ -458,10 +549,15 @@ export class RealtimeViewModel {
 
   private async closeRealtime(preservesLocalInput: boolean): Promise<void> {
     this.generationRevision++;
+    this.recordingRevision++;
+    const recorder: RealtimeVideoRecorder | null = this.recorder;
+    this.recorder = null;
+    const recordingCleanup: Promise<void> = recorder?.cancel() ?? this.recordingCompletion ?? Promise.resolve();
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     let closePromise: Promise<void> | null = null;
     if (manager !== null) {
       manager.setStateListener(null);
+      manager.setRemoteMediaFrameListener(null);
       manager.setLocalVideoPlaybackStateListener(null);
       manager.setUplinkVideoStatisticsListener(null);
       manager.setDownlinkVideoStatisticsListener(null);
@@ -501,6 +597,8 @@ export class RealtimeViewModel {
     if (closePromise !== null) {
       await closePromise;
     }
+    await recordingCleanup;
+    this.state.recordingState = RealtimeRecordingState.IDLE;
     if (this.realtimeManager === null) {
       this.state.connectionState = RealtimeConnectionState.IDLE;
     }

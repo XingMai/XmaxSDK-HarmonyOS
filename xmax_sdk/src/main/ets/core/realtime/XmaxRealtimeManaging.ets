@@ -10,7 +10,6 @@
 
 import { RealtimeGenerationOptions } from '../../service/realtime/RealtimeGenerationOptions';
 import { UplinkVideoStatisticsListener, DownlinkVideoStatisticsListener } from '../../foundation/rtc/VideoStatistics';
-import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { RealtimeMediaFrameListener } from '../../service/realtime/RealtimeMediaFrame';
 import { image } from '@kit.ImageKit';
 import { CameraPosition } from '../../foundation/media/camera/CameraPosition';
@@ -107,19 +106,6 @@ export interface XmaxRealtimeManaging {
    */
   setLocalVideoPlaybackStateListener(
     listener: LocalVideoPlaybackStateListener | null
-  ): void;
-
-  /**
-   * Delivers processed RTC frames for the current result stream asynchronously; null removes the
-   * listener. Pixels are copied only while observed. Buffers remain valid after the callback.
-   * Frames are delivered in receive order without coalescing pending delivery. Callbacks run on the
-   * ArkTS event loop; move expensive processing to a Worker. Delivery stops on disconnect; the
-   * listener remains configured for subsequent generation.
-   *
-   * @param listener The event handler, or null to remove it.
-   */
-  setRemoteVideoFrameListener(
-    listener: RealtimeVideoFrameListener | null
   ): void;
 
   /**

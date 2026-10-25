@@ -9,10 +9,9 @@
 //
 
 import { ImageSize } from '../service/media/ImageSize';
-import { RealtimeVideoFrame, RealtimeVideoFrameListener } from '../service/realtime/RealtimeVideoFrame';
+import { RealtimeVideoFrame } from '../service/realtime/RealtimeVideoFrame';
 import { RealtimeMediaFrameListener } from '../service/realtime/RealtimeMediaFrame';
 import { image } from '@kit.ImageKit';
-import { RealtimeVideoFrameDispatcher } from './video/RealtimeVideoFrameDispatcher';
 import { RealtimeMediaFrameDispatcher } from './video/RealtimeMediaFrameDispatcher';
 import { RtcRemoteAudioFrame } from '../foundation/rtc/RtcRemoteAudioFrame';
 import { XmaxLogger } from '../foundation/logging/XmaxLogger';
@@ -96,9 +95,6 @@ export class RenderController implements RenderControlling {
 
   // Asynchronous frame delivery
 
-  /** The queue delivering copied frames to your app asynchronously. */
-  private readonly frameDispatcher: RealtimeVideoFrameDispatcher = new RealtimeVideoFrameDispatcher();
-
   /** The bounded queue delivering unified PCM and video events. */
   private readonly mediaFrameDispatcher: RealtimeMediaFrameDispatcher = new RealtimeMediaFrameDispatcher();
 
@@ -157,8 +153,7 @@ export class RenderController implements RenderControlling {
       // Resume needs only a next-frame notification; copy pixels only for the public listener.
       this.finishNextRemoteFrameWait();
 
-      const shouldDeliver: boolean = (this.frameDispatcher.hasListener ||
-        this.mediaFrameDispatcher.hasListener) && this.remoteFrameDeliveryActive;
+      const shouldDeliver: boolean = this.mediaFrameDispatcher.hasListener && this.remoteFrameDeliveryActive;
       if (!shouldDeliver) {
         this.stopFrameObservation(stream);
         return;
@@ -167,7 +162,6 @@ export class RenderController implements RenderControlling {
       try {
         const streamId: string | undefined = this.mediaFrameDispatcher.streamId;
         const frame: RealtimeVideoFrame = copyFrame();
-        this.frameDispatcher.dispatch(frame);
         if (streamId !== undefined) {
           this.mediaFrameDispatcher.dispatchVideo(
             frame,
@@ -203,30 +197,6 @@ export class RenderController implements RenderControlling {
     });
   }
 
-  /**
-   * Sets remote frame delivery; null removes the listener and clears pending frames.
-   *
-   * @param listener The event handler, or null to remove it.
-   */
-  setRemoteVideoFrameListener(
-    listener: RealtimeVideoFrameListener | null
-  ): void {
-    const stream: RemoteStream | null = this.remoteStream;
-    // Enable observation first; preserve the existing listener and pending frames if enabling fails.
-    if (listener !== null && stream !== null && this.remoteFrameDeliveryActive && this.remoteFrameError === null) {
-      this.rtcManager.observeRemoteVideoFrames(
-        stream,
-        true
-      );
-    }
-
-    this.frameDispatcher.setListener(listener);
-    if (listener === null && !this.mediaFrameDispatcher.hasListener && stream !== null &&
-      this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
-      this.stopFrameObservation(stream);
-    }
-  }
-
   /** Enables media observation before replacing a receiver, retaining it on configuration failure. */
   setRemoteMediaFrameListener(
     listener: RealtimeMediaFrameListener | null
@@ -243,7 +213,7 @@ export class RenderController implements RenderControlling {
           true
         );
       } catch (error) {
-        if (!this.frameDispatcher.hasListener && !this.mediaFrameDispatcher.hasListener &&
+        if (!this.mediaFrameDispatcher.hasListener &&
           this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
           this.stopFrameObservation(stream);
         }
@@ -254,7 +224,7 @@ export class RenderController implements RenderControlling {
     this.mediaFrameDispatcher.setListener(listener);
     if (listener === null && stream !== null) {
       this.stopAudioFrameObservation(stream);
-      if (!this.frameDispatcher.hasListener && this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
+      if (this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
         this.stopFrameObservation(stream);
       }
     }
@@ -263,7 +233,6 @@ export class RenderController implements RenderControlling {
   /** Stops all public remote frame delivery until a new result stream is set. */
   stopRemoteFrameDelivery(): void {
     this.remoteFrameDeliveryActive = false;
-    this.frameDispatcher.invalidatePendingFrames();
     this.mediaFrameDispatcher.setStream(false);
 
     if (this.remoteStream !== null) {

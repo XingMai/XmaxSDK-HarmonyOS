@@ -6,6 +6,7 @@
   "author": "XMAX.AI PTE. LTD.",
   "license": "MIT",
   "dependencies": {
-    "@xmax/sdk": "file:../../../xmax_sdk"
+    "@xmax/sdk": "file:../../../xmax_sdk",
+    "libxlab_recorder.so": "file:./src/main/cpp/types/libxlab_recorder"
   }
 }

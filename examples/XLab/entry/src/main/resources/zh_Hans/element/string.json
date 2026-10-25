@@ -1,5 +1,11 @@
 {
   "string": [
+    { "name": "record_start", "value": "录制" },
+    { "name": "record_stop", "value": "停止" },
+    { "name": "record_saving", "value": "保存中" },
+    { "name": "record_saved", "value": "录制已保存到相册" },
+    { "name": "record_save_cancelled", "value": "未保存录制" },
+    { "name": "record_failed", "value": "录制失败：{0}" },
     {
       "name": "module_desc",
       "value": "XLab HarmonyOS example application"

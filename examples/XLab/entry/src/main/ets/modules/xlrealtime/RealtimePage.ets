@@ -21,6 +21,7 @@ import {
 import { RealtimeLoadingView } from './mvvm/view/RealtimeLoadingView';
 import { RealtimeStatisticsPanel, RealtimeStatisticsButton } from './mvvm/view/RealtimeStatisticsPanel';
 import { RealtimeAudioControlsView } from './mvvm/view/RealtimeAudioControlsView';
+import { RealtimeRecordingButton } from './mvvm/view/RealtimeRecordingButton';
 import { RealtimePromptInputView } from './mvvm/view/RealtimePromptInputView';
 import { RealtimeReferenceListView } from './mvvm/view/RealtimeReferenceListView';
 import { RealtimeViewModel } from './mvvm/viewmodel/RealtimeViewModel';
@@ -499,8 +500,21 @@ export struct RealtimePage {
             }
           })
             .position({ right: 8, top: 76 })
+          RealtimeRecordingButton({
+            state: this.state,
+            onToggle: (): void => {
+              this.viewModel.toggleRecording(this.getUIContext().getHostContext() as common.UIAbilityContext);
+            }
+          })
+            .position({ right: 15, top: 134 })
         } else {
           Row() {
+            RealtimeRecordingButton({
+              state: this.state,
+              onToggle: (): void => {
+                this.viewModel.toggleRecording(this.getUIContext().getHostContext() as common.UIAbilityContext);
+              }
+            })
             RealtimeStatisticsButton({
               isActive: this.isStatisticsVisible,
               buttonWidth: 44,
@@ -549,7 +563,7 @@ export struct RealtimePage {
               void this.presentLocalMediaPicker();
             })
           }
-          .width(this.hasLocalImage() ? 88 : 176)
+          .width(this.hasLocalImage() ? 132 : 220)
           .height(58)
           .position({ right: 8, top: 18 })
         }

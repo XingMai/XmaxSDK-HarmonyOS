@@ -8,7 +8,8 @@ const platform = {
   XLabLocalization: { XLabLocalization: {
     environment: 'china',
     text: key => require('../examples/XLab/entry/src/main/resources/zh_Hans/element/string.json')
-      .string.find(value => value.name === key)?.value ?? key
+      .string.find(value => value.name === key)?.value ?? key,
+    format(key, values) { return this.text(key).replace(/\{(\d+)\}/g, (_match, index) => values[Number(index)] ?? ''); }
   } },
     '@ohos.systemDateTime': { default: { TimeType: { ACTIVE: 0 }, getUptime: () => 0 } },
   '@kit.ArkUI': { UIUtils: { getTarget: value => value } },
@@ -124,7 +125,7 @@ function managerFixture(modelName = 'x2.0-sla') {
     RealtimeSessionService: { RealtimeSessionService: FakeSessionService },
     RenderController: { RenderController: class {
       registerRemoteTrack() {} resetRemoteTrack() {} failRemoteFrameWait() {}
-      stopRemoteFrameDelivery() {} setRemoteVideoFrameListener() {}
+      stopRemoteFrameDelivery() {}
       setRemoteMediaFrameListener(listener) { calls.mediaListener = listener; }
       async waitUntilRemoteFrameReady() {}
       async freezeRemoteVideo() { calls.freezes = (calls.freezes ?? 0) + 1; }
@@ -1019,6 +1020,7 @@ test('RTC first-frame cache ignores other rooms/engines and resets on unsubscrib
 
 function exampleFixture(modelName = 'x2.0-sla') {
   const f = managerFixture(modelName);
+  const recorders = [];
   let nextManager = f.manager;
   const load = loadEts({ ...platform,
     '@kit.PerformanceAnalysisKit': { hilog: { error() {} } },
@@ -1034,15 +1036,105 @@ function exampleFixture(modelName = 'x2.0-sla') {
     },
     XLabConfiguration: { XLabConfiguration: { currentApiKey: () => 'test-only' } },
     XLabModelSelection: { XLabModelSelection: { current: () => 'x2.0-sla' } },
-    ReferenceDataSource: { ReferenceDataSource: { categories: () => [] } }
+    ReferenceDataSource: { ReferenceDataSource: { categories: () => [] } },
+    RealtimeVideoRecorder: { RealtimeVideoRecorder: class {
+      constructor() { recorders.push(this); this.frames = []; }
+      start(onError) { this.onError = onError; }
+      append(frame) { if (this.appendError) throw this.appendError; this.frames.push(frame); }
+      async stop() { this.stopped = true; if (this.stopGate) await this.stopGate.promise; return 'recording.mp4'; }
+      async saveToAlbum() { this.saved = true; return true; }
+      async cancel() { this.cancelled = true; if (this.cancelGate) await this.cancelGate.promise; }
+      async removeOutput() { this.removed = true; }
+    } }
   }, { Observed: value => value });
   const path = require('node:path');
   const { RealtimeViewModel } = load(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/mvvm/viewmodel/RealtimeViewModel.ets'));
-  return { ...f, viewModel: new RealtimeViewModel([]),
+  return { ...f, recorders, viewModel: new RealtimeViewModel([]),
     useManager(manager) { nextManager = manager; }
   };
 }
+
+test('XLab records only while generating, attaches the unified receiver on demand and saves once', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  vm.toggleRecording({}); assert.equal(f.recorders.length, 0);
+  await vm.connect({});
+  assert.equal(f.calls.mediaListener, undefined);
+  vm.toggleRecording({}); assert.equal(f.recorders.length, 0);
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  vm.toggleRecording({});
+  const recorder = f.recorders[0];
+  assert.equal(vm.state.recordingState, 'recording');
+  const listener = f.calls.mediaListener;
+  listener({ streamId: 'result', timestampUs: 10 });
+  assert.equal(recorder.frames.length, 1);
+  recorder.stopGate = deferred();
+  vm.toggleRecording({}); vm.toggleRecording({});
+  assert.equal(vm.state.recordingState, 'saving');
+  assert.equal(f.calls.mediaListener, null);
+  listener({ streamId: 'result', timestampUs: 20 });
+  assert.equal(recorder.frames.length, 1);
+  assert.equal(f.recorders.length, 1);
+  recorder.stopGate.resolve(); await vm.recordingCompletion;
+  assert.equal(recorder.saved, true);
+  assert.equal(recorder.removed, true);
+  assert.equal(vm.state.recordingState, 'idle');
+  await vm.disconnect();
+});
+
+test('XLab automatically finishes recording when generation stops without closing preview', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  vm.toggleRecording({});
+  await f.manager.disconnect(); await vm.recordingCompletion;
+  assert.equal(f.recorders[0].stopped, true);
+  assert.equal(f.recorders[0].saved, true);
+  assert.equal(vm.state.recordingState, 'idle');
+  await vm.disconnect();
+});
+
+test('XLab isolates recording failures from generation and ignores obsolete media and error callbacks', async () => {
+  const f = exampleFixture(), vm = f.viewModel, messages = [];
+  vm.onMessage = message => messages.push(message);
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  vm.toggleRecording({});
+  const recorder = f.recorders[0], listener = f.calls.mediaListener;
+  recorder.cancelGate = deferred();
+  recorder.appendError = new Error('queue full');
+  listener({});
+  assert.equal(vm.state.recordingState, 'saving');
+  assert.equal(f.calls.mediaListener, null);
+  assert.equal(vm.state.connectionState, f.State.GENERATING);
+  recorder.onError('late native failure');
+  assert.equal(messages.length, 1);
+  recorder.cancelGate.resolve(); await vm.recordingCompletion;
+  vm.toggleRecording({});
+  listener({}); recorder.onError('obsolete');
+  assert.equal(vm.state.recordingState, 'recording');
+  assert.equal(f.recorders[1].frames.length, 0);
+  await vm.disconnect();
+  assert.equal(f.recorders[1].cancelled, true);
+  assert.equal(f.recorders[1].saved, undefined);
+  assert.equal(f.calls.mediaListener, null);
+});
+
+test('XLab exit during finalization suppresses the save dialog and waits asynchronously for cleanup', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({});
+  await f.manager.startGeneration(vm.localStream, new f.Context('prompt'));
+  vm.toggleRecording({});
+  const recorder = f.recorders[0]; recorder.stopGate = deferred();
+  vm.toggleRecording({});
+  const closing = vm.disconnect();
+  await settle();
+  assert.equal(f.calls.mediaListener, null);
+  recorder.stopGate.resolve(); await closing;
+  assert.equal(recorder.saved, undefined);
+  assert.equal(recorder.removed, true);
+  assert.equal(vm.state.recordingState, 'idle');
+});
 
 function exampleVideoPlaybackFixture() {
   const f = exampleFixture();

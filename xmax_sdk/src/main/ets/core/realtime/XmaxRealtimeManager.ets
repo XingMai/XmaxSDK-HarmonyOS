@@ -20,7 +20,6 @@ import {
   LocalVideoPlaybackState,
   LocalVideoPlaybackStateListener
 } from '../../service/realtime/LocalVideoPlaybackState';
-import { RealtimeVideoFrameListener } from '../../service/realtime/RealtimeVideoFrame';
 import { RealtimeMediaFrameListener } from '../../service/realtime/RealtimeMediaFrame';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
@@ -331,17 +330,6 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const state: LocalVideoPlaybackState | undefined = this.localVideoPlaybackState;
     if (state !== undefined) {
       this.notifyLocalVideoPlaybackState(state);
-    }
-  }
-
-  /** Sets processed remote video frame delivery. */
-  setRemoteVideoFrameListener(
-    listener: RealtimeVideoFrameListener | null
-  ): void {
-    try {
-      this.renderController.setRemoteVideoFrameListener(listener);
-    } catch (error) {
-      throw this.reportError(XmaxError.from(error));
     }
   }
 

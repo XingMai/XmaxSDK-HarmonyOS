@@ -481,36 +481,6 @@ test('RTC bridge observes postprocessed main-stream frames only while armed and 
 });
 
 for (const action of ['disconnect', 'close']) {
-  test(`public remote frame delivery stops immediately on ${action} and resumes for a new generation`, async t => {
-    const f = fixture(t), delivered = [];
-    f.manager.setRemoteVideoFrameListener(frame => delivered.push(frame.timestampUs));
-    const first = await f.begin();
-    f.sei(first.task);
-    let copies = 0;
-    f.frame(f.remote, () => { copies++; return { timestampUs: 123 }; });
-    await settle();
-    assert.ok(!(await first.pending).error);
-    assert.equal(f.observations.at(-1).enabled, true);
-    assert.equal([...f.timers.values()].filter(timer => timer.ms === 0).length, 1);
-    const stopping = f.manager[action]();
-    assert.equal([...f.timers.values()].filter(timer => timer.ms === 0).length, 0);
-    f.frame(f.remote, () => { copies++; return { timestampUs: 999 }; });
-    assert.equal(copies, 1);
-    await stopping;
-    assert.deepEqual(delivered, []);
-    const second = await f.begin();
-    f.sei(second.task);
-    f.frame(f.remote, () => ({ timestampUs: 456 }));
-    await settle();
-    assert.ok(!(await second.pending).error);
-    f.runTimer(0);
-    assert.deepEqual(delivered, [456]);
-    f.manager.setRemoteVideoFrameListener(null);
-    assert.equal(f.observations.at(-1).enabled, false);
-  });
-}
-
-for (const action of ['disconnect', 'close']) {
   test(`unified media stops on ${action}, discards queued audio/video and resumes with a fresh stream identity`, async t => {
     const f = fixture(t), delivered = [];
     const { RealtimeVideoFrame } = f.load('service/realtime/RealtimeVideoFrame.ets');

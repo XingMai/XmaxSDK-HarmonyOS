@@ -281,20 +281,16 @@ test('RTC-to-render unified output observes only the bound subscribed user and p
   assert.equal(f.handlers.has('onRemoteUserAudioFrame'), false);
 });
 
-test('malformed PCM does not terminate playback and legacy video delivery remains independently configured', async () => {
-  const f = await rtcFixture(), unified = [], legacy = [];
-  f.render.setRemoteVideoFrameListener(frame => legacy.push(frame));
+test('malformed PCM does not terminate playback and valid audio and video continue through one listener', async () => {
+  const f = await rtcFixture(), unified = [];
   f.render.setRemoteMediaFrameListener(frame => unified.push(frame));
   f.render.setRemoteStream(f.stream); f.rtc.subscribeRemoteAudio('bot', true);
   f.audio({ data_size: 3 }); f.video(); f.flush();
-  assert.equal(unified.length, 1); assert.equal(legacy.length, 1);
-  assert.equal(unified[0].content, legacy[0]);
+  assert.equal(unified.length, 1);
   assert.match(f.logs.at(-1), /Invalid remote PCM16/);
-  f.render.setRemoteVideoFrameListener(null);
-  f.video(); f.flush(); assert.equal(unified.length, 2);
-  f.render.setRemoteVideoFrameListener(frame => legacy.push(frame));
+  f.audio(); f.flush(); assert.equal(unified.length, 2);
   f.render.setRemoteMediaFrameListener(null);
-  f.video(); f.flush(); assert.equal(legacy.length, 2);
+  f.audio(); f.video(); f.flush(); assert.equal(unified.length, 2);
   f.render.resetRemoteTrack(null); await f.rtc.destroy();
 });
 

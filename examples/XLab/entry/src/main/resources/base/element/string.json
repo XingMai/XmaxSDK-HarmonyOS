@@ -1,5 +1,11 @@
 {
   "string": [
+    { "name": "record_start", "value": "Record" },
+    { "name": "record_stop", "value": "Stop" },
+    { "name": "record_saving", "value": "Saving" },
+    { "name": "record_saved", "value": "Recording saved to Photos" },
+    { "name": "record_save_cancelled", "value": "Recording was not saved" },
+    { "name": "record_failed", "value": "Recording failed: {0}" },
     {
       "name": "module_desc",
       "value": "XLab HarmonyOS example application"
