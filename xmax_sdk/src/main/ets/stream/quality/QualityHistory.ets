@@ -122,6 +122,7 @@ export class QualityHistory {
         'Quality'
       );
     }
+
     return 2;
   }
 
@@ -138,6 +139,7 @@ export class QualityHistory {
     now: number = Date.now() / 1000
   ): void {
     if (!Number.isInteger(level) || level < 1 || level > 5 || !Number.isFinite(now) || now <= 0) { return; }
+
     try {
       const key: string = this.key(downlink);
       this.store.setNumber(

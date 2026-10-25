@@ -163,6 +163,7 @@ public:
     if (!running_.load()) {
       return;
     }
+
     paused_.store(true);
     pacingCondition_.notify_all();
   }
@@ -180,6 +181,7 @@ public:
       playbackAnchorUs_.fetch_add(pausedDurationUs);
     }
     paused_.store(false);
+
     pacingCondition_.notify_all();
   }
 
@@ -198,10 +200,12 @@ public:
       OH_AudioCodec_Destroy(decoder_);
       decoder_ = nullptr;
     }
+
     if (listener_ != nullptr) {
       napi_release_threadsafe_function(listener_, napi_tsfn_abort);
       listener_ = nullptr;
     }
+
     if (demuxer_ != nullptr) {
       OH_AVDemuxer_Destroy(demuxer_);
       demuxer_ = nullptr;
@@ -214,6 +218,7 @@ public:
       OH_AVSource_Destroy(source_);
       source_ = nullptr;
     }
+
     if (fd_ >= 0) {
       close(fd_);
       fd_ = -1;
@@ -354,6 +359,7 @@ private:
       if (!decoder->running_.load() || decoder->inputEnded_) {
         return;
       }
+
       readResult = OH_AVDemuxer_ReadSampleBuffer(decoder->demuxer_, decoder->trackIndex_, buffer);
       if (readResult == AV_ERR_OK) {
         OH_AVCodecBufferAttr attr{};
@@ -365,6 +371,7 @@ private:
         }
       }
     }
+
     if (readResult != AV_ERR_OK) {
       decoder->ReportError("读取音频压缩帧失败：" + std::to_string(readResult));
       return;
@@ -427,6 +434,7 @@ private:
       }
       return;
     }
+
     if (attr.size <= 0 || attr.offset < 0) {
       return;
     }
@@ -485,6 +493,7 @@ private:
       if (!running_.load()) {
         return;
       }
+
       const auto deadline = std::chrono::steady_clock::time_point(
           std::chrono::microseconds(PlaybackTimestampUs(timestampUs)));
       if (!pacingCondition_.wait_until(lock, deadline, [this] {
@@ -573,6 +582,7 @@ private:
       }
       std::memcpy(outputAddress, packet->data.data(), packet->data.size());
     }
+
     napi_create_double(env, static_cast<double>(packet->timestampUs), &arguments[1]);
     napi_get_boolean(env, packet->endOfStream, &arguments[2]);
     if (!packet->error.empty()) {
@@ -681,6 +691,7 @@ napi_value PauseDecoder(napi_env env, napi_callback_info info) {
     napi_throw_error(env, nullptr, "Audio decoder is unavailable");
     return nullptr;
   }
+
   decoder->Pause();
   napi_value result = nullptr;
   napi_get_undefined(env, &result);
@@ -703,6 +714,7 @@ napi_value ResumeDecoder(napi_env env, napi_callback_info info) {
     napi_throw_type_error(env, nullptr, "Expected paused duration");
     return nullptr;
   }
+
   NativeAudioFileDecoder *decoder = nullptr;
   double pausedDurationUs = 0;
   if (napi_unwrap(env, receiver, reinterpret_cast<void **>(&decoder)) != napi_ok ||
@@ -711,6 +723,7 @@ napi_value ResumeDecoder(napi_env env, napi_callback_info info) {
     napi_throw_type_error(env, nullptr, "Audio decoder resume arguments are invalid");
     return nullptr;
   }
+
   decoder->Resume(static_cast<int64_t>(pausedDurationUs));
   napi_value result = nullptr;
   napi_get_undefined(env, &result);

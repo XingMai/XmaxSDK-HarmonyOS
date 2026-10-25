@@ -95,12 +95,14 @@ class GenerationParameters {
     if (context.referencePath !== undefined) {
       this.ref_image_path = context.referencePath;
     }
+
     this.static_generate = extraParams?.static_generate;
     this.static_image_path = extraParams?.static_image_path;
     this.detection = context.faceDetection ?? false;
     this.face_replace = faceRestoration;
     this.target_size = targetSize === undefined ? undefined : [targetSize.width, targetSize.height];
     this.padding = paddingContain ? 'contain' : undefined;
+
     if (targetSize !== undefined) {
       const budget: TargetSizeParameters = new TargetSizeParameters(targetSize);
       this.min_bitrate = budget.min_bitrate;

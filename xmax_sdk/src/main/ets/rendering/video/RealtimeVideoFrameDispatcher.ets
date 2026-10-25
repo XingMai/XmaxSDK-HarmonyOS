@@ -64,25 +64,30 @@ export class RealtimeVideoFrameDispatcher {
     if (this.listener === null) {
       return;
     }
+
     this.pendingFrames.push(frame);
     if (this.timer !== -1) {
       return;
     }
+
     const version: number = this.version;
     this.timer = setTimeout(
       (): void => {
         if (version !== this.version) {
           return;
         }
+
         this.timer = -1;
         const frames: RealtimeVideoFrame[] = this.pendingFrames;
         this.pendingFrames = [];
+
         for (const pendingFrame of frames) {
           // A callback can disconnect or replace its listener; invalidate remaining old frames immediately.
           const listener: RealtimeVideoFrameListener | null = this.listener;
           if (version !== this.version || listener === null) {
             return;
           }
+
           try {
             listener(pendingFrame);
           } catch (error) {

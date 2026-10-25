@@ -93,6 +93,7 @@ export class ImageSourceController implements ImageSourceControlling {
         'Stop the current image source before preparing another image'
       );
     }
+
     let decodedImage: DecodedImage | null = null;
 
     try {
@@ -104,6 +105,7 @@ export class ImageSourceController implements ImageSourceControlling {
         ),
         videoFormat
       );
+
       const frameData: ImageVideoFrameData =
         await decodedImage.makeVideoFrameData(
           resolvedFormat.width,

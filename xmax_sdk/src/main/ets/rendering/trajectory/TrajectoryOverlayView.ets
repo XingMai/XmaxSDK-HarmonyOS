@@ -115,6 +115,7 @@ export struct TrajectoryOverlayView {
     if (track === this.currentTrack) {
       return;
     }
+
     this.currentTrack = track;
     this.cancelInteraction();
   }
@@ -148,11 +149,13 @@ export struct TrajectoryOverlayView {
   private cancelInteraction(): void {
     const wasActive: boolean = this.activeTouches.size > 0 ||
       (this.continuesInteractionAfterRelease && this.releasedTouch !== undefined);
+
     this.stopSampling();
     this.stopTicking();
     this.activeTouches.clear();
     this.releasedTouch = undefined;
     this.renderer.reset();
+
     if (wasActive) {
       this.notifyInteraction('cancelled');
     }
@@ -262,6 +265,7 @@ export struct TrajectoryOverlayView {
     if (points.length === 0) {
       return;
     }
+
     binding.submit(
       points,
       this.viewportWidth,
@@ -359,12 +363,14 @@ export struct TrajectoryOverlayView {
       touchObject.y > Math.min(this.viewportHeight, frame.y + frame.height)) {
       return;
     }
+
     const timestamp: number = Date.now();
     const touch: ActiveTouch = {
       identifier: new TrajectoryId(touchObject.id),
       x: this.clampX(touchObject.x),
       y: this.clampY(touchObject.y)
     };
+
     const wasEmpty: boolean = this.activeTouches.size === 0;
     this.releasedTouch = undefined;
     this.activeTouches.set(
@@ -374,12 +380,14 @@ export struct TrajectoryOverlayView {
     if (wasEmpty) {
       this.notifyInteraction('began');
     }
+
     this.renderer.renderBegan([
       this.trajectoryPoint(
         touch,
         timestamp
       )
     ]);
+
     this.startTicking();
     this.startSampling();
   }
@@ -409,6 +417,7 @@ export struct TrajectoryOverlayView {
 
     activeTouch.x = x;
     activeTouch.y = y;
+
     this.renderer.renderMoved([
       this.trajectoryPoint(
         activeTouch,
@@ -434,6 +443,7 @@ export struct TrajectoryOverlayView {
 
     this.activeTouches.delete(touchObject.id);
     this.renderer.renderEnded([activeTouch.identifier]);
+
     if (this.activeTouches.size === 0) {
       this.releasedTouch = activeTouch;
       if (!this.continuesInteractionAfterRelease) {
@@ -473,6 +483,7 @@ export struct TrajectoryOverlayView {
       this.cancelInteraction();
       return;
     }
+
     if (event.type === TouchType.Up) {
       for (let index: number = 0; index < event.changedTouches.length; index++) {
         this.endTouch(event.changedTouches[index]);
@@ -497,6 +508,7 @@ export struct TrajectoryOverlayView {
 
     this.viewportWidth = width;
     this.viewportHeight = height;
+
     this.cancelInteraction();
     this.renderer.resize(
       width,

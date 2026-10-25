@@ -35,6 +35,7 @@ export class VolcRtcStatsLogger {
     if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
       return;
     }
+
     const hasRemoteQuality: boolean = remoteQualities.length > 0;
     const localBranch: string = hasRemoteQuality ? '├─' : '└─';
     const localIndent: string = hasRemoteQuality ? '│  ' : '   ';
@@ -87,6 +88,7 @@ export class VolcRtcStatsLogger {
     if (!XmaxLogger.isEnabled(XmaxLoggerOption.PERFORMANCE)) {
       return;
     }
+
     const state: string = VolcRtcStatsLogger.performanceAlarmName(reason);
     const suggestedFormat: string = VolcRtcStatsLogger.formatSuggestedVideoFormat(data);
     const lines: string[] = ["性能告警 (Performance Alarm)"];

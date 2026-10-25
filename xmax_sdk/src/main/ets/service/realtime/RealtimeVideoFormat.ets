@@ -80,6 +80,7 @@ export class RealtimeVideoFormat {
         'Realtime video width and height must be positive even numbers, and fps must be greater than zero'
       );
     }
+
     if (this.minimumBitrate !== undefined &&
       (!Number.isSafeInteger(this.minimumBitrate) || this.minimumBitrate < 0)) {
       throw new XmaxError(
@@ -101,6 +102,7 @@ export class RealtimeVideoFormat {
         'Minimum bitrate must not exceed maximum bitrate'
       );
     }
+
     switch (this.encoderPreference) {
       case RealtimeVideoEncoderPreference.AUTO:
       case RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE:

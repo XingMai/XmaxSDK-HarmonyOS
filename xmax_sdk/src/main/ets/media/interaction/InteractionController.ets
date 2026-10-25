@@ -121,6 +121,7 @@ export class InteractionController implements InteractionControlling {
     if (interaction === null) {
       return;
     }
+
     const points: RealtimePoint[] = [];
     frame.points.forEach((point: InteractionPoint): void => {
       const mappedPoint: RealtimePoint | null = InteractionCoordinateMapper.map(

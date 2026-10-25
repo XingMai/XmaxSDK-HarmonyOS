@@ -136,12 +136,14 @@ export class MediaController implements MediaControlling {
       errorListener,
       cameraFormatListener
     );
+
     this.imageController = new ImageController(
       rtcManager,
       streamController,
       errorListener,
       mediaService
     );
+
     this.interactionController = new InteractionController((
       taskId: string,
       points: RealtimePoint[]
@@ -151,6 +153,7 @@ export class MediaController implements MediaControlling {
         points
       );
     });
+
     this.videoController = new VideoController(
       context,
       rtcManager,
@@ -564,6 +567,7 @@ export class MediaController implements MediaControlling {
             'Realtime'
           );
         }
+
         await this.destroyRtcSafely("本地媒体创建回滚失败 (Local Media Creation Rollback Failed)");
 
         if (this.activeSource === source) {

@@ -36,6 +36,7 @@ export class ApiLogger {
     if (!XmaxLogger.isEnabled(XmaxLoggerOption.BUSINESS)) {
       return;
     }
+
     if (successful) {
       XmaxLogger.debug(
         `${method} ${path}${XmaxLogger.localized(" 成功\n", " Succeeded\n")}` +

@@ -55,6 +55,7 @@ export class QualityPreferences implements QualityHistoryStore {
     key: string
   ): number | undefined {
     if (this.storage === undefined) { return this.fallback.getNumber(key); }
+
     const value: preferences.ValueType = this.storage.getSync(
       key,
       -1

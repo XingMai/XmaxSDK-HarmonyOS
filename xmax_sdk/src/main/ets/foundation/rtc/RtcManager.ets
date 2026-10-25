@@ -240,6 +240,7 @@ export class RtcManager implements RtcManaging {
         );
       }
     );
+
     engine.on(
       'onFirstRemoteVideoFrameRendered',
       (key: RemoteStreamKey, _info: VideoFrameInfo): void => {
@@ -247,6 +248,7 @@ export class RtcManager implements RtcManaging {
           key.stream_index !== StreamIndex.kStreamIndexMain) {
           return;
         }
+
         const stream = new RemoteStream(
           key.room_id,
           key.user_id
@@ -255,6 +257,7 @@ export class RtcManager implements RtcManaging {
         this.remoteVideoRenderedListener?.(stream);
       }
     );
+
     engine.on(
       'onRemoteVideoFrame',
       (key: RemoteStreamKey, position: RemoteVideoSinkPosition, frame: IVideoFrame): void => {
@@ -264,6 +267,7 @@ export class RtcManager implements RtcManaging {
           frame.width <= 0 || frame.height <= 0) {
           return;
         }
+
         const stream = new RemoteStream(
           key.room_id,
           key.user_id
@@ -276,6 +280,7 @@ export class RtcManager implements RtcManaging {
         }
       }
     );
+
     engine.on(
       'onTakeRemoteSnapshotResult',
       (taskId: number, key: RemoteStreamKey, pixelMap: image.PixelMap | null, errorCode: number): void => {
@@ -289,8 +294,10 @@ export class RtcManager implements RtcManaging {
           this.releaseSnapshot(pixelMap);
           return;
         }
+
         this.snapshotRequests.delete(taskId);
         clearTimeout(request.timer);
+
         if (errorCode !== 0 || pixelMap === null) {
           this.releaseSnapshot(pixelMap);
           request.reject(new XmaxError(
@@ -299,9 +306,11 @@ export class RtcManager implements RtcManaging {
           ));
           return;
         }
+
         request.resolve(pixelMap);
       }
     );
+
     engine.on(
       'onPerformanceAlarms',
       (
@@ -420,6 +429,7 @@ export class RtcManager implements RtcManaging {
       max_bitrate: configuration.maximumBitrate,
       encoder_preference: RtcVideoConverter.convertEncoderPreference(configuration.encoderPreference)
     };
+
     this.checkResult(
       engine.setVideoEncoderConfig(encoderConfiguration),
       'setVideoEncoderConfig'
@@ -481,6 +491,7 @@ export class RtcManager implements RtcManaging {
       engine.setAudioSourceType(source),
       'setAudioSourceType'
     );
+
     this.checkResult(
       engine.startAudioCapture(),
       'startAudioCapture'
@@ -669,6 +680,7 @@ export class RtcManager implements RtcManaging {
       ));
     });
     this.snapshotRequests.clear();
+
     const room: RTCRoom | null = this.room;
     const pendingRoom: RTCRoom | null = this.pendingRoom;
     const cancelPendingJoin: (() => void) | null = this.pendingJoinCancellation;
@@ -748,6 +760,7 @@ export class RtcManager implements RtcManaging {
       ),
       'subscribeStreamVideo'
     );
+
     if (!subscribe) {
       // Resubscription produces a fresh display event; prior readiness must not reveal old video for a new task.
       this.renderedRemoteStreams.delete(new RemoteStream(
@@ -904,6 +917,7 @@ export class RtcManager implements RtcManaging {
         'Remote stream is unavailable'
       ));
     }
+
     return new Promise<image.PixelMap>((
       resolve: (
         pixelMap: image.PixelMap
@@ -920,6 +934,7 @@ export class RtcManager implements RtcManaging {
         ));
         return;
       }
+
       const request = new RemoteSnapshotRequest(
         stream.key(),
         resolve,
@@ -934,6 +949,7 @@ export class RtcManager implements RtcManaging {
           if (this.snapshotRequests.get(taskId) !== request) {
             return;
           }
+
           this.snapshotRequests.delete(taskId);
           request.reject(new XmaxError(
             XmaxErrorCode.TIMEOUT,
@@ -1014,6 +1030,7 @@ export class RtcManager implements RtcManaging {
     if (!enabled && !this.observedRemoteStreams.delete(streamId)) {
       return;
     }
+
     const key: RemoteStreamKey | undefined = this.remoteStreamKeys.get(streamId);
     if (key === undefined || this.engine === null) {
       if (!enabled) {
@@ -1027,9 +1044,11 @@ export class RtcManager implements RtcManaging {
     if (enabled && this.observedRemoteStreams.has(streamId)) {
       return;
     }
+
     if (enabled) {
       this.observedRemoteStreams.add(streamId);
     }
+
     try {
       this.checkResult(
         this.engine.setRemoteVideoSinkWithConfig(
@@ -1118,6 +1137,7 @@ export class RtcManager implements RtcManaging {
         }
       }
     );
+
     room.on(
       'onUserMessageReceived',
       (userId: string, message: string): void => {
@@ -1161,6 +1181,7 @@ export class RtcManager implements RtcManaging {
             userId
           ).key());
         }
+
         this.listener?.onRemoteVideoPublished(
           userId,
           published
@@ -1236,6 +1257,7 @@ export class RtcManager implements RtcManaging {
     if (this.room !== room && this.pendingRoom !== room) {
       return;
     }
+
     XmaxLogger.debug(
       (): string => {
         try {
@@ -1330,6 +1352,7 @@ export class RtcManager implements RtcManaging {
     ) => void) => {
       let settled: boolean = false;
       let timerId: number = -1;
+
       this.pendingJoinCancellation = (): void => {
         if (settled) {
           return;
@@ -1342,6 +1365,7 @@ export class RtcManager implements RtcManaging {
           'RTC join room was cancelled'
         ));
       };
+
       timerId = setTimeout(
         (): void => {
           if (!settled) {
@@ -1354,14 +1378,17 @@ export class RtcManager implements RtcManaging {
         },
         JOIN_TIMEOUT_MS
       );
+
       room.on(
         'onRoomStateChanged',
         (_roomId: string, _userId: string, state: number, _extra: string): void => {
           if (settled) {
             return;
           }
+
           settled = true;
           clearTimeout(timerId);
+
           if (state === 0) {
             resolve();
           } else {
@@ -1372,6 +1399,7 @@ export class RtcManager implements RtcManaging {
           }
         }
       );
+
       const result: number = room.joinRoom(
         token,
         userInfo,

@@ -41,6 +41,7 @@ export class VideoOrientationObserver {
     query: mediaquery.MediaQueryListener
   ): void {
     this.stop();
+
     const original: RealtimeVideoTrack = RealtimeVideoTrack.resolve(track);
     const listener = (result: mediaquery.MediaQueryResult): void => {
       if (this.listener === listener) {
@@ -51,6 +52,7 @@ export class VideoOrientationObserver {
         );
       }
     };
+
     this.query = query;
     this.listener = listener;
     updateRealtimeVideoTrackOrientation(
@@ -70,6 +72,7 @@ export class VideoOrientationObserver {
     const listener = this.listener;
     this.query = null;
     this.listener = null;
+
     if (query !== null && listener !== null) {
       try {
         query.off(

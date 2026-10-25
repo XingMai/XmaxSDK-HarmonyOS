@@ -253,6 +253,7 @@ export class CameraController {
     if (!this.isMicrophoneCapturing) {
       return;
     }
+
     this.rtcManager.stopMicrophoneCapture();
     this.isMicrophoneCapturing = false;
   }
@@ -267,6 +268,7 @@ export class CameraController {
     if (track !== null) {
       VideoRenderRegistry.unregister(track);
     }
+
     await this.releaseCamera();
     this.isMicrophoneCapturing = false;
   }
@@ -281,9 +283,11 @@ export class CameraController {
         error
       );
     }
+
     this.acceptsFrames = false;
     this.captureGeneration += 1;
     this.resetPreviewReadiness();
+
     try {
       this.rtcManager.unbindLocalVideo();
     } catch (error) {
@@ -316,6 +320,7 @@ export class CameraController {
 
     const nextPosition: CameraPosition = position === CameraPosition.FRONT ?
       CameraPosition.BACK : CameraPosition.FRONT;
+
     this.acceptsFrames = false;
     this.resetPreviewReadiness();
     await this.releaseCamera();
@@ -327,6 +332,7 @@ export class CameraController {
         videoFormat,
         nextPosition
       );
+
       this.synchronizeVideoFormat(
         currentTrack,
         this.frameOutput?.currentVideoFormat ?? videoFormat
@@ -335,6 +341,7 @@ export class CameraController {
         currentTrack,
         nextPosition
       );
+
       return new RealtimeMediaStream(
         StreamId.LOCAL,
         currentTrack
@@ -346,6 +353,7 @@ export class CameraController {
         videoFormat,
         position
       );
+
       throw XmaxError.from(error);
     }
   }
@@ -379,9 +387,11 @@ export class CameraController {
       if (useMicrophone) {
         await this.permissionManager.ensureMicrophonePermission();
       }
+
       this.streamController.setVideoEncoderConfig(resolvedFormat);
       this.rtcManager.useExternalVideoSource();
       this.rtcManager.configureLocalVideoMirror(position);
+
       this.acceptsFrames = true;
       await this.startCamera(
         resolvedFormat,
@@ -411,6 +421,7 @@ export class CameraController {
           CameraPreviewRatio.FILL
         )
       );
+
       this.activeTrack = track;
       this.storedUseMicrophone = useMicrophone;
 
@@ -422,6 +433,7 @@ export class CameraController {
       this.acceptsFrames = false;
       VideoRenderRegistry.unregister(track);
       await this.releaseCamera();
+
       throw XmaxError.from(error);
     }
   }
@@ -481,6 +493,7 @@ export class CameraController {
           CAMERA_CAPTURE_FRAME_RATE,
           CAMERA_CAPTURE_FRAME_RATE
         );
+
         operation = `Start CameraKit capture (${dimensions})`;
         await this.captureSession!.start();
         output.configure(
@@ -505,6 +518,7 @@ export class CameraController {
       if (error instanceof XmaxError) {
         throw error;
       }
+
       const platformError: BusinessError = error as BusinessError;
       const code: string = typeof platformError.code === 'number' ?
         ` (CameraKit code ${platformError.code})` : '';
@@ -530,6 +544,7 @@ export class CameraController {
     const input: camera.CameraInput = this.platformManager.createCameraInput(device);
     this.cameraInput = input;
     await input.open();
+
     const output: CameraFrameOutput = CameraFrameOutput.create(
       this.platformManager,
       profile,
@@ -541,6 +556,7 @@ export class CameraController {
       (error: XmaxError): void => this.errorListener(error)
     );
     this.frameOutput = output;
+
     const session: camera.Session = this.platformManager.createSession<camera.Session>(
       camera.SceneMode.NORMAL_VIDEO
     );
@@ -550,11 +566,13 @@ export class CameraController {
       throw this.cameraError('Camera input is not supported by the capture session');
     }
     session.addInput(input);
+
     if (!session.canAddOutput(output.output)) {
       throw this.cameraError('Camera frame output is not supported by the capture session');
     }
     session.addOutput(output.output);
     await session.commitConfig();
+
     return output;
   }
 
@@ -602,6 +620,7 @@ export class CameraController {
           );
         }
       }
+
       this.streamController.pushLocalVideoFrame(frame);
       this.hasCapturedFrame = true;
       this.notifyPreviewReadyIfNeeded();
@@ -624,6 +643,7 @@ export class CameraController {
     if (previous?.width === format.width && previous.height === format.height && previous.fps === format.fps) {
       return;
     }
+
     this.streamController.setVideoEncoderConfig(format);
     this.formatListener(format);
     updateRealtimeVideoTrackFormat(
@@ -657,6 +677,7 @@ export class CameraController {
       if (track !== null) {
         VideoRenderRegistry.unregister(track);
       }
+
       await this.releaseCamera();
       XmaxLogger.error(
         `${XmaxLogger.localized("恢复 CameraKit 相机失败 (Failed to Restore CameraKit Capture)\n└─ 原因：", "恢复 CameraKit 相机失败 (Failed to Restore CameraKit Capture)\n└─ Reason: ")}${XmaxError.from(rollbackError).message}`,
@@ -668,9 +689,11 @@ export class CameraController {
   /** Releases CameraKit by stopping the session, releasing output, then closing input. */
   private async releaseCamera(): Promise<void> {
     this.captureGeneration += 1;
+
     const session: camera.Session | null = this.captureSession;
     const output: CameraFrameOutput | null = this.frameOutput;
     const input: camera.CameraInput | null = this.cameraInput;
+
     this.captureSession = null;
     this.frameOutput = null;
     this.cameraInput = null;
@@ -687,6 +710,7 @@ export class CameraController {
           error
         );
       }
+
       try {
         await session.release();
       } catch (error) {
@@ -699,9 +723,11 @@ export class CameraController {
         );
       }
     }
+
     if (output !== null) {
       await output.release();
     }
+
     if (input !== null) {
       try {
         await input.close();
@@ -737,6 +763,7 @@ export class CameraController {
     if (device === undefined) {
       throw this.cameraError('Requested camera is unavailable');
     }
+
     return device;
   }
 
@@ -755,6 +782,7 @@ export class CameraController {
         device,
         camera.SceneMode.NORMAL_VIDEO
       );
+
     const profiles: Array<camera.Profile> = capability.previewProfiles.filter(
       (profile: camera.Profile): boolean => {
         const width: number = Math.max(profile.size.width, profile.size.height);
@@ -763,6 +791,7 @@ export class CameraController {
           (this.isWideCaptureProfile(profile) || width * 3 === height * 4) &&
           width <= MAXIMUM_CAPTURE_WIDTH && height <= MAXIMUM_CAPTURE_HEIGHT;
       });
+
     profiles.sort((left: camera.Profile, right: camera.Profile): number => {
       const leftWide: boolean = this.isWideCaptureProfile(left);
       const rightWide: boolean = this.isWideCaptureProfile(right);
@@ -771,9 +800,11 @@ export class CameraController {
       }
       return right.size.width * right.size.height - left.size.width * left.size.height;
     });
+
     if (profiles.length === 0) {
       throw this.cameraError('Camera does not support a compatible 16:9 or 4:3 YUV preview output');
     }
+
     return profiles;
   }
 
@@ -803,6 +834,7 @@ export class CameraController {
     videoFormat: RealtimeVideoFormat
   ): RealtimeVideoFormat {
     videoFormat.validate();
+
     const targetSize: ImageSize = this.mediaService.resolveMediaSize(
       new ImageSize(
         videoFormat.width,
@@ -829,6 +861,7 @@ export class CameraController {
       this.hasReportedPreviewReady) {
       return;
     }
+
     this.hasReportedPreviewReady = true;
     try {
       listener();

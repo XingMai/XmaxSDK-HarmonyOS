@@ -186,14 +186,17 @@ export class VideoFileFrameDecoder {
       videoUri,
       fileIo.OpenMode.READ_ONLY
     );
+
     try {
       if (this.isReleased) {
         return;
       }
+
       const sourceSize: number = (await fileIo.stat(sourceFile.fd)).size;
       if (this.isReleased) {
         return;
       }
+
       this.nativeDecoder = await xmaxVideoNative.createVideoFileDecoder(
         sourceFile.fd,
         sourceSize,
@@ -224,6 +227,7 @@ export class VideoFileFrameDecoder {
             listener.onEndOfStream();
             return;
           }
+
           if (data !== undefined) {
             listener.onFrame(new VideoFileDecodedFrame(
               data,
@@ -252,6 +256,7 @@ export class VideoFileFrameDecoder {
     if (this.isReleased || this.isActivated || this.nativeDecoder === null) {
       return;
     }
+
     this.isActivated = true;
     this.activationOffsetUs = anchorOffsetUs;
     if (!this.isPaused) {
@@ -299,6 +304,7 @@ export class VideoFileFrameDecoder {
     } catch (_) {
       // Native initialization failures already clean up on the worker thread.
     }
+
     const decoder: NativeVideoFileDecoder | null = this.nativeDecoder;
     this.nativeDecoder = null;
     if (decoder !== null) {

@@ -94,6 +94,7 @@ export class AudioFileFrameDecoder {
             listener.onEndOfStream();
             return;
           }
+
           if (data !== undefined) {
             listener.onFrame(new AudioFrame(
               new Uint8Array(data),

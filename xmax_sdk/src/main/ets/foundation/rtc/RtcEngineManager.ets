@@ -95,6 +95,7 @@ export class RtcEngineManager {
       if (RtcEngineManager.initializationPromise === initializationPromise) {
         RtcEngineManager.initializationPromise = null;
       }
+
       if (RtcEngineManager.activeLease === null) {
         RtcEngineManager.notifyNextRequest();
       }
@@ -126,6 +127,7 @@ export class RtcEngineManager {
       if (RtcEngineManager.destructionPromise === destructionPromise) {
         RtcEngineManager.destructionPromise = null;
       }
+
       RtcEngineManager.notifyNextRequest();
     }
   }
@@ -196,6 +198,7 @@ export class RtcEngineManager {
         `destroyRTCEngine threw: ${XmaxError.from(error).message}`
       );
     }
+
     if (result < 0) {
       throw new XmaxError(
         XmaxErrorCode.RTC_ERROR,

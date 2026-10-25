@@ -53,6 +53,7 @@ export class QualityVideoFormat {
     level: number
   ): ImageSize {
     baseline.validate();
+
     const scale: number = QualityVideoFormat.sizeScale(
       baseline,
       level
@@ -81,6 +82,7 @@ export class QualityVideoFormat {
     minimumInputPixels: number = 0
   ): RealtimeVideoFormat {
     baseline.validate();
+
     const index: number = QualityVideoFormat.index(level);
     const scale: number = QualityVideoFormat.sizeScale(
       baseline,
@@ -95,6 +97,7 @@ export class QualityVideoFormat {
       downlink ? 2 : 4,
       downlink ? 0 : minimumInputPixels
     );
+
     return new RealtimeVideoFormat(
       size.width,
       size.height,
@@ -159,6 +162,7 @@ export class QualityVideoFormat {
       divisor = remainder;
       remainder = next;
     }
+
     const pixels: number = size.width * size.height;
     const minimumScale: number = Math.sqrt(Math.min(Math.max(0, minimumPixels), pixels) / pixels);
     const minimumUnits: number = Math.ceil(divisor * minimumScale / alignment) * alignment;
@@ -170,6 +174,7 @@ export class QualityVideoFormat {
         size.height / divisor * resolvedUnits
       );
     }
+
     return new ImageSize(
       Math.max(alignment, Math.max(
         Math.floor(size.width * scale / alignment) * alignment,

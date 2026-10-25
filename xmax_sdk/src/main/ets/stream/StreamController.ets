@@ -205,6 +205,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
   ) {
     this.timing = timing;
     this.rtcManager = rtcManager;
+
     this.roomController = new RoomController(
       rtcManager,
       timing
@@ -214,8 +215,10 @@ export class StreamController implements StreamControlling, RtcEventListener {
       rtcManager,
       historyStore
     );
+
     this.remoteStreamListener = remoteStreamListener;
     this.errorListener = errorListener;
+
     this.rtcManager.setEventListener(this);
   }
 
@@ -388,10 +391,12 @@ export class StreamController implements StreamControlling, RtcEventListener {
       ensureActive
     );
     ensureActive();
+
     this.configureRoom(
       connection.roomId,
       connection.botName
     );
+
     this.publishLocalStream(includeLocalAudio);
   }
 
@@ -480,6 +485,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       taskId,
       extraParams?.static_generate === true
     );
+
     try {
       this.roomController.startGeneration(
         taskId,
@@ -516,6 +522,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
         'Remote generation audio stream is unavailable'
       );
     }
+
     this.subscribeRemoteAudio(stream.userId);
     this.remoteAudioActive = true;
   }
@@ -619,6 +626,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     if (this.botName.length > 0 && userId !== this.botName) {
       return;
     }
+
     try {
       if (!published) {
         if (this.activeRemoteStream?.userId === userId) {
@@ -629,6 +637,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
         }
         return;
       }
+
       this.rtcManager.subscribeRemoteVideo(
         userId,
         true
@@ -658,6 +667,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       this.botName.length === 0 || userId !== this.botName) {
       return;
     }
+
     let signal: GenerationStartedSignal;
     try {
       signal = JSON.parse(message) as GenerationStartedSignal;
@@ -671,6 +681,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       )) {
       return;
     }
+
     this.timing.matchSEI(task.id);
     XmaxLogger.debug(
       'Static generation confirmed by video_started: ' + task.id,
@@ -710,6 +721,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       if (this.currentTask?.id !== taskId) {
         return;
       }
+
       this.activeRemoteStream = stream;
       this.qualityController.setDownlinkVideoStatisticsUser(stream.userId);
       if (this.remoteAudioActive) {
@@ -760,6 +772,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       );
       return;
     }
+
     this.errorListener(error);
   }
 
@@ -774,6 +787,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     if (this.subscribedRemoteAudioUsers.has(userId)) {
       return;
     }
+
     this.rtcManager.setRemoteAudioVolume(
       userId,
       this.remoteAudioVolumePercentage
@@ -796,6 +810,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     if (!this.subscribedRemoteAudioUsers.delete(userId)) {
       return;
     }
+
     try {
       this.rtcManager.subscribeRemoteAudio(
         userId,
@@ -833,6 +848,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
   ): void {
     this.rtcManager.publishLocalVideo();
     this.qualityController.setUplinkVideoStatisticsEnabled(true);
+
     if (includeAudio) {
       this.rtcManager.publishLocalAudio();
       this.localAudioPublished = true;
@@ -888,13 +904,16 @@ export class StreamController implements StreamControlling, RtcEventListener {
         reason
       )
     );
+
     this.currentTask = null;
     this.activeRemoteStream = null;
     this.remoteAudioActive = false;
+
     this.subscribedRemoteAudioUsers.forEach((userId: string): void => {
       this.unsubscribeRemoteAudio(userId);
     });
     this.clearRemoteStream();
+
     return currentTaskId;
   }
 
@@ -903,9 +922,11 @@ export class StreamController implements StreamControlling, RtcEventListener {
     this.qualityController.setUplinkVideoStatisticsEnabled(false);
     this.stopStreamGeneration();
     this.qualityController.resetQuality();
+
     this.localAudioPublished = false;
     this.rtcManager.unpublishLocalVideo();
     this.rtcManager.unpublishLocalAudio();
+
     this.roomId = '';
     this.botName = '';
   }
@@ -925,6 +946,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
     taskId: string
   ): Promise<void> {
     this.clearGenerationStartWaiter();
+
     return new Promise((resolve: () => void, reject: (
       reason: XmaxError
     ) => void) => {
@@ -979,6 +1001,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       this.generationStartReject === null) {
       return;
     }
+
     const reject: (
       reason: XmaxError
     ) => void = this.generationStartReject;
@@ -992,6 +1015,7 @@ export class StreamController implements StreamControlling, RtcEventListener {
       clearTimeout(this.generationStartTimer);
       this.generationStartTimer = -1;
     }
+
     this.generationStartResolve = null;
     this.generationStartReject = null;
   }

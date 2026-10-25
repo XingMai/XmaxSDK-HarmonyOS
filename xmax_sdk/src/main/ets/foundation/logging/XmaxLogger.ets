@@ -187,9 +187,11 @@ export class XmaxLogger {
     category?: string
   ): string {
     const redacted: string = XmaxLogger.redact(typeof message === 'string' ? message : message());
+
     const normalizedCategory: string = category?.trim() ?? '';
     const categoryPrefix: string = normalizedCategory.length === 0 ? '' : `[${normalizedCategory}]`;
     const prefix: string = `${LOG_PREFIX}${categoryPrefix}`;
+
     const prefixed: string = redacted.replace(
       /[\r\n\u200B]+$/,
       ''

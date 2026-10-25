@@ -93,6 +93,7 @@ export class MediaTimeline {
     if (this.pausedAtUs < 0) {
       return 0;
     }
+
     const durationUs: number = Math.max(
       MediaTimeline.currentTimestampUs() - this.pausedAtUs,
       0

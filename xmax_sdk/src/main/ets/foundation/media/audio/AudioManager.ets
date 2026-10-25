@@ -199,6 +199,7 @@ export class AudioManager implements AudioManaging {
     if (renderer === null || !this.isPlaybackEnabled) {
       return;
     }
+
     this.isDraining = true;
     try {
       if (this.pendingFrames.length > 0) {
@@ -206,6 +207,7 @@ export class AudioManager implements AudioManaging {
           this.pendingFrameWaiters.push(resolve);
         });
       }
+
       if (this.renderer === renderer && this.isPlaybackEnabled) {
         await renderer.drain();
       }
@@ -279,6 +281,7 @@ export class AudioManager implements AudioManaging {
     if (this.isDraining && this.pendingFrames.length === 0) {
       return audio.AudioDataCallbackResult.INVALID;
     }
+
     const output = new Uint8Array(data);
     if (!this.isPlaybackEnabled) {
       output.fill(0);
@@ -286,7 +289,6 @@ export class AudioManager implements AudioManaging {
     }
 
     let outputOffset: number = 0;
-
     while (outputOffset < output.length && this.pendingFrames.length > 0) {
       const frame: Uint8Array = this.pendingFrames[0];
       const availableLength: number = frame.length - this.pendingFrameOffset;
@@ -317,6 +319,7 @@ export class AudioManager implements AudioManaging {
         outputOffset
       );
     }
+
     if (this.pendingFrames.length === 0) {
       this.finishPendingFrameWaiters();
     }

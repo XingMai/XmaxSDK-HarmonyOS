@@ -133,11 +133,13 @@ void CopyOrRotateNv12(const uint8_t *sourceLuma,
       std::memcpy(output->data() + lumaLength, sourceChroma, lumaLength / 2);
       return;
     }
+
     for (int32_t y = 0; y < height; ++y) {
       std::memcpy(targetLuma + static_cast<size_t>(y) * width,
           sourceLuma + static_cast<size_t>(y) * sourceLumaStride,
           width);
     }
+
     uint8_t *targetChroma = output->data() + targetLumaLength;
     for (int32_t y = 0; y < height / 2; ++y) {
       std::memcpy(targetChroma + static_cast<size_t>(y) * width,
@@ -166,6 +168,7 @@ void CopyOrRotateNv12(const uint8_t *sourceLuma,
             targetX = y;
             targetY = width - 1 - x;
           }
+
           targetLuma[static_cast<size_t>(targetY) * targetWidth + targetX] =
               sourceLuma[static_cast<size_t>(y) * sourceLumaStride + x];
         }
@@ -196,6 +199,7 @@ void CopyOrRotateNv12(const uint8_t *sourceLuma,
             targetX = y;
             targetY = sourceChromaWidth - 1 - x;
           }
+
           const size_t sourceOffset = static_cast<size_t>(y) * sourceChromaStride + x * 2;
           const size_t targetOffset =
               static_cast<size_t>(targetY) * targetChromaStride + targetX * 2;
@@ -360,6 +364,7 @@ void ScaleAndRotateNv12(const uint8_t *sourceLuma,
     *output = std::move(scaledData);
     return;
   }
+
   const size_t scaledLumaLength = static_cast<size_t>(scaledWidth) * scaledHeight;
   CopyOrRotateNv12(scaledData.data(),
       scaledWidth,
@@ -400,6 +405,7 @@ public:
       *error = "复制视频文件描述符失败";
       return false;
     }
+
     napi_value resourceName = nullptr;
     if (napi_create_string_utf8(env,
             "XmaxNativeVideoFileDecoder",
@@ -501,6 +507,7 @@ public:
       *error = "读取视频轨道格式失败";
       return false;
     }
+
     stride_ = width_;
     sliceHeight_ = height_;
     pixelFormat_ = AV_PIXEL_FORMAT_NV12;
@@ -508,6 +515,7 @@ public:
     isHdrVivid_ =
         OH_AVFormat_GetIntValue(trackFormat_, OH_MD_KEY_VIDEO_IS_HDR_VIVID, &isHdrVivid) &&
         isHdrVivid == 1;
+
     OH_AVFormat_SetIntValue(trackFormat_, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
     if (isHdrVivid_) {
       OH_AVFormat_SetIntValue(trackFormat_,
@@ -533,10 +541,12 @@ public:
       surfaceWorkerRunning_.store(true);
       surfaceWorker_ = std::thread(&NativeVideoFileDecoder::SurfaceWorkerLoop, this);
     }
+
     if (OH_VideoDecoder_Start(decoder_) != AV_ERR_OK) {
       *error = "启动视频连续解码失败";
       return false;
     }
+
     if (useSurfaceOutput_) {
       {
         std::lock_guard<std::mutex> lock(surfaceProcessingStateMutex_);
@@ -553,6 +563,7 @@ public:
       }
       videoProcessorStarted_ = true;
     }
+
     return true;
   }
 
@@ -600,10 +611,12 @@ public:
     } else if (surfaceWorker_.joinable()) {
       StopSurfaceWorker();
     }
+
     if (listener_ != nullptr) {
       napi_release_threadsafe_function(listener_, napi_tsfn_abort);
       listener_ = nullptr;
     }
+
     if (demuxer_ != nullptr) {
       OH_AVDemuxer_Destroy(demuxer_);
       demuxer_ = nullptr;
@@ -616,10 +629,12 @@ public:
       OH_AVSource_Destroy(source_);
       source_ = nullptr;
     }
+
     if (fd_ >= 0) {
       close(fd_);
       fd_ = -1;
     }
+
     ReleaseOutputSurface();
   }
 
@@ -648,12 +663,14 @@ private:
       useSurfaceOutput_ = false;
       error->clear();
     }
+
     if (PrepareDecoder(mime, error)) {
       return true;
     }
     if (!useSurfaceOutput_ || isHdrVivid_) {
       return false;
     }
+
     // Never switch a configured codec in place: recreate it in buffer mode.
     OH_LOG_Print(LOG_APP,
         LOG_WARN,
@@ -698,6 +715,7 @@ private:
       *error = "当前设备不支持所选视频编码";
       return false;
     }
+
     const OH_AVCodecCallback callbacks{OnError,
         OnStreamChanged,
         OnNeedInputBuffer,
@@ -707,6 +725,7 @@ private:
       *error = "配置 NV12 视频连续解码失败";
       return false;
     }
+
     if (useSurfaceOutput_ &&
         OH_VideoDecoder_SetSurface(decoder_, surfaceProcessorInputWindow_) != AV_ERR_OK) {
       *error = "绑定视频缩放 Surface 失败";
@@ -743,6 +762,7 @@ private:
     const bool swapsDimensions = rotation_ == 90 || rotation_ == 270;
     const int32_t surfaceWidth = swapsDimensions ? targetHeight_ : targetWidth_;
     const int32_t surfaceHeight = swapsDimensions ? targetWidth_ : targetHeight_;
+
     surfaceOutputSurface_ = OH_ConsumerSurface_Create();
     if (surfaceOutputSurface_ == nullptr) {
       *error = "创建视频输出 Surface 失败";
@@ -756,6 +776,7 @@ private:
       ReleaseOutputSurface();
       return false;
     }
+
     surfaceOutputWindow_ = OH_NativeImage_AcquireNativeWindow(surfaceOutputSurface_);
     if (surfaceOutputWindow_ == nullptr ||
         OH_NativeWindow_NativeWindowHandleOpt(surfaceOutputWindow_,
@@ -767,6 +788,7 @@ private:
       ReleaseOutputSurface();
       return false;
     }
+
     VideoProcessing_ErrorCode processingResult =
         OH_VideoProcessing_Create(&videoProcessor_, VIDEO_PROCESSING_TYPE_DETAIL_ENHANCER);
     if (processingResult != VIDEO_PROCESSING_SUCCESS || videoProcessor_ == nullptr) {
@@ -774,6 +796,7 @@ private:
       ReleaseOutputSurface();
       return false;
     }
+
     OH_AVFormat *processingParameter = OH_AVFormat_Create();
     if (processingParameter == nullptr ||
         !OH_AVFormat_SetIntValue(processingParameter,
@@ -786,6 +809,7 @@ private:
       ReleaseOutputSurface();
       return false;
     }
+
     processingResult = OH_VideoProcessing_SetParameter(videoProcessor_, processingParameter);
     OH_AVFormat_Destroy(processingParameter);
     if (processingResult != VIDEO_PROCESSING_SUCCESS ||
@@ -827,17 +851,20 @@ private:
     if (!videoProcessorStarted_ || videoProcessor_ == nullptr) {
       return;
     }
+
     const VideoProcessing_ErrorCode stopResult = OH_VideoProcessing_Stop(videoProcessor_);
     if (stopResult == VIDEO_PROCESSING_SUCCESS) {
       std::unique_lock<std::mutex> lock(surfaceProcessingStateMutex_);
       surfaceProcessingStateCondition_.wait(lock, [this] { return videoProcessorStopped_; });
     }
+
     videoProcessorStarted_ = false;
   }
 
   /** Returns pending Surface buffers and releases processing, window, and image resources. */
   void ReleaseOutputSurface() {
     StopVideoProcessor();
+
     std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
     if (videoProcessor_ != nullptr) {
       OH_VideoProcessing_Destroy(videoProcessor_);
@@ -847,6 +874,7 @@ private:
       OH_VideoProcessingCallback_Destroy(surfaceProcessingCallback_);
       surfaceProcessingCallback_ = nullptr;
     }
+
     if (surfaceProcessorInputWindow_ != nullptr) {
       OH_NativeWindow_DestroyNativeWindow(surfaceProcessorInputWindow_);
       surfaceProcessorInputWindow_ = nullptr;
@@ -855,6 +883,7 @@ private:
       surfaceOutputWindow_ = nullptr;
       OH_NativeImage_Destroy(&surfaceOutputSurface_);
     }
+
     std::lock_guard<std::mutex> lock(surfaceTimestampMutex_);
     pendingSurfaceTimestamps_.clear();
     surfaceFramesInFlight_ = 0;
@@ -902,10 +931,12 @@ private:
     if (decoder == nullptr || state != VIDEO_PROCESSING_STATE_STOPPED) {
       return;
     }
+
     {
       std::lock_guard<std::mutex> lock(decoder->surfaceProcessingStateMutex_);
       decoder->videoProcessorStopped_ = true;
     }
+
     decoder->surfaceProcessingStateCondition_.notify_all();
   }
 
@@ -939,6 +970,7 @@ private:
     if (surfaceOutputSurface_ == nullptr) {
       return false;
     }
+
     OHNativeWindowBuffer *windowBuffer = nullptr;
     int fenceFd = -1;
     if (OH_NativeImage_AcquireNativeWindowBuffer(surfaceOutputSurface_, &windowBuffer, &fenceFd) !=
@@ -955,6 +987,7 @@ private:
       ReportError("持有视频 Surface 帧失败");
       return false;
     }
+
     int64_t timestampUs = 0;
     bool hasTimestamp = false;
     {
@@ -972,6 +1005,7 @@ private:
       ReportError("视频 Surface 帧缺少时间戳");
       return false;
     }
+
     packet = {windowBuffer, fenceFd, timestampUs};
     return true;
   }
@@ -988,6 +1022,7 @@ private:
       }
       return;
     }
+
     OH_NativeWindow_NativeObjectUnreference(packet.windowBuffer);
     if (surfaceOutputSurface_ != nullptr) {
       OH_NativeImage_ReleaseNativeWindowBuffer(surfaceOutputSurface_,
@@ -1022,6 +1057,7 @@ private:
       }
       dispatchEndOfStream = ConsumeSurfaceEndOfStreamIfReadyLocked();
     }
+
     if (dispatchEndOfStream) {
       DispatchEndOfStream();
     }
@@ -1054,6 +1090,7 @@ private:
         surfacePendingOutputBuffers_.pop_front();
         dropFrame = !surfacePendingOutputBuffers_.empty();
       }
+
       if (OH_VideoProcessing_RenderOutputBuffer(videoProcessor_, outputIndex) !=
           VIDEO_PROCESSING_SUCCESS) {
         ReportError("输出视频 Surface 帧失败");
@@ -1062,12 +1099,14 @@ private:
       if (!AcquireSurfaceFrame(packet)) {
         continue;
       }
+
       if (dropFrame) {
         std::lock_guard<std::mutex> surfaceLock(surfaceMutex_);
         ReleaseSurfaceBufferLocked(packet);
       } else {
         HandleSurfaceFrame(packet);
       }
+
       CompleteSurfaceFrame();
     }
   }
@@ -1097,6 +1136,7 @@ private:
       }
       return;
     }
+
     if (fenceFd >= 0) {
       pollfd descriptor{fenceFd, POLLIN, 0};
       int waitResult = 0;
@@ -1117,6 +1157,7 @@ private:
         return;
       }
     }
+
     OH_NativeBuffer *nativeBuffer = nullptr;
     void *address = nullptr;
     OH_NativeBuffer_Planes planes{};
@@ -1136,6 +1177,7 @@ private:
       ReportError("访问视频 NV12 帧失败");
       return;
     }
+
     const auto *bytes = static_cast<const uint8_t *>(address);
     CopyOrRotateNv12(bytes + planes.planes[0].offset,
         config.stride,
@@ -1216,6 +1258,7 @@ private:
     if (decoder == nullptr || format == nullptr) {
       return;
     }
+
     std::lock_guard<std::mutex> lock(decoder->formatMutex_);
     int32_t value = 0;
     if (OH_AVFormat_GetIntValue(format, OH_MD_KEY_VIDEO_PIC_WIDTH, &value) ||
@@ -1266,6 +1309,7 @@ private:
       if (!decoder->running_.load() || decoder->inputEnded_) {
         return;
       }
+
       readResult = OH_AVDemuxer_ReadSampleBuffer(decoder->demuxer_, decoder->trackIndex_, buffer);
       if (readResult == AV_ERR_OK) {
         OH_AVCodecBufferAttr attr{};
@@ -1285,6 +1329,7 @@ private:
             }
           }
         }
+
         if (readResult == AV_ERR_OK) {
           loopIndex = decoder->inputLoopIndex_;
           if (decoder->isHdrVivid_ && attributeResult == AV_ERR_OK && !endOfStream &&
@@ -1292,6 +1337,7 @@ private:
             attr.pts += loopIndex * decoder->cycleDurationUs_;
             attributeResult = OH_AVBuffer_SetBufferAttr(buffer, &attr);
           }
+
           pushResult = OH_VideoDecoder_PushInputBuffer(codec, index);
           if (pushResult == AV_ERR_OK) {
             decoder->inputEnded_ = endOfStream;
@@ -1299,6 +1345,7 @@ private:
         }
       }
     }
+
     if (readResult != AV_ERR_OK) {
       decoder->ReportError("读取视频压缩帧失败：" + std::to_string(readResult));
       return;
@@ -1331,6 +1378,7 @@ private:
       }
       return;
     }
+
     if (decoder->useSurfaceOutput_) {
       decoder->HandleSurfaceOutputBuffer(codec, index, buffer);
       return;
@@ -1339,6 +1387,7 @@ private:
       OH_VideoDecoder_FreeOutputBuffer(codec, index);
       return;
     }
+
     decoder->HandleOutputBuffer(buffer);
     OH_VideoDecoder_FreeOutputBuffer(codec, index);
   }
@@ -1357,12 +1406,14 @@ private:
       }
       return;
     }
+
     OH_AVCodecBufferAttr attr{};
     if (OH_AVBuffer_GetBufferAttr(buffer, &attr) != AV_ERR_OK) {
       OH_VideoDecoder_FreeOutputBuffer(codec, index);
       ReportError("读取视频解码帧属性失败");
       return;
     }
+
     if ((attr.flags & AVCODEC_BUFFER_FLAGS_EOS) != 0) {
       OH_VideoDecoder_FreeOutputBuffer(codec, index);
       bool dispatchEndOfStream = false;
@@ -1376,6 +1427,7 @@ private:
       }
       return;
     }
+
     if (!ShouldOutputFrame(attr.pts)) {
       OH_VideoDecoder_FreeOutputBuffer(codec, index);
       return;
@@ -1386,6 +1438,7 @@ private:
       OH_VideoDecoder_FreeOutputBuffer(codec, index);
       return;
     }
+
     const int64_t timestampUs = PlaybackTimestampUs(attr.pts);
     {
       std::lock_guard<std::mutex> lock(surfaceTimestampMutex_);
@@ -1411,6 +1464,7 @@ private:
     if (!running_.load()) {
       return;
     }
+
     OH_AVCodecBufferAttr attr{};
     if (OH_AVBuffer_GetBufferAttr(buffer, &attr) != AV_ERR_OK) {
       ReportError("读取解码视频帧属性失败");
@@ -1422,6 +1476,7 @@ private:
       Dispatch(packet);
       return;
     }
+
     if (attr.size <= 0 || attr.offset < 0) {
       return;
     }
@@ -1442,6 +1497,7 @@ private:
       sliceHeight = sliceHeight_;
       pixelFormat = pixelFormat_;
     }
+
     if (pixelFormat != AV_PIXEL_FORMAT_NV12 || width <= 0 || height <= 0) {
       ReportError("视频解码器未输出 NV12 帧");
       return;
@@ -1505,6 +1561,7 @@ private:
       if (!running_.load()) {
         return;
       }
+
       const auto deadline = std::chrono::steady_clock::time_point(
           std::chrono::microseconds(PlaybackTimestampUs(timestampUs)));
       if (!pacingCondition_.wait_until(lock, deadline, [this] {
@@ -1620,6 +1677,7 @@ private:
         return;
       }
     }
+
     napi_create_int32(env, packet->width, &arguments[1]);
     napi_create_int32(env, packet->height, &arguments[2]);
     napi_create_int32(env, packet->stride, &arguments[3]);
@@ -1836,13 +1894,16 @@ NativeVideoFileDecoder *UnwrapDecoder(napi_env env,
   if (napi_get_cb_info(env, info, &argumentCount, nullptr, &thisValue, nullptr) != napi_ok) {
     return nullptr;
   }
+
   NativeVideoFileDecoder *decoder = nullptr;
   if (napi_unwrap(env, thisValue, reinterpret_cast<void **>(&decoder)) != napi_ok) {
     return nullptr;
   }
+
   if (receiver != nullptr) {
     *receiver = thisValue;
   }
+
   return decoder;
 }
 
@@ -1859,6 +1920,7 @@ napi_value PauseDecoder(napi_env env, napi_callback_info info) {
     napi_throw_error(env, nullptr, "Video decoder is unavailable");
     return nullptr;
   }
+
   decoder->Pause();
   napi_value result = nullptr;
   napi_get_undefined(env, &result);
@@ -1881,6 +1943,7 @@ napi_value ResumeDecoder(napi_env env, napi_callback_info info) {
     napi_throw_type_error(env, nullptr, "Expected paused duration");
     return nullptr;
   }
+
   NativeVideoFileDecoder *decoder = nullptr;
   double pausedDurationUs = 0;
   if (napi_unwrap(env, receiver, reinterpret_cast<void **>(&decoder)) != napi_ok ||
@@ -1889,6 +1952,7 @@ napi_value ResumeDecoder(napi_env env, napi_callback_info info) {
     napi_throw_type_error(env, nullptr, "Video decoder resume arguments are invalid");
     return nullptr;
   }
+
   decoder->Resume(static_cast<int64_t>(pausedDurationUs));
   napi_value result = nullptr;
   napi_get_undefined(env, &result);
@@ -1954,6 +2018,7 @@ void CompleteReleaseDecoder(napi_env env, napi_status status, void *data) {
   if (context == nullptr) {
     return;
   }
+
   napi_value result = nullptr;
   if (status == napi_ok) {
     napi_get_undefined(env, &result);
@@ -1963,6 +2028,7 @@ void CompleteReleaseDecoder(napi_env env, napi_status status, void *data) {
         context->deferred,
         "Failed to release the video decoder asynchronously");
   }
+
   if (context->decoderReference != nullptr) {
     napi_delete_reference(env, context->decoderReference);
   }
@@ -2030,6 +2096,7 @@ napi_value ReleaseDecoder(napi_env env, napi_callback_info info) {
     delete context;
     return promise;
   }
+
   return promise;
 }
 
@@ -2127,6 +2194,7 @@ void CompleteCreateDecoder(napi_env env, napi_status status, void *data) {
     napi_get_reference_value(env, context->reference, &result);
     napi_resolve_deferred(env, context->deferred, result);
   }
+
   napi_delete_reference(env, context->reference);
   napi_delete_async_work(env, context->work);
   delete context;
@@ -2192,6 +2260,7 @@ napi_value CreateVideoFileDecoder(napi_env env, napi_callback_info info) {
     napi_throw_error(env, nullptr, "Failed to create video decoder handle");
     return nullptr;
   }
+
   napi_property_descriptor descriptors[] = {
       {"pause", nullptr, PauseDecoder, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"resume", nullptr, ResumeDecoder, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -2216,6 +2285,7 @@ napi_value CreateVideoFileDecoder(napi_env env, napi_callback_info info) {
   context->height = targetHeight;
   context->frameIntervalUs = static_cast<int64_t>(frameIntervalUs);
   context->cycleDurationUs = static_cast<int64_t>(cycleDurationUs);
+
   napi_value promise = nullptr;
   napi_value resourceName = nullptr;
   if (napi_create_promise(env, &context->deferred, &promise) != napi_ok) {
@@ -2224,6 +2294,7 @@ napi_value CreateVideoFileDecoder(napi_env env, napi_callback_info info) {
     napi_throw_error(env, nullptr, "Failed to create video initialization promise");
     return nullptr;
   }
+
   if (napi_create_reference(env, result, 1, &context->reference) != napi_ok ||
       napi_create_string_utf8(env,
           "XmaxCreateNativeVideoFileDecoder",
@@ -2246,6 +2317,7 @@ napi_value CreateVideoFileDecoder(napi_env env, napi_callback_info info) {
       napi_delete_async_work(env, context->work);
     delete context;
   }
+
   return promise;
 }
 } // namespace

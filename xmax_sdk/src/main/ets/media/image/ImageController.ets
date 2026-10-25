@@ -88,12 +88,14 @@ export class ImageController {
         if (!this.acceptsFrames) {
           return;
         }
+
         this.streamController.pushLocalVideoFrame(frame);
       },
       (error: XmaxError): void => {
         if (!this.acceptsFrames) {
           return;
         }
+
         errorListener(error);
       }
     );
@@ -182,6 +184,7 @@ export class ImageController {
       this.registerPreview(track);
       this.acceptsFrames = true;
       this.imageSourceController.start();
+
       this.activeTrack = track;
 
       return new RealtimeMediaStream(

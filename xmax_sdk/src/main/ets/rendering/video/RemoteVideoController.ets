@@ -57,6 +57,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
   ) {
     this.rtcManager = rtcManager;
     this.readinessListener = readinessListener;
+
     rtcManager.setRemoteVideoRenderedListener((stream: RemoteStream): void => {
       if (this.remoteViewId.length > 0 && this.remoteStream?.key() === stream.key()) {
         this.currentGenerationRendered = true;
@@ -98,6 +99,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
     if (stream === null || this.remoteViewId.length === 0) {
       return;
     }
+
     const renewSubscription: boolean = !this.currentGenerationRendered &&
       this.rtcManager.hasRenderedRemoteVideo(stream);
     if (renewSubscription) {
@@ -117,6 +119,7 @@ export class RemoteVideoController implements RemoteVideoControlling {
         true
       );
     }
+
     this.readinessListener(this.currentGenerationRendered);
   }
 

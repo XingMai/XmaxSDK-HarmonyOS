@@ -159,6 +159,7 @@ export class VideoSourceController implements VideoSourceControlling {
     this.outputWidth = outputWidth;
     this.outputHeight = outputHeight;
     this.frameIntervalUs = 1000000 / frameRate;
+
     this.resetFrameSampling();
   }
 
@@ -192,6 +193,7 @@ export class VideoSourceController implements VideoSourceControlling {
     this.isPaused = false;
     this.pendingEndOfStream = false;
     this.resetFrameSampling();
+
     // Audio has not started yet. Exclude decoder setup time from both clocks.
     timeline.pause();
     await this.createDecoder(true);
@@ -205,6 +207,7 @@ export class VideoSourceController implements VideoSourceControlling {
     if (this.isPaused) {
       return;
     }
+
     const decoder: VideoFileFrameDecoder | null = this.decoder;
     if (decoder === null) {
       throw new XmaxError(
@@ -212,6 +215,7 @@ export class VideoSourceController implements VideoSourceControlling {
         'Local video source is not active'
       );
     }
+
     this.isPaused = true;
     decoder.pause();
   }
@@ -230,6 +234,7 @@ export class VideoSourceController implements VideoSourceControlling {
     if (!this.isPaused) {
       return;
     }
+
     const decoder: VideoFileFrameDecoder | null = this.decoder;
     if (decoder === null) {
       throw new XmaxError(
@@ -237,8 +242,10 @@ export class VideoSourceController implements VideoSourceControlling {
         'Local video source is not active'
       );
     }
+
     decoder.resume(pausedDurationUs);
     this.isPaused = false;
+
     if (this.pendingEndOfStream) {
       this.pendingEndOfStream = false;
       this.handleEndOfStream(this.loopIndex);
@@ -253,7 +260,9 @@ export class VideoSourceController implements VideoSourceControlling {
   async stop(): Promise<void> {
     this.sourceVersion++;
     this.hasEnded = false;
+
     const releasePromise: Promise<void> = this.releaseDecoder();
+
     this.filePath = '';
     this.sourceRotation = VideoRotation.ROTATION_0;
     this.timeline = null;
@@ -264,6 +273,7 @@ export class VideoSourceController implements VideoSourceControlling {
     this.outputWidth = 0;
     this.outputHeight = 0;
     this.resetFrameSampling();
+
     await releasePromise;
   }
 
@@ -316,6 +326,7 @@ export class VideoSourceController implements VideoSourceControlling {
       timeline.mediaStartUs,
       timeline.cycleDurationUs
     );
+
     this.decoder = decoder;
     await decoder.ready;
     if (version !== this.sourceVersion || this.decoder !== decoder) {
@@ -325,6 +336,7 @@ export class VideoSourceController implements VideoSourceControlling {
         'Video initialization was cancelled'
       );
     }
+
     if (initial) {
       timeline.resume();
     }
@@ -424,6 +436,7 @@ export class VideoSourceController implements VideoSourceControlling {
       this.pendingEndOfStream = true;
       return;
     }
+
     const version: number = this.sourceVersion;
     if (!this.loop) {
       this.hasEnded = true;
@@ -439,6 +452,7 @@ export class VideoSourceController implements VideoSourceControlling {
       this.timeline === null || loopIndex !== this.loopIndex) {
       return;
     }
+
     this.loopIndex++;
     this.resetFrameSampling();
 
@@ -505,6 +519,7 @@ export class VideoSourceController implements VideoSourceControlling {
       const releasePromise: Promise<void> =
         this.releaseDecoderInstance(decoder);
       this.decoderReleasePromise = releasePromise;
+
       try {
         await releasePromise;
       } finally {

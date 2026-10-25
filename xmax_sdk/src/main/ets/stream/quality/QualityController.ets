@@ -234,10 +234,12 @@ export class QualityController implements QualityControlling, RtcQualityListener
     isAdaptiveQualityEnabled: boolean = true
   ): QualityConfiguration {
     baseline.validate();
+
     this.history = isAdaptiveQualityEnabled ? new QualityHistory(
       model,
       this.historyStore
     ) : undefined;
+
     this.uplinkQuality = new QualityDirection(
       baseline,
       this.history?.read(false) ?? 1,
@@ -250,6 +252,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
       true,
       minimumInputPixels
     );
+
     return new QualityConfiguration(
       baseline,
       this.uplinkQuality.level,
@@ -270,6 +273,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
   ): QualityConfiguration | undefined {
     const configuration: QualityConfiguration | undefined = this.qualityConfiguration;
     if (configuration === undefined) { return undefined; }
+
     this.uplinkQuality = new QualityDirection(
       baseline,
       configuration.uplinkLevel,
@@ -282,6 +286,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
       true,
       configuration.minimumInputPixels
     );
+
     return this.qualityConfiguration;
   }
 
@@ -337,11 +342,13 @@ export class QualityController implements QualityControlling, RtcQualityListener
   ): void {
     const direction: QualityDirection | undefined = downlink ? this.downlinkQuality : this.uplinkQuality;
     if (direction === undefined) { return; }
+
     direction.complete(
       level,
       success,
       QualityClock.now()
     );
+
     if (success) {
       this.history?.write(
         direction.level,
@@ -436,6 +443,7 @@ export class QualityController implements QualityControlling, RtcQualityListener
         'Quality'
       );
     }
+
     try {
       listener?.(quality);
     } catch (error) {

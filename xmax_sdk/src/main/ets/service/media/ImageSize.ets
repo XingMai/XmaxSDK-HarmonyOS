@@ -39,6 +39,7 @@ export class ImageSize {
         'Image width and height must be finite numbers greater than zero'
       );
     }
+
     this.width = width;
     this.height = height;
   }

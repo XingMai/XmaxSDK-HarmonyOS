@@ -264,6 +264,7 @@ private:
         frameReceiver = iterator->second;
       }
     }
+
     if (frameReceiver == nullptr || !frameReceiver->running_.load()) {
       return;
     }
@@ -410,6 +411,7 @@ private:
     if (componentType == 0) {
       return;
     }
+
     OH_NativeBuffer *nativeBuffer = nullptr;
     size_t bufferSize = 0;
     int32_t rowStride = 0;

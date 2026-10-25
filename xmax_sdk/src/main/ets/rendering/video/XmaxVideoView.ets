@@ -127,11 +127,13 @@ export struct XmaxVideoView {
     if (track === this.currentTrack) {
       return;
     }
+
     this.detachVideo();
     this.currentTrack = track;
     this.observeOrientation();
     this.previewFrame = undefined;
     this.updatePreviewRatio();
+
     // Use a fresh Surface per track so old onLoad/onDestroy events cannot affect the new binding.
     this.viewId = `xmax_video_view_${nextVideoViewId++}`;
   }
@@ -166,10 +168,12 @@ export struct XmaxVideoView {
     if (viewId !== this.viewId || this.track === undefined) {
       return;
     }
+
     this.detachVideo();
     const track: RealtimeVideoTrack = RealtimeVideoTrack.resolve(this.track);
     this.attachedTrack = track;
     this.attachedViewId = viewId;
+
     VideoRenderRegistry.attach(
       track,
       viewId,
@@ -201,14 +205,17 @@ export struct XmaxVideoView {
   private detachVideo(): void {
     const track: RealtimeVideoTrack | undefined = this.attachedTrack;
     const viewId: string = this.attachedViewId;
+
     this.attachedTrack = undefined;
     this.attachedViewId = '';
+
     if (track !== undefined) {
       VideoRenderRegistry.detach(
         track,
         viewId
       );
     }
+
     this.onVideoReadyChanged?.(false);
   }
 

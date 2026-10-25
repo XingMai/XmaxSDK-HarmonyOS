@@ -177,6 +177,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.timing,
       new QualityPreferences(context)
     );
+
     this.mediaController = new MediaController(
       context,
       this.rtcManager,
@@ -213,6 +214,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.streamController,
       new MediaService(options.model)
     );
+
     this.coordinator = new RealtimeCoordinator(
       this.errorManager,
       (scope: RealtimeTerminationScope, taskId: string): Promise<string | undefined> =>
@@ -235,6 +237,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (state !== RealtimeConnectionState.CONNECTED && state !== RealtimeConnectionState.GENERATING) {
       return undefined;
     }
+
     return this.streamController.qualityConfiguration?.uplinkLevel as RealtimeQualityLevel | undefined;
   }
 
@@ -244,6 +247,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (state !== RealtimeConnectionState.CONNECTED && state !== RealtimeConnectionState.GENERATING) {
       return undefined;
     }
+
     return this.streamController.qualityConfiguration?.downlinkLevel as RealtimeQualityLevel | undefined;
   }
 
@@ -290,6 +294,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Quality levels can only be changed while generating'
           );
         }
+
         this.applyQualityLevel(
           level,
           downlink,
@@ -321,6 +326,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     listener: LocalVideoPlaybackStateListener | null
   ): void {
     this.localVideoPlaybackStateListener = listener;
+
     const state: LocalVideoPlaybackState | undefined = this.localVideoPlaybackState;
     if (state !== undefined) {
       this.notifyLocalVideoPlaybackState(state);
@@ -458,11 +464,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Stop the current local stream before creating another one'
           );
         }
+
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(
           new RealtimeState(RealtimeConnectionState.PREPARING),
           token
         );
+
         const stream = await this.mediaController.createLocalCameraStream(
           videoFormat,
           position,
@@ -474,11 +482,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         if (observeDisplayChange) {
           this.observeLocalOrientation(stream);
         }
+
         this.streamController.setRemoteAudioVolume(0);
         this.mediaController.setCameraPreviewReadyHandler((): void => {
           this.coordinator.localPreviewDidBecomeReady((): boolean =>
             stream.videoTrack !== undefined && this.mediaController.currentTrack === stream.videoTrack);
         });
+
         return stream;
       }
     );
@@ -492,11 +502,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+
         const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalCameraStream();
         if (track !== null && this.mediaController.currentTrack !== track) {
           setRealtimeVideoTrackOrientationHandler(track);
         }
+
         this.coordinator.commit(
           new RealtimeState(this.mediaController.currentTrack !== null ?
             RealtimeConnectionState.READY : RealtimeConnectionState.IDLE),
@@ -526,6 +538,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Camera switching is unavailable while realtime is transitioning'
           );
         }
+
         if (wasGenerating) {
           token.setFailureScope(RealtimeTerminationScope.CONNECTION);
           this.renderController.stopRemoteVideoFrameDelivery();
@@ -539,8 +552,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             token
           );
         }
+
         const stream: RealtimeMediaStream = await this.mediaController.switchCamera();
         token.ensureCurrent();
+
         if (wasGenerating) {
           await token.delay(500);
           await this.performStartGeneration(
@@ -548,9 +563,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             token
           );
         }
+
         return stream;
       }
     );
+
     return operation.finally((): void => {
       // Recheck orientation after switch confirmation and restart if orientation drifted during the wait.
       this.restartGenerationIfOrientationDrifted();
@@ -584,11 +601,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Stop the current local stream before creating another one'
           );
         }
+
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(
           new RealtimeState(RealtimeConnectionState.PREPARING),
           token
         );
+
         const stream = await this.mediaController.createLocalVideoStream(
           filePath,
           videoFormat,
@@ -596,13 +615,16 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         );
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+
         this.notifyLocalVideoPlaybackState(this.localVideoPlaybackState ?? LocalVideoPlaybackState.PLAYING);
         this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(1);
+
         this.coordinator.commit(
           new RealtimeState(RealtimeConnectionState.READY),
           token
         );
+
         return stream;
       }
     );
@@ -616,11 +638,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+
         const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalVideoStream();
         if (track !== null && this.mediaController.currentTrack !== track) {
           setRealtimeVideoTrackOrientationHandler(track);
         }
+
         this.coordinator.commit(
           new RealtimeState(this.mediaController.currentTrack !== null ?
             RealtimeConnectionState.READY : RealtimeConnectionState.IDLE),
@@ -654,10 +678,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       null,
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalVideoPlaybackCanChange();
+
         this.mediaController.resumeLocalVideoStream();
         token.ensureCurrent();
         await this.renderController.resumeRemoteVideo();
         token.ensureCurrent();
+
         if (this.localVideoPlaybackState === LocalVideoPlaybackState.PLAYING) {
           this.notifyLocalVideoPlaybackState(LocalVideoPlaybackState.PLAYING);
         }
@@ -695,23 +721,28 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             'Stop the current local stream before creating another one'
           );
         }
+
         this.mediaController.setCameraPreviewReadyHandler(null);
         this.coordinator.commit(
           new RealtimeState(RealtimeConnectionState.PREPARING),
           token
         );
+
         const stream = await this.mediaController.createLocalImageStream(
           source,
           videoFormat
         );
         token.ensureCurrent();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+
         this.observeLocalOrientation(stream);
         this.streamController.setRemoteAudioVolume(0);
+
         this.coordinator.commit(
           new RealtimeState(RealtimeConnectionState.READY),
           token
         );
+
         return stream;
       }
     );
@@ -725,11 +756,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       async (token: RealtimeOperationToken): Promise<void> => {
         this.ensureLocalMediaCanChange();
         token.setFailureScope(RealtimeTerminationScope.ALL);
+
         const track = this.mediaController.currentTrack;
         await this.mediaController.stopLocalImageStream();
         if (track !== null && this.mediaController.currentTrack !== track) {
           setRealtimeVideoTrackOrientationHandler(track);
         }
+
         this.coordinator.commit(
           new RealtimeState(this.mediaController.currentTrack !== null ?
             RealtimeConnectionState.READY : RealtimeConnectionState.IDLE),
@@ -787,6 +820,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         'The local stream must be created and started by this realtime manager'
       );
     }
+
     this.mediaController.updateCameraOrientation();
     token.ensureCurrent();
     const videoFormat: RealtimeVideoFormat | undefined = localStream.videoTrack?.videoFormat;
@@ -796,12 +830,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         'The local stream must be created and started by this realtime manager'
       );
     }
+
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
     this.generationManager.reset();
     this.coordinator.commit(
       new RealtimeState(RealtimeConnectionState.CONNECTING),
       token
     );
+
     const quality: QualityConfiguration = this.streamController.prepareQuality(
       videoFormat,
       this.options.model.name,
@@ -810,8 +846,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     );
     this.streamController.setVideoEncoderConfig(quality.uplink);
     token.ensureCurrent();
+
     this.mediaController.startMicrophoneCapture();
     token.ensureCurrent();
+
     const remoteStream: RealtimeMediaStream = await this.connectionManager.connect(
       this.options.model.name,
       videoFormat,
@@ -824,10 +862,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.resolveQualityTarget(quality)
     );
     token.ensureCurrent();
+
     const sessionId: string = this.connectionManager.currentSessionId;
     if (sessionId.length === 0) {
       throw RealtimeOperationToken.cancelledError();
     }
+
     this.coordinator.commit(
       new RealtimeState(
         RealtimeConnectionState.CONNECTED,
@@ -835,6 +875,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       ),
       token
     );
+
     return remoteStream;
   }
 
@@ -849,6 +890,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (stream.videoTrack === undefined) {
       return;
     }
+
     const track = RealtimeVideoTrack.resolve(stream.videoTrack);
     setRealtimeVideoTrackOrientationHandler(
       track,
@@ -890,6 +932,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       !this.hasOrientationDrift(format)) {
       return;
     }
+
     const sessionId: string = this.currentState.sessionId ?? '';
     let stopped: boolean = false;
     const operation: Promise<void | RealtimeMediaStream> = this.coordinator.run(
@@ -912,6 +955,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         stopped = true;
       }
     );
+
     void operation.catch((error: Object): void => {
       const resolved: XmaxError = XmaxError.from(error);
       if (resolved.code !== XmaxErrorCode.CANCELLED) {
@@ -936,6 +980,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (this.orientationRestartPending || this.coordinator.isClosing) {
       return;
     }
+
     this.orientationRestartPending = true;
     setTimeout(
       (): void => {
@@ -961,6 +1006,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.restartGenerationIfOrientationDrifted();
       return;
     }
+
     const operation: Promise<void> = this.coordinator.run(
       RealtimeOperationKind.GENERATION,
       null,
@@ -972,6 +1018,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         );
       }
     );
+
     this.orientationRestartCompletion = operation;
     void operation.catch((error: Object): void => {
       const resolved: XmaxError = XmaxError.from(error);
@@ -1009,6 +1056,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       (input instanceof RealtimeMediaStream && !this.mediaController.owns(input))) {
       return null;
     }
+
     const taskId: string = this.streamController.currentGenerationTaskId;
     const videoFormat: RealtimeVideoFormat | undefined =
       this.lastSubmittedFormat ?? this.mediaController.currentVideoFormat;
@@ -1016,6 +1064,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       this.connectionManager.currentSessionId.length === 0) {
       return null;
     }
+
     const newContext: RealtimeContext | undefined =
       input instanceof RealtimeMediaStream ? context : input;
     this.generationManager.update(
@@ -1024,6 +1073,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       newContext,
       faceRestoration
     );
+
     if (input instanceof RealtimeMediaStream) {
       return completion.then((): RealtimeMediaStream => {
         const remoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
@@ -1053,6 +1103,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (this.currentState.connectionState !== RealtimeConnectionState.GENERATING) {
       return false;
     }
+
     const submitted: RealtimeVideoFormat | undefined = this.lastSubmittedFormat;
     const current: RealtimeVideoFormat | undefined = format ?? this.mediaController.currentVideoFormat;
     if (submitted === undefined || current === undefined) {
@@ -1073,10 +1124,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (current === RealtimeConnectionState.DISCONNECTING) {
       return;
     }
+
     const previous: RealtimeVideoFormat | undefined = this.mediaController.currentVideoFormat;
     const orientationChanged: boolean = previous !== undefined &&
       (previous.width > previous.height) !== (format.width > format.height);
     const quality: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
+
     if (quality !== undefined && !QualityVideoFormat.same(
       quality.baseline,
       format
@@ -1105,6 +1158,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
       }
     }
+
     const track = this.mediaController.currentTrack;
     if (orientationChanged && track !== null) {
       updateRealtimeVideoTrackOrientation(
@@ -1118,6 +1172,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       // Resolution changes preserving orientation still use change_condition.
       this.generationManager.updateVideoFormat(format);
     }
+
     this.connectionManager.updateVideoFormat(format);
   }
 
@@ -1139,6 +1194,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       !this.coordinator.hasOperation(RealtimeOperationKind.CAMERA_SWITCH)) {
       return Promise.resolve();
     }
+
     this.renderController.stopRemoteVideoFrameDelivery();
     return this.coordinator.terminate(
       RealtimeTerminationScope.CONNECTION,
@@ -1155,6 +1211,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     const wasClosing: boolean = this.coordinator.isClosing;
     const closing: Promise<void> = this.coordinator.terminate(
       RealtimeTerminationScope.ALL);
+
     if (!wasClosing) {
       try {
         this.mediaController.setLocalAudioPreviewEnabled(false);
@@ -1167,6 +1224,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       }
       this.connectionManager.prepareForClose();
     }
+
     return closing;
   }
 
@@ -1241,6 +1299,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       input as RealtimeContext | RealtimeMediaStream | undefined : options.localStream ?? options.context;
     const context: RealtimeContext | undefined = options === undefined ?
       (typeof contextOrFaceRestoration === 'boolean' ? undefined : contextOrFaceRestoration) : options.context;
+
     let extraParams: RealtimeGenerationParameters | undefined = undefined;
     if (options?.extraParams !== undefined) {
       if (options.context === undefined) {
@@ -1256,9 +1315,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         static_image_path: path === '' ? undefined : path
       };
     }
+
     const restart: boolean = options?.restart ?? false;
     const resolvedFaceRestoration: boolean = options !== undefined ? options.faceRestoration ?? false : resolvedInput instanceof RealtimeMediaStream ? faceRestoration :
       (typeof contextOrFaceRestoration === 'boolean' ? contextOrFaceRestoration : false);
+
     // Merge new conditions into an orientation restart submission without competing for operation ownership.
     const joined: Promise<void | RealtimeMediaStream> | null =
       restart || options !== undefined ? null : this.tryJoinOrientationRestart(
@@ -1269,6 +1330,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (joined !== null) {
       return joined;
     }
+
     let measurement: RealtimeTimingRun | null = null;
     const operation = this.coordinator.run<void | RealtimeMediaStream>(
       RealtimeOperationKind.GENERATION,
@@ -1289,6 +1351,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
               extraParams
             );
           }
+
           await this.performStartGeneration(
             resolvedInput,
             token,
@@ -1296,6 +1359,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
             restart,
             extraParams
           );
+
           if (options !== undefined) {
             const remote: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
             if (remote === null) {
@@ -1311,6 +1375,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         }
       }
     );
+
     return operation.catch((error: Object): void | RealtimeMediaStream => {
       // Use this operation's timing record after coordinator cleanup to avoid disturbing a newer retry.
       this.timing.finishFailure(
@@ -1351,6 +1416,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         'The local stream must be created and started by this realtime manager'
       );
     }
+
     let remoteStream: RealtimeMediaStream;
     if (this.connectionManager.currentSessionId.length > 0) {
       const activeRemoteStream: RealtimeMediaStream | null = this.connectionManager.currentRemoteStream;
@@ -1368,6 +1434,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           'A realtime context is required for the first generation'
         );
       }
+
       this.mediaController.setLocalAudioPreviewEnabled(false);
       remoteStream = await this.performConnect(
         localStream,
@@ -1375,6 +1442,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       );
       token.setFailureScope(null);
     }
+
     token.ensureCurrent();
     await this.performStartGeneration(
       context,
@@ -1383,6 +1451,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       restart,
       extraParams
     );
+
     return remoteStream;
   }
 
@@ -1416,10 +1485,12 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         'Realtime connection is not open'
       );
     }
+
     this.generationManager.validateContext(
       context,
       extraParams
     );
+
     if (restart && current.connectionState === RealtimeConnectionState.GENERATING) {
       token.setFailureScope(RealtimeTerminationScope.CONNECTION);
       this.renderController.stopRemoteVideoFrameDelivery();
@@ -1434,6 +1505,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.ensureCurrent();
       current = this.currentState;
     }
+
     if (current.connectionState === RealtimeConnectionState.GENERATING && current.taskId !== undefined) {
       this.generationManager.update(
         current.taskId,
@@ -1445,11 +1517,13 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
       token.ensureCurrent();
       return;
     }
+
     this.generationManager.validateContext(
       context,
       extraParams
     );
     token.setFailureScope(RealtimeTerminationScope.CONNECTION);
+
     const previousQuality: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
     const quality: QualityConfiguration | undefined = previousQuality === undefined ? undefined :
       QualityVideoFormat.same(
@@ -1463,8 +1537,10 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         videoFormat
       );
     }
+
     token.ensureCurrent();
     this.mediaController.setLocalAudioPreviewEnabled(false);
+
     // Record submitted orientation for drift detection during confirmation; condition updates do not change dimensions.
     this.lastSubmittedFormat = videoFormat;
     try {
@@ -1478,19 +1554,23 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         extraParams
       );
       token.ensureCurrent();
+
       const waitsForFrame: boolean = !this.generationManager.usesStaticInput;
       if (waitsForFrame) {
         await token.wait(this.renderController.waitUntilRemoteFrameReady());
         token.ensureCurrent();
       }
+
       if (this.localVideoPlaybackState === LocalVideoPlaybackState.PAUSE) {
         await token.wait(this.renderController.freezeRemoteVideo());
         token.ensureCurrent();
       }
+
       this.streamController.activateRemoteAudio();
       if (this.connectionManager.currentSessionId !== sessionId) {
         throw RealtimeOperationToken.cancelledError();
       }
+
       this.coordinator.commit(
         new RealtimeState(
           RealtimeConnectionState.GENERATING,
@@ -1499,6 +1579,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         ),
         token
       );
+
       if (quality !== undefined) {
         this.streamController.completeQuality(
           false,
@@ -1511,6 +1592,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           true
         );
       }
+
       this.streamController.setAdaptiveQualityListener(
         this.options.isAdaptiveQualityEnabled === false ? null : (
           sample: RealtimeNetworkQuality,
@@ -1569,19 +1651,24 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     taskId: string
   ): void {
     if (this.options.isAdaptiveQualityEnabled === false || this.qualityPending) { return; }
+
     this.qualityPending = true;
     // Notify the synchronous user listener first; a user operation may cause this background sample to be skipped.
     void Promise.resolve().then((): void => {
       if (this.currentState.taskId !== taskId) { return; }
+
       const accepted: boolean = this.coordinator.runAdaptiveConfiguration((token: RealtimeOperationToken): void => {
         if (this.currentState.taskId !== taskId) { return; }
+
         const change: QualityChange = this.streamController.proposeQuality(
           sample,
           sampledAt
         );
+
         for (const downlink of [false, true]) {
           const level: number | undefined = downlink ? change.downlink : change.uplink;
           if (level === undefined) { continue; }
+
           token.ensureCurrent();
           try {
             this.applyQualityLevel(
@@ -1596,9 +1683,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           }
         }
       });
+
       if (!accepted) { this.streamController.resetQualitySamples(); }
     }).catch((error: Object): void => {
       if (this.currentState.taskId !== taskId) { return; }
+
       this.streamController.resetQualitySamples();
       if (XmaxError.from(error).code !== XmaxErrorCode.CANCELLED) {
         XmaxLogger.warn(
@@ -1625,9 +1714,11 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ): void {
     const configuration: QualityConfiguration | undefined = this.streamController.qualityConfiguration;
     if (configuration === undefined) { return; }
+
     try {
       token.ensureCurrent();
       if (this.currentState.taskId !== taskId) { return; }
+
       if (downlink) {
         const candidate: QualityConfiguration = new QualityConfiguration(
           configuration.baseline,
@@ -1656,27 +1747,32 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
           configuration.minimumInputPixels
         ));
       }
+
       token.ensureCurrent();
       this.streamController.completeQuality(
         downlink,
         level,
         true
       );
+
       XmaxLogger.debug(
         `Quality adjustment: ${downlink ? 'downlink' : 'uplink'} L${level}`,
         'Quality'
       );
     } catch (error) {
       if (!token.isCurrent) { throw XmaxError.from(error); }
+
       this.streamController.completeQuality(
         downlink,
         level,
         false
       );
+
       XmaxLogger.warn(
         'Quality adjustment failed: ' + String(error),
         'Quality'
       );
+
       throw XmaxError.from(error);
     }
   }
@@ -1747,6 +1843,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     taskId: string
   ): Promise<string | undefined> {
     this.renderController.stopRemoteVideoFrameDelivery();
+
     try {
       this.mediaController.stopMicrophoneCapture();
     } catch (error) {
@@ -1755,6 +1852,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         error
       );
     }
+
     try {
       this.generationManager.reset(taskId);
     } catch (error) {
@@ -1763,6 +1861,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         error
       );
     }
+
     let sessionId: string | undefined = this.connectionManager.currentSessionId || undefined;
     try {
       sessionId = (await this.connectionManager.disconnect()) ?? sessionId;
@@ -1772,12 +1871,14 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
         error
       );
     }
+
     if (scope === RealtimeTerminationScope.ALL) {
       this.mediaController.setCameraPreviewReadyHandler(null);
       const track = this.mediaController.currentTrack;
       if (track !== null) {
         setRealtimeVideoTrackOrientationHandler(track);
       }
+
       try {
         await this.mediaController.stopLocalStream();
       } catch (error) {
@@ -1789,6 +1890,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     } else {
       this.restoreLocalAudioPreview();
     }
+
     return sessionId;
   }
 
@@ -1812,6 +1914,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (this.connectionManager.currentSessionId !== sessionId) {
       return Promise.resolve();
     }
+
     this.renderController.stopRemoteVideoFrameDelivery();
     return this.coordinator.terminateWithError(
       error,
@@ -1847,6 +1950,7 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
   ): void {
     this.renderController.stopRemoteVideoFrameDelivery();
     this.renderController.failRemoteFrameWait(error);
+
     void this.coordinator.terminateWithError(
       error,
       scope

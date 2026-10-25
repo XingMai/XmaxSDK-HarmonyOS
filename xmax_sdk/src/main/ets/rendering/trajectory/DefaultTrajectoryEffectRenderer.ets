@@ -328,6 +328,7 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
     context.globalCompositeOperation = 'lighter';
     context.lineJoin = 'round';
     context.lineCap = 'round';
+
     this.strokeLayer(
       x0,
       y0,
@@ -346,6 +347,7 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
       6,
       0.75
     );
+
     context.shadowBlur = 0;
     context.shadowColor = 'transparent';
     context.lineWidth = TrajectoryEffectStyle.CORE_WIDTH;
@@ -438,6 +440,7 @@ export class DefaultTrajectoryEffectRenderer implements TrajectoryEffectRenderin
         trajectory.y
       );
     });
+
     context.restore();
   }
 

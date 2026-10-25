@@ -33,6 +33,7 @@ export class MediaService implements MediaServicing {
     source: RealtimeMediaSource
   ): ImageSize {
     this.validateSize(size);
+
     const buckets: ImageSize[] = this.model.resolutionBuckets;
     if (source === RealtimeMediaSource.CAMERA && buckets.length > 0 &&
       !buckets.some((bucket: ImageSize): boolean => bucket.width === size.width && bucket.height === size.height)) {
@@ -44,6 +45,7 @@ export class MediaService implements MediaServicing {
         `Supported resolutions: ${supportedSizes}`
       );
     }
+
     const scale: number = Math.min(1, Math.sqrt(this.model.maximumInputPixels / (size.width * size.height)));
     return this.alignedSize(
       size,
@@ -56,11 +58,13 @@ export class MediaService implements MediaServicing {
     size: ImageSize
   ): ImageSize {
     this.validateSize(size);
+
     const aspect: number = size.width / size.height;
     const buckets: ImageSize[] = this.model.resolutionBuckets;
     if (buckets.length > 0) {
       let best: ImageSize = buckets[0];
       let distance: number = Math.abs(Math.log(aspect / (best.width / best.height)));
+
       for (let index: number = 1; index < buckets.length; index++) {
         const candidate: ImageSize = buckets[index];
         const candidateDistance: number = Math.abs(Math.log(aspect / (candidate.width / candidate.height)));
@@ -69,8 +73,10 @@ export class MediaService implements MediaServicing {
           distance = candidateDistance;
         }
       }
+
       return best;
     }
+
     const sourceWidth: number = size.width;
     const sourceHeight: number = size.height;
     const pixels: number = sourceWidth * sourceHeight;
@@ -80,11 +86,11 @@ export class MediaService implements MediaServicing {
         'Image pixel count must be finite and positive'
       );
     }
+
     let scale: number = 1;
     let rounding: (
       value: number
     ) => number = Math.round;
-
     if (pixels < this.model.minimumInputPixels) {
       scale = Math.sqrt(this.model.minimumInputPixels / pixels);
       rounding = Math.ceil;
@@ -110,6 +116,7 @@ export class MediaService implements MediaServicing {
         height
       );
     }
+
     return this.boundedAlignedSize(
       sourceWidth * scale,
       sourceHeight * scale
@@ -130,11 +137,13 @@ export class MediaService implements MediaServicing {
         'Target bounds must be positive and finite'
       );
     }
+
     let scale: number = Math.min(1, maximumSize.width / size.width, maximumSize.height / size.height);
     const pixels: number = size.width * scale * size.height * scale;
     if (frameInterpolationEnabled && pixels > 900000) {
       scale *= Math.sqrt(900000 / pixels);
     }
+
     return this.alignedSize(
       size,
       scale
@@ -179,6 +188,7 @@ export class MediaService implements MediaServicing {
       divisor = remainder;
       remainder = next;
     }
+
     const alignedScale: number = Math.floor(divisor * scale / 4) * 4;
     if (alignedScale >= 4) {
       return new ImageSize(
@@ -186,6 +196,7 @@ export class MediaService implements MediaServicing {
         size.height / divisor * alignedScale
       );
     }
+
     const width: number = Math.floor(size.width * scale / 4) * 4;
     const height: number = Math.floor(size.height * scale / 4) * 4;
     if (width < 4 || height < 4) {
@@ -194,6 +205,7 @@ export class MediaService implements MediaServicing {
         'No aligned video size is available within the size limits'
       );
     }
+
     return new ImageSize(
       width,
       height
@@ -216,15 +228,18 @@ export class MediaService implements MediaServicing {
     const unitPixels: number = alignment * alignment;
     const minimumUnits: number = Math.ceil(this.model.minimumInputPixels / unitPixels);
     const maximumUnits: number = Math.floor(this.model.maximumInputPixels / unitPixels);
+
     let bestWidth: number = alignment;
     let bestHeight: number = minimumUnits * alignment;
     let bestDistance: number = Infinity;
+
     for (let widthUnits: number = 1; widthUnits <= maximumUnits; widthUnits++) {
       const minimumHeight: number = Math.ceil(minimumUnits / widthUnits);
       const maximumHeight: number = Math.floor(maximumUnits / widthUnits);
       if (minimumHeight > maximumHeight) {
         continue;
       }
+
       const heightUnits: number = Math.min(Math.max(Math.round(height / alignment), minimumHeight), maximumHeight);
       const candidateWidth: number = widthUnits * alignment;
       const candidateHeight: number = heightUnits * alignment;
@@ -236,12 +251,14 @@ export class MediaService implements MediaServicing {
           (candidateHeight - height) / height,
           2
         );
+
       if (distance < bestDistance) {
         bestDistance = distance;
         bestWidth = candidateWidth;
         bestHeight = candidateHeight;
       }
     }
+
     return new ImageSize(
       bestWidth,
       bestHeight

@@ -173,6 +173,7 @@ export class MediaSourceController implements MediaSourceControlling {
         void this.finishPlaybackIfEnded();
       }
     );
+
     this.audioSourceController = new AudioSourceController(
       (frame: AudioFrame): void => {
         this.audioManager.write(frame);
@@ -258,6 +259,7 @@ export class MediaSourceController implements MediaSourceControlling {
    */
   async start(): Promise<void> {
     const metadata: MediaSourceMetadata = this.requireMetadata();
+
     this.playbackVersion++;
     const version: number = this.playbackVersion;
     this.videoEnded = false;
@@ -281,6 +283,7 @@ export class MediaSourceController implements MediaSourceControlling {
     );
     this.timeline = timeline;
     this.isPaused = false;
+
     try {
       await this.videoSourceController.start(timeline);
       if (version !== this.playbackVersion) {
@@ -289,6 +292,7 @@ export class MediaSourceController implements MediaSourceControlling {
           'Media initialization was cancelled'
         );
       }
+
       if (metadata.hasAudio) {
         this.audioSourceController.start(timeline);
       }
@@ -296,11 +300,13 @@ export class MediaSourceController implements MediaSourceControlling {
       if (version !== this.playbackVersion) {
         throw XmaxError.from(error);
       }
+
       this.playbackVersion++;
       const videoStopPromise: Promise<void> = this.videoSourceController.stop();
       this.audioSourceController.stop();
       await videoStopPromise;
       await this.audioManager.stop();
+
       this.timeline = null;
       throw XmaxError.from(error);
     }
@@ -311,6 +317,7 @@ export class MediaSourceController implements MediaSourceControlling {
     if (this.isPaused) {
       return;
     }
+
     const timeline: MediaTimeline | null = this.timeline;
     if (timeline === null) {
       throw new XmaxError(
@@ -321,6 +328,7 @@ export class MediaSourceController implements MediaSourceControlling {
 
     timeline.pause();
     this.isPaused = true;
+
     try {
       this.videoSourceController.pause();
       if (this.hasAudio) {
@@ -340,6 +348,7 @@ export class MediaSourceController implements MediaSourceControlling {
           'Video'
         );
       }
+
       this.isPaused = false;
       throw XmaxError.from(error);
     }
@@ -350,6 +359,7 @@ export class MediaSourceController implements MediaSourceControlling {
     if (!this.isPaused) {
       return;
     }
+
     const timeline: MediaTimeline | null = this.timeline;
     if (timeline === null) {
       throw new XmaxError(
@@ -357,11 +367,13 @@ export class MediaSourceController implements MediaSourceControlling {
         'Local media source is not active'
       );
     }
+
     const pausedDurationUs: number = timeline.resume();
     this.videoSourceController.resume(pausedDurationUs);
     if (this.hasAudio) {
       this.audioSourceController.resume(pausedDurationUs);
     }
+
     this.isPaused = false;
     void this.finishPlaybackIfEnded();
   }
@@ -372,6 +384,7 @@ export class MediaSourceController implements MediaSourceControlling {
       this.completionPending || this.completionNotified) {
       return;
     }
+
     const version: number = this.playbackVersion;
     this.completionPending = true;
     try {
@@ -381,6 +394,7 @@ export class MediaSourceController implements MediaSourceControlling {
       if (version !== this.playbackVersion || this.isPaused || this.timeline === null) {
         return;
       }
+
       this.completionNotified = true;
       this.endedListener();
     } catch (error) {
@@ -432,6 +446,7 @@ export class MediaSourceController implements MediaSourceControlling {
     this.audioEnded = false;
     this.completionPending = false;
     this.completionNotified = false;
+
     const videoStopPromise: Promise<void> = this.videoSourceController.stop();
     this.audioSourceController.stop();
     await videoStopPromise;
@@ -555,6 +570,7 @@ export class MediaSourceController implements MediaSourceControlling {
       displaySize.height,
       this.mediaService.model.defaultFrameRate
     );
+
     const targetSize: ImageSize = this.mediaService.resolveMediaSize(
       new ImageSize(
         requestedFormat.width,

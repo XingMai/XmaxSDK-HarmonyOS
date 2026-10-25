@@ -144,6 +144,7 @@ export class AudioSourceController implements AudioSourceControlling {
     this.loopIndex = 0;
     this.isPaused = false;
     this.pendingEndOfStream = false;
+
     this.decoder = this.createDecoder();
   }
 
@@ -155,6 +156,7 @@ export class AudioSourceController implements AudioSourceControlling {
     if (this.isPaused) {
       return;
     }
+
     const decoder: AudioFileFrameDecoder | null = this.decoder;
     if (decoder === null) {
       throw new XmaxError(
@@ -162,6 +164,7 @@ export class AudioSourceController implements AudioSourceControlling {
         'Local audio source is not active'
       );
     }
+
     this.isPaused = true;
     decoder.pause();
   }
@@ -180,6 +183,7 @@ export class AudioSourceController implements AudioSourceControlling {
     if (!this.isPaused) {
       return;
     }
+
     const decoder: AudioFileFrameDecoder | null = this.decoder;
     if (decoder === null) {
       throw new XmaxError(
@@ -187,8 +191,10 @@ export class AudioSourceController implements AudioSourceControlling {
         'Local audio source is not active'
       );
     }
+
     decoder.resume(pausedDurationUs);
     this.isPaused = false;
+
     if (this.pendingEndOfStream) {
       this.pendingEndOfStream = false;
       this.handleEndOfStream(this.loopIndex);
@@ -199,7 +205,9 @@ export class AudioSourceController implements AudioSourceControlling {
   stop(): void {
     this.sourceVersion++;
     this.hasEnded = false;
+
     this.releaseDecoder();
+
     this.filePath = '';
     this.timeline = null;
     this.loopIndex = 0;
@@ -282,6 +290,7 @@ export class AudioSourceController implements AudioSourceControlling {
           this.endedListener();
           return;
         }
+
         this.loopIndex++;
 
         try {

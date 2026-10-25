@@ -55,6 +55,7 @@ export class XmaxClient {
       configuration.loggerOptions,
       configuration.environment
     );
+
     this.context = context;
     this.apiService = new ApiService(
       configuration.apiKey,
@@ -86,6 +87,7 @@ export class XmaxClient {
         this.configuration.apiKey,
         baseURL
       );
+
     return new XmaxRealtimeManager(
       this.context,
       options,

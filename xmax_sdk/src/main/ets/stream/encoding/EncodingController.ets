@@ -56,6 +56,7 @@ export class EncodingController implements EncodingControlling {
           'Unsupported video encoder preference'
         );
     }
+
     this.rtcManager.configureVideoEncoding(new VideoEncodingConfiguration(
       videoFormat.width,
       videoFormat.height,

@@ -168,8 +168,10 @@ export function updateRealtimeVideoTrackOrientation(
   if (metadata === undefined) {
     return;
   }
+
   const changed: boolean = metadata.isLandscape !== undefined && metadata.isLandscape !== isLandscape;
   metadata.isLandscape = isLandscape;
+
   if (notify && changed) {
     metadata.orientationChangeHandler?.();
   }

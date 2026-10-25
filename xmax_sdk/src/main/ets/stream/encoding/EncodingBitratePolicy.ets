@@ -66,6 +66,7 @@ export class EncodingBitratePolicy {
     format: RealtimeVideoFormat
   ): VideoBitrateBudget {
     format.validate();
+
     let maximum: number;
     if (format.maximumBitrate !== undefined) {
       maximum = format.maximumBitrate;
@@ -84,6 +85,7 @@ export class EncodingBitratePolicy {
         );
       }
     }
+
     const minimum: number = format.minimumBitrate ?? 100;
     if (minimum > maximum) {
       throw new XmaxError(
@@ -91,6 +93,7 @@ export class EncodingBitratePolicy {
         'Minimum bitrate must not exceed maximum bitrate after applying SDK defaults'
       );
     }
+
     return new VideoBitrateBudget(
       minimum,
       maximum
@@ -224,6 +227,7 @@ export class EncodingBitratePolicy {
         EncodingBitratePolicy.REFERENCE_30_FPS
       );
     const bitrate10: number = bitrate15 * (400 / 500);
+
     return [
       EncodingBitratePolicy.interpolate(
         fps,
@@ -282,6 +286,7 @@ export class EncodingBitratePolicy {
     if (value <= first.value) {
       return first.bitrate * (value / first.value);
     }
+
     for (let index: number = 1; index < points.length; index++) {
       const upper: BitratePoint = points[index];
       if (value <= upper.value) {
@@ -290,6 +295,7 @@ export class EncodingBitratePolicy {
         return lower.bitrate + (upper.bitrate - lower.bitrate) * ratio;
       }
     }
+
     const last: BitratePoint = points[points.length - 1];
     return last.bitrate * (value / last.value);
   }

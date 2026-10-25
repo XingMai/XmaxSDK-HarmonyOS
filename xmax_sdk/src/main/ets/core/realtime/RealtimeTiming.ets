@@ -208,8 +208,10 @@ export class RealtimeTiming {
   ): void {
     const run: RealtimeTimingRun | null = this.active;
     if (run === null || run.finished || run.taskId !== taskId) { return; }
+
     run.readyAt = this.now();
     this.complete(run);
+
     if (run.startedAt !== undefined) {
       this.emit((): string => this.format(
         run,
@@ -229,8 +231,10 @@ export class RealtimeTiming {
     run: RealtimeTimingRun | null
   ): void {
     if (run === null || run.finished) { return; }
+
     run.failureAt = this.now();
     this.complete(run);
+
     const failure: XmaxError = XmaxError.from(error);
     if (failure.code !== XmaxErrorCode.CANCELLED && run.startedAt !== undefined) {
       this.emit((): string => this.formatFailure(
@@ -302,6 +306,7 @@ export class RealtimeTiming {
       run.seiMatchedAt === undefined || run.readyAt === undefined) {
       return '实时生成启动耗时不可用 (Realtime Generation Startup Timing Unavailable)';
     }
+
     const lines: string[] = [
       confirmationOnly ? '静态生成任务确认耗时 (Static Generation Confirmation Timing)' :
         '实时生成启动耗时 (Realtime Generation Startup Timing)',
@@ -314,6 +319,7 @@ export class RealtimeTiming {
     if (!confirmationOnly) {
       lines.push(`${XmaxLogger.localized("└─ 结果流确认到首帧就绪：", "└─ Result Stream Confirmation to First Frame Ready: ")}${this.duration(run.seiMatchedAt, run.readyAt)}`);
     }
+
     return lines.join('\n');
   }
 
@@ -334,6 +340,7 @@ export class RealtimeTiming {
       `${XmaxLogger.localized("├─ 已耗时：", "├─ Elapsed Time: ")}${this.duration(run.startedAt, run.failureAt)}`,
       `${XmaxLogger.localized("├─ 停留阶段：", "├─ Current Stage: ")}${this.pendingStage(run)}`
     ];
+
     this.appendDetail(
       lines,
       XmaxLogger.localized(
@@ -379,7 +386,9 @@ export class RealtimeTiming {
       run.seiMatchedAt,
       run.failureAt
     );
+
     lines.push(`${XmaxLogger.localized("└─ 失败原因：", "└─ Failure Reason: ")}${error.message}`);
+
     return lines.join('\n');
   }
 

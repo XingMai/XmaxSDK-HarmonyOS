@@ -63,6 +63,7 @@ export class QualityDirection {
     this.baseline = baseline;
     this.downlink = downlink;
     this.minimumInputPixels = minimumInputPixels;
+
     this.currentLevel = Math.min(5, Math.max(1, Math.round(level)));
     while (this.currentLevel > 1 && !this.supports(this.currentLevel)) { this.currentLevel--; }
   }
@@ -119,6 +120,7 @@ export class QualityDirection {
   ): number | undefined {
     if (!Number.isFinite(sampledAt) || !Number.isFinite(now) || sampledAt > now ||
       (this.lastSample !== undefined && sampledAt <= this.lastSample)) { return undefined; }
+
     if (this.lastSample !== undefined && sampledAt - this.lastSample > 5) { this.resetSamples(); }
     this.lastSample = sampledAt;
     if (now - sampledAt > 5 || now < this.stableUntil) {
@@ -126,6 +128,7 @@ export class QualityDirection {
       this.poorSamples = 0;
       return undefined;
     }
+
     let step: number;
     switch (quality) {
       case RealtimeNetworkQualityLevel.BAD:
@@ -147,6 +150,7 @@ export class QualityDirection {
         this.poorSamples = 0;
         return undefined;
     }
+
     let candidate: number = this.currentLevel + step;
     while (candidate >= 1 && candidate <= 5) {
       if (!QualityVideoFormat.same(
@@ -173,11 +177,13 @@ export class QualityDirection {
     this.resetSamples();
     this.stableUntil = now + 4;
     if (!success) { return; }
+
     if (next < this.currentLevel) { this.probeUntil = now + 20; }
     else if (next > this.currentLevel) {
       if (now < this.probeUntil) { this.upgradeAfter = now + 60; }
       this.probeUntil = 0;
     }
+
     this.currentLevel = next;
   }
 

@@ -138,21 +138,25 @@ export class RenderController implements RenderControlling {
         this.remoteBinding?.setVideoReady(ready);
       }
     );
+
     rtcManager.setRemoteVideoFrameListener((stream: RemoteStream, copyFrame: () => RealtimeVideoFrame): void => {
       if (this.remoteStream?.key() !== stream.key() || this.remoteFrameError !== null) {
         return;
       }
+
       if (!this.remoteFrameReady) {
         this.remoteFrameReady = true;
         this.finishRemoteFrameWaiters();
       }
       // Resume needs only a next-frame notification; copy pixels only for the public listener.
       this.finishNextRemoteFrameWait();
+
       const shouldDeliver: boolean = this.frameDispatcher.hasListener && this.remoteFrameDeliveryActive;
       if (!shouldDeliver) {
         this.stopFrameObservation(stream);
         return;
       }
+
       try {
         const frame: RealtimeVideoFrame = copyFrame();
         this.frameDispatcher.dispatch(frame);
@@ -181,6 +185,7 @@ export class RenderController implements RenderControlling {
         true
       );
     }
+
     this.frameDispatcher.setListener(listener);
     if (listener === null && stream !== null && this.remoteFrameReady && this.nextRemoteFrameWaiter === null) {
       this.stopFrameObservation(stream);
@@ -201,6 +206,7 @@ export class RenderController implements RenderControlling {
     if (stream === null || binding === null) {
       return;
     }
+
     try {
       const pixelMap: image.PixelMap = await this.rtcManager.takeRemoteSnapshot(stream);
       if (version !== this.remoteFreezeVersion ||
@@ -208,11 +214,13 @@ export class RenderController implements RenderControlling {
         await pixelMap.release();
         return;
       }
+
       await this.clearFrozenRemoteFrame();
       if (version !== this.remoteFreezeVersion) {
         await pixelMap.release();
         return;
       }
+
       this.frozenRemoteFrame = pixelMap;
       binding.setPreviewFrame(pixelMap);
     } catch (error) {
@@ -229,6 +237,7 @@ export class RenderController implements RenderControlling {
     if (this.frozenRemoteFrame === null) {
       return;
     }
+
     try {
       if (this.remoteStream !== null) {
         await this.waitForNextRemoteFrame();
@@ -239,6 +248,7 @@ export class RenderController implements RenderControlling {
         'Render'
       );
     }
+
     if (version === this.remoteFreezeVersion) {
       await this.clearFrozenRemoteFrame();
     }
@@ -256,6 +266,7 @@ export class RenderController implements RenderControlling {
     this.remoteStream = stream;
     this.remoteFrameDeliveryActive = stream !== null;
     this.remoteVideoController.setRemoteStream(stream);
+
     if (stream !== null) {
       this.rtcManager.observeRemoteVideoFrames(
         stream,
@@ -278,6 +289,7 @@ export class RenderController implements RenderControlling {
     if (this.remoteFrameReady) {
       return Promise.resolve();
     }
+
     return new Promise<void>((resolve: () => void, reject: (
       error: XmaxError
     ) => void): void => {
@@ -311,6 +323,7 @@ export class RenderController implements RenderControlling {
     if (this.remoteStream === null || this.remoteFrameReady || this.remoteFrameError !== null) {
       return;
     }
+
     this.stopRemoteVideoFrameDelivery();
     this.remoteFrameError = error;
     this.stopFrameObservation(this.remoteStream);
@@ -322,10 +335,12 @@ export class RenderController implements RenderControlling {
   private resetRemoteFrameWait(): void {
     ++this.remoteFreezeVersion;
     this.stopRemoteVideoFrameDelivery();
+
     const stream: RemoteStream | null = this.remoteStream;
     this.remoteStream = null;
     this.remoteFrameReady = false;
     this.remoteFrameError = null;
+
     this.finishNextRemoteFrameWait(new XmaxError(
       XmaxErrorCode.CANCELLED,
       'Remote video next frame wait was cancelled'
@@ -335,6 +350,7 @@ export class RenderController implements RenderControlling {
       XmaxErrorCode.CANCELLED,
       'Remote video first frame wait was cancelled'
     ));
+
     if (stream !== null) {
       this.stopFrameObservation(stream);
     }
@@ -368,10 +384,12 @@ export class RenderController implements RenderControlling {
         'Remote video next frame wait is unavailable'
       ));
     }
+
     this.finishNextRemoteFrameWait(new XmaxError(
       XmaxErrorCode.CANCELLED,
       'Remote video next frame wait was replaced'
     ));
+
     return new Promise<void>((
       resolve: () => void,
       reject: (
@@ -393,6 +411,7 @@ export class RenderController implements RenderControlling {
         reject(XmaxError.from(error));
         return;
       }
+
       waiter.timer = setTimeout(
         (): void => {
           if (this.nextRemoteFrameWaiter === waiter) {
@@ -419,8 +438,10 @@ export class RenderController implements RenderControlling {
     if (waiter === null) {
       return;
     }
+
     this.nextRemoteFrameWaiter = null;
     clearTimeout(waiter.timer);
+
     if (error === undefined) {
       waiter.resolve();
     } else {
@@ -433,6 +454,7 @@ export class RenderController implements RenderControlling {
     const frame: image.PixelMap | null = this.frozenRemoteFrame;
     this.frozenRemoteFrame = null;
     this.remoteBinding?.setPreviewFrame(undefined);
+
     if (frame !== null) {
       await frame.release();
     }
@@ -492,11 +514,13 @@ export class RenderController implements RenderControlling {
         this.remoteVideoController.detach(viewId);
       }
     );
+
     this.remoteBinding = binding;
     VideoRenderRegistry.register(
       track,
       binding
     );
+
     TrajectoryRegistry.register(
       track,
       new TrajectoryBinding(
@@ -519,6 +543,7 @@ export class RenderController implements RenderControlling {
       VideoRenderRegistry.unregister(track);
       TrajectoryRegistry.unregister(track);
     }
+
     this.remoteVideoController.reset();
     this.remoteBinding = null;
   }

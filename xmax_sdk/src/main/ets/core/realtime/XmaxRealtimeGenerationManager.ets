@@ -113,6 +113,7 @@ export class XmaxRealtimeGenerationManager {
         'Static generation requires a non-empty static_image_path'
       );
     }
+
     if (context === undefined && this.currentContext === null) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
@@ -147,6 +148,7 @@ export class XmaxRealtimeGenerationManager {
       context,
       extraParams
     );
+
     const resolvedContext: RealtimeContext | null = context ?? this.currentContext;
     if (resolvedContext === null) {
       throw new XmaxError(
@@ -160,6 +162,7 @@ export class XmaxRealtimeGenerationManager {
     this.startingExtraParams = context === undefined ? this.currentExtraParams : extraParams;
     this.startingVideoFormat = videoFormat;
     this.startingFaceRestoration = faceRestoration ?? this.currentFaceRestoration;
+
     try {
       const confirmation: Promise<void> = this.streamController.beginGeneration(
         taskId,
@@ -177,6 +180,7 @@ export class XmaxRealtimeGenerationManager {
         taskId,
         this.startingVideoFormat ?? videoFormat
       );
+
       // Use the latest conditions and video format merged during confirmation.
       this.currentContext = this.startingContext ?? resolvedContext;
       this.currentExtraParams = this.startingExtraParams;
@@ -191,6 +195,7 @@ export class XmaxRealtimeGenerationManager {
           'Realtime'
         );
       }
+
       throw XmaxError.from(error);
     } finally {
       this.startingContext = null;
@@ -213,6 +218,7 @@ export class XmaxRealtimeGenerationManager {
     if (taskId.length === 0 || context === null) {
       return;
     }
+
     this.streamController.updateGeneration(
       taskId,
       this.generationFormat(format),
@@ -222,6 +228,7 @@ export class XmaxRealtimeGenerationManager {
       this.mediaController.usesContainPadding,
       this.startingContext !== null ? this.startingExtraParams : this.currentExtraParams
     );
+
     if (this.startingContext !== null) {
       this.startingVideoFormat = format;
     } else {
@@ -256,6 +263,7 @@ export class XmaxRealtimeGenerationManager {
     if (context === undefined && faceRestoration === undefined) {
       return;
     }
+
     const resolvedContext: RealtimeContext | null = context ?? this.startingContext ?? this.currentContext;
     if (resolvedContext === null) {
       throw new XmaxError(
@@ -263,6 +271,7 @@ export class XmaxRealtimeGenerationManager {
         'A realtime context is required for the first generation'
       );
     }
+
     const resolvedFaceRestoration: boolean =
       faceRestoration ?? this.startingFaceRestoration ?? this.currentFaceRestoration;
     const resolvedExtraParams: RealtimeGenerationParameters | undefined = context !== undefined ? extraParams :
@@ -277,6 +286,7 @@ export class XmaxRealtimeGenerationManager {
       this.mediaController.usesContainPadding,
       resolvedExtraParams
     );
+
     // Commit startingContext after confirmation so newer conditions are not overwritten.
     if (this.startingContext !== null) {
       this.startingContext = resolvedContext;
@@ -342,6 +352,7 @@ export class XmaxRealtimeGenerationManager {
     if (taskId.length > 0 && this.streamController.currentGenerationTaskId !== taskId) {
       return;
     }
+
     this.mediaController.stop();
 
     this.streamController.stopGeneration(taskId);
@@ -358,6 +369,7 @@ export class XmaxRealtimeGenerationManager {
     this.currentContext = null;
     this.currentExtraParams = undefined;
     this.currentFaceRestoration = false;
+
     this.stop(taskId);
   }
 
@@ -371,6 +383,7 @@ export class XmaxRealtimeGenerationManager {
       /-/g,
       ''
     );
+
     const bytes: Uint8Array = new Uint8Array(16);
     for (let index: number = 0; index < bytes.length; index++) {
       bytes[index] = Number.parseInt(

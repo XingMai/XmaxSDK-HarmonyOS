@@ -161,6 +161,7 @@ export class CameraFrameOutput {
     if (this.isReleased) {
       return;
     }
+
     if (observeDisplayChange && !this.isListeningForDisplayChanges) {
       display.on(
         'change',
@@ -168,6 +169,7 @@ export class CameraFrameOutput {
       );
       this.isListeningForDisplayChanges = true;
     }
+
     const currentDisplay: display.Display = display.getDefaultDisplaySync();
     const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
     this.configureNative(
@@ -231,6 +233,7 @@ export class CameraFrameOutput {
       videoFormat.fps,
       captureFrameRate
     );
+
     this.videoFormat = videoFormat;
     this.captureFrameRate = captureFrameRate;
     this.rotation = rotation;
@@ -248,11 +251,13 @@ export class CameraFrameOutput {
     if (this.isReleased || videoFormat === null) {
       return;
     }
+
     try {
       const currentDisplay: display.Display = display.getDefaultDisplaySync();
       if (currentDisplay.id !== displayId) {
         return;
       }
+
       const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
       const outputFormat: RealtimeVideoFormat = this.formatForDisplay(
         videoFormat,
@@ -282,8 +287,10 @@ export class CameraFrameOutput {
     if (this.isReleased) {
       return;
     }
+
     this.isReleased = true;
     this.videoFormat = null;
+
     if (this.isListeningForDisplayChanges) {
       this.isListeningForDisplayChanges = false;
       try {
@@ -301,6 +308,7 @@ export class CameraFrameOutput {
         );
       }
     }
+
     try {
       await this.output.release();
     } catch (error) {
@@ -351,6 +359,7 @@ export class CameraFrameOutput {
         `${XmaxLogger.localized("接收 Native 相机视频帧失败 (Native Camera Frame Receive Failed)\n└─ 原因：", "接收 Native 相机视频帧失败 (Native Camera Frame Receive Failed)\n└─ Reason: ")}${error}`,
         'Camera'
       );
+
       try {
         errorListener(new XmaxError(
           XmaxErrorCode.MEDIA_ERROR,
@@ -366,6 +375,7 @@ export class CameraFrameOutput {
       }
       return;
     }
+
     if (data === undefined || width <= 0 || height <= 0) {
       return;
     }

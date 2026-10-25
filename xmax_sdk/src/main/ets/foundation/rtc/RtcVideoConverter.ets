@@ -58,6 +58,7 @@ export class RtcVideoConverter {
         'Invalid remote I420 video frame'
       );
     }
+
     let rotation: VideoRotation;
     switch (frame.rotation) {
       case 0: rotation = VideoRotation.ROTATION_0; break;
@@ -70,6 +71,7 @@ export class RtcVideoConverter {
           'Unsupported remote video rotation'
         );
     }
+
     const planes: VideoFramePlane[] = [];
     for (let index: number = 0; index < 3; index++) {
       const width: number = index === 0 ? frame.width : Math.ceil(frame.width / 2);
@@ -83,6 +85,7 @@ export class RtcVideoConverter {
           'Invalid remote video plane or stride'
         );
       }
+
       const data: ArrayBuffer = new ArrayBuffer(width * height);
       const pixels: Uint8Array = new Uint8Array(data);
       const input: Uint8Array = new Uint8Array(source);
@@ -95,11 +98,13 @@ export class RtcVideoConverter {
           row * width
         );
       }
+
       planes.push(new VideoFramePlane(
         data,
         width
       ));
     }
+
     return new RealtimeVideoFrame(
       frame.width,
       frame.height,

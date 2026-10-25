@@ -165,6 +165,7 @@ export class VideoController {
           this.currentPlaybackState === LocalVideoPlaybackState.ENDED) {
           return;
         }
+
         this.currentPlaybackState = LocalVideoPlaybackState.ENDED;
         this.acceptsFrames = false;
         this.stopFrozenPublishing();
@@ -226,6 +227,7 @@ export class VideoController {
     this.prepareForStop();
     this.activeTrack = null;
     this.currentPlaybackState = undefined;
+
     await this.mediaSourceController.stop();
 
     if (hasAudio) {
@@ -348,6 +350,7 @@ export class VideoController {
 
     try {
       this.resetPlaybackFrames();
+
       const sourceConfiguration: MediaSourceConfiguration =
         await this.mediaSourceController.prepare(
           filePath,
@@ -373,6 +376,7 @@ export class VideoController {
       this.registerPreview(track);
       this.acceptsFrames = true;
       await this.mediaSourceController.start();
+
       this.activeTrack = track;
       this.currentPlaybackState = this.mediaSourceController.hasEnded ?
         LocalVideoPlaybackState.ENDED : LocalVideoPlaybackState.PLAYING;
@@ -390,6 +394,7 @@ export class VideoController {
       this.stopFrozenPublishing();
       this.currentPlaybackState = undefined;
       this.resetPlaybackFrames();
+
       const hasAudio: boolean = this.mediaSourceController.hasAudio;
       await this.mediaSourceController.stop();
 
@@ -425,6 +430,7 @@ export class VideoController {
     if (!this.acceptsFrames) {
       return;
     }
+
     const hasTimestamp: boolean = Number.isFinite(frame.timestampUs);
     const output: VideoFrame = !hasTimestamp || frame.timestampUs > this.lastVideoTimestampUs ? frame :
       new BufferVideoFrame(
@@ -433,10 +439,12 @@ export class VideoController {
         frame.planes,
         frame.rotation
       );
+
     this.lastVideoFrame = output;
     if (hasTimestamp) {
       this.lastVideoTimestampUs = output.timestampUs;
     }
+
     this.streamController.pushLocalVideoFrame(output);
   }
 
@@ -451,15 +459,18 @@ export class VideoController {
     if (!this.acceptsFrames) {
       return;
     }
+
     const hasTimestamp: boolean = Number.isFinite(frame.timestampUs);
     const output: AudioFrame = !hasTimestamp || frame.timestampUs > this.lastAudioTimestampUs ? frame :
       new AudioFrame(
         frame.data,
         this.lastAudioTimestampUs + 1
       );
+
     if (hasTimestamp) {
       this.lastAudioTimestampUs = output.timestampUs;
     }
+
     this.streamController.pushLocalAudioFrame(output);
   }
 
@@ -469,6 +480,7 @@ export class VideoController {
     if (track === null || this.frozenVideoTimer >= 0) {
       return;
     }
+
     const fps: number = track.videoFormat?.fps ?? 30;
     this.publishFrozenVideoFrame();
     this.frozenVideoTimer = setInterval(
@@ -507,10 +519,12 @@ export class VideoController {
     if (!this.acceptsFrames || frame === null) {
       return;
     }
+
     const timestampUs: number = Math.max(
       MediaTimeline.currentTimestampUs(),
       this.lastVideoTimestampUs + 1
     );
+
     try {
       this.publishDecodedVideoFrame(new BufferVideoFrame(
         frame.format,
@@ -528,10 +542,12 @@ export class VideoController {
     if (!this.acceptsFrames || !this.hasAudio) {
       return;
     }
+
     const timestampUs: number = Math.max(
       MediaTimeline.currentTimestampUs(),
       this.lastAudioTimestampUs + 1
     );
+
     try {
       this.publishDecodedAudioFrame(new AudioFrame(
         this.silentAudioData,

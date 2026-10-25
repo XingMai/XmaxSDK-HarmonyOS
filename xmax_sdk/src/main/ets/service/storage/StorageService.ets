@@ -318,6 +318,7 @@ export class StorageService implements StorageServicing {
         source,
         mediaType
       );
+
       XmaxLogger.info(
         "开始上传 (Upload Started)\n" +
         `${XmaxLogger.localized("├─ 类型：", "├─ Type: ")}${mediaType}\n` +
@@ -369,6 +370,7 @@ export class StorageService implements StorageServicing {
           'Storage'
         );
       }
+
       if (error instanceof Error) {
         throw error;
       }
@@ -455,6 +457,7 @@ export class StorageService implements StorageServicing {
       fileIo.OpenMode.READ_ONLY
     );
     let extractor: media.AVMetadataExtractor | null = null;
+
     try {
       extractor = await media.createAVMetadataExtractor();
       extractor.fdSrc = {
@@ -462,6 +465,7 @@ export class StorageService implements StorageServicing {
         offset: 0,
         length: fileIo.statSync(sourceFile.fd).size
       };
+
       const metadata: media.AVMetadata = await extractor.fetchMetadata();
       const width: number = Number.parseInt(metadata.videoWidth ?? '');
       const height: number = Number.parseInt(metadata.videoHeight ?? '');
@@ -798,6 +802,7 @@ export class StorageService implements StorageServicing {
       'tiff': 'image/tiff',
       'avif': 'image/avif'
     };
+
     return this.inferContentType(
       fileName,
       types,
@@ -826,6 +831,7 @@ export class StorageService implements StorageServicing {
       '3g2': 'video/3gpp2',
       'ts': 'video/mp2t'
     };
+
     return this.inferContentType(
       fileName,
       types,
@@ -857,6 +863,7 @@ export class StorageService implements StorageServicing {
         `Unable to infer ${mediaType} content type from file extension`
       );
     }
+
     return contentType;
   }
 

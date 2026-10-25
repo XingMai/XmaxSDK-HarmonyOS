@@ -138,6 +138,7 @@ export class RealtimeOperationToken {
     if (error !== undefined && this.failure === null) {
       this.failure = error;
     }
+
     this.valid = false;
     const reason: XmaxError = this.failure ?? RealtimeOperationToken.cancelledError();
     this.cancellationListeners.forEach((listener: CancellationListener): void => listener(reason));
@@ -166,6 +167,7 @@ export class RealtimeOperationToken {
       } else {
         reject(this.failure ?? RealtimeOperationToken.cancelledError());
       }
+
       // Observe the original Promise after cancellation to consume late rejections.
       promise.then(
         (value: T): void => {
@@ -200,6 +202,7 @@ export class RealtimeOperationToken {
         milliseconds
       );
     });
+
     try {
       await this.wait(delay);
     } finally {
@@ -403,6 +406,7 @@ export class RealtimeCoordinator {
         'Another realtime operation is in progress; wait for it to finish'
       )));
     }
+
     const operation = new RealtimeOperation(
       kind,
       failureScope
@@ -415,6 +419,7 @@ export class RealtimeCoordinator {
         this.state.taskId
       ));
     }
+
     const execution: Promise<T> = this.execute(
       body,
       operation.token
@@ -424,6 +429,7 @@ export class RealtimeCoordinator {
       (): void => { },
       (_error: Object): void => { }
     );
+
     return this.finishRun(
       execution,
       operation
@@ -445,11 +451,13 @@ export class RealtimeCoordinator {
   ): boolean {
     if (this.termination !== null || this.activeOperation !== null ||
       this.state.connectionState !== RealtimeConnectionState.GENERATING) { return false; }
+
     const operation: RealtimeOperation = new RealtimeOperation(
       RealtimeOperationKind.CONFIGURATION,
       null
     );
     this.activeOperation = operation;
+
     try {
       operation.token.ensureCurrent();
       body(operation.token);
@@ -492,6 +500,7 @@ export class RealtimeCoordinator {
     if (this.activeOperation?.token !== token) {
       throw RealtimeOperationToken.cancelledError();
     }
+
     this.setState(next);
     // Listeners may synchronously stop or close; revalidate ownership before continuing.
     token.ensureCurrent();
@@ -563,6 +572,7 @@ export class RealtimeCoordinator {
       const value: T = await execution;
       operation.token.ensureCurrent();
       this.finish(operation);
+
       return value;
     } catch (error) {
       const resolved: XmaxError = XmaxError.from(error);
@@ -579,9 +589,11 @@ export class RealtimeCoordinator {
           resolved
         );
       }
+
       if (pending !== null) {
         await pending.promise;
       }
+
       this.finish(operation);
       if (pending === null) {
         // Local creation owns rollback. Release operation ownership before notifying IDLE without a reason so listeners can retry.
@@ -593,6 +605,7 @@ export class RealtimeCoordinator {
           this.errorManager.handle(resolved);
         }
       }
+
       if (operation.token.terminalError !== null) {
         throw operation.token.terminalError;
       }
@@ -638,8 +651,10 @@ export class RealtimeCoordinator {
       // Register the shared task before cleanup and synchronous state notifications run.
       pending.promise = Promise.resolve().then((): Promise<void> => this.performTermination(pending));
     }
+
     pending.reason = pending.error !== undefined ? RealtimeReason.failure(pending.error) :
       pending.reason ?? reason ?? RealtimeReason.NORMAL;
+
     const active: RealtimeOperation | null = this.activeOperation;
     if (active !== null && this.affects(
       pending.target,
@@ -651,12 +666,14 @@ export class RealtimeCoordinator {
       }
       active.token.invalidate(pending.error);
     }
+
     if (beginsDisconnection) {
       this.setState(new RealtimeState(
         RealtimeConnectionState.DISCONNECTING,
         this.state.sessionId
       ));
     }
+
     return pending;
   }
 
@@ -674,6 +691,7 @@ export class RealtimeCoordinator {
       for (const operation of operations) {
         await operation.completion;
       }
+
       const revision: number = pending.revision;
       const scope: RealtimeTerminationScope = pending.target;
       try {
@@ -688,16 +706,20 @@ export class RealtimeCoordinator {
           'Realtime'
         );
       }
+
       if (pending.revision !== revision || pending.operations.size > 0) {
         continue;
       }
+
       const next: RealtimeState = this.resolveFinalState(pending);
       if (pending.error !== undefined) {
         this.errorManager.handle(pending.error);
       }
+
       if (this.activeOperation?.termination === pending) {
         this.finish(this.activeOperation);
       }
+
       this.termination = null;
       this.setState(next);
       return;
@@ -770,6 +792,7 @@ export class RealtimeCoordinator {
       this.state.taskId === next.taskId && this.state.reason?.kind === next.reason?.kind && this.state.reason?.error === next.reason?.error) {
       return;
     }
+
     this.state = next;
     this.notifyStateListener(next);
   }

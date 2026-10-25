@@ -175,7 +175,9 @@ export class XmaxRealtimeConnectionManager {
             this.activeTargetSize.height
           )
       );
+
       VideoRenderRegistry.notifyVideoFormatChanged(this.activeRemoteTrack);
+
       // Only local camera format changes update this baseline; returned frame dimensions must not.
       TrajectoryRegistry.binding(this.activeRemoteTrack)?.updateResolvedMediaSize(new ImageSize(
         format.width,
@@ -375,6 +377,7 @@ export class XmaxRealtimeConnectionManager {
 
     this.sessionService.stopHeartbeat();
     this.renderController.resetRemoteTrack(remoteTrack);
+
     try {
       await this.streamController.disconnect();
     } catch (error) {

@@ -183,6 +183,7 @@ export class VideoRenderBinding {
     if (view === undefined) {
       return;
     }
+
     this.attachedViews.delete(viewId);
     view.videoReadyListener?.(false);
     this.detachHandler(viewId);
@@ -221,6 +222,7 @@ export class VideoRenderBinding {
     if (this.videoReady === ready) {
       return;
     }
+
     this.videoReady = ready;
     this.attachedViews.forEach((view: AttachedVideoView): void => {
       view.videoReadyListener?.(ready);
@@ -236,6 +238,7 @@ export class VideoRenderBinding {
   dispose(): void {
     this.setPreviewFrame(undefined);
     this.setVideoReady(false);
+
     this.attachedViews.forEach((_view: AttachedVideoView, viewId: string): void => {
       this.detach(viewId);
     });

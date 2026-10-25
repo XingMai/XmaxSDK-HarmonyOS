@@ -90,6 +90,7 @@ export class StorageManager implements StorageManaging {
   ): Promise<StoredFile> {
     const startedAt: number = Date.now();
     let failureLogged: boolean = false;
+
     try {
       const clientConfiguration = new CosXmlServiceConfig(configuration.region);
       this.applyEndpoint(
@@ -117,11 +118,13 @@ export class StorageManager implements StorageManaging {
       if (typeof source === 'string') {
         transferConfiguration.simpleUploadLimit = fileIo.statSync(source).size + 1;
       }
+
       const task: UploadTask = service.upload(
         request,
         undefined,
         transferConfiguration
       );
+
       task.onProgress = (value: HttpProgress): void => {
         progress?.(
           value.complete,
@@ -156,6 +159,7 @@ export class StorageManager implements StorageManaging {
             ));
           }
         };
+
         task.start();
       });
 
@@ -171,12 +175,14 @@ export class StorageManager implements StorageManaging {
       if (error instanceof XmaxError) {
         throw error;
       }
+
       if (!failureLogged) {
         this.logUploadFailure(
           error,
           startedAt
         );
       }
+
       throw new XmaxError(
         XmaxErrorCode.UPLOAD_ERROR,
         this.errorMessage(error)
@@ -244,6 +250,7 @@ export class StorageManager implements StorageManaging {
       if (error instanceof XmaxError) {
         throw error;
       }
+
       throw new XmaxError(
         XmaxErrorCode.DOWNLOAD_ERROR,
         this.errorMessage(error)
@@ -343,12 +350,14 @@ export class StorageManager implements StorageManaging {
       /\/+$/,
       ''
     );
+
     const schemeIndex: number = endpoint.indexOf('://');
     const hostStart: number = schemeIndex < 0 ? 0 : schemeIndex + 3;
     const hostAndPath: string = endpoint.substring(hostStart);
     if (hostAndPath.startsWith('cos.')) {
       endpoint = `${endpoint.substring(0, hostStart)}${configuration.bucket}.${hostAndPath}`;
     }
+
     return `${endpoint}/${this.encodeObjectKey(objectKey)}`;
   }
 

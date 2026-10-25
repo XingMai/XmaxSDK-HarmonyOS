@@ -68,6 +68,7 @@ export class InteractionCoordinateMapper {
       resolvedMediaSize.width < 1 || resolvedMediaSize.height < 1) {
       return null;
     }
+
     const horizontalScale: number = viewportWidth / resolvedMediaSize.width;
     const verticalScale: number = viewportHeight / resolvedMediaSize.height;
     const scale: number = contentMode === VideoContentMode.FIT ?
@@ -75,6 +76,7 @@ export class InteractionCoordinateMapper {
     if (!Number.isFinite(scale) || scale <= 0) {
       return null;
     }
+
     const width: number = resolvedMediaSize.width * scale;
     const height: number = resolvedMediaSize.height * scale;
     return new InteractionMediaFrame(
@@ -108,6 +110,7 @@ export class InteractionCoordinateMapper {
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       return null;
     }
+
     const frame: InteractionMediaFrame | null = InteractionCoordinateMapper.displayedFrame(
       viewportWidth,
       viewportHeight,
@@ -122,6 +125,7 @@ export class InteractionCoordinateMapper {
         point.y < frame.y || point.y > frame.y + frame.height)) {
       return null;
     }
+
     return new RealtimePoint(
       Math.max(0, Math.min(1, (point.x - frame.x) / frame.width)),
       Math.max(0, Math.min(1, (point.y - frame.y) / frame.height))

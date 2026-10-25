@@ -52,8 +52,12 @@ setDownlinkVideoStatisticsListener(
 ## Formatting and Review
 
 - Use two-space ArkTS indentation and one blank line between declarations. Put each declaration parameter on its own line, including a single parameter.
+- Separate distinct logical steps inside methods, functions, and callbacks with one blank line. Keep each step's statements together.
+- Make phase changes visible, such as validation, resource creation, callback binding, execution, state commitment, notification, and cleanup. Choose boundaries by responsibility, not a fixed line count.
+- Keep declarations with the conditions that initialize or validate them, and keep related calculations and assignments together. Do not add a blank line after every statement or control-flow block, or extract helpers solely to create visual sections.
 - Expand multi-argument calls, except compact scalar expressions or string interpolations where expansion would harm readability.
 - Preserve ArkUI component structure, decorator order, Surface lifecycle, and modifier execution order.
 - Use two-space C++ block indentation and four-space continuation indentation.
 - Avoid boilerplate, implementation history, debugging observations, and claims of alignment with another platform.
 - Verify descriptions against the implementation. Formatting-only changes must preserve executable code, API signatures, defaults, parameter order, access control, and ownership.
+- Review method bodies as well as declarations: parameter wrapping alone does not satisfy the formatting conventions. Apply the same logical grouping to native implementations.

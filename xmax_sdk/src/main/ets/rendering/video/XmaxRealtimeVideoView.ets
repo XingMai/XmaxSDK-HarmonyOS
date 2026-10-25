@@ -68,6 +68,7 @@ export struct XmaxRealtimeVideoView {
     if (track === this.currentRemoteTrack) {
       return;
     }
+
     this.currentRemoteTrack = track;
     this.remoteReady = false;
     this.remoteViewKey++;
