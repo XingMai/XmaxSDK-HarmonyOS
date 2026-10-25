@@ -28,6 +28,9 @@ test('recorder PCM packing and padded NV12 conversion execute the production nat
 #include "${path.join(directory, 'realtime_recorder.h')}"
 using xlab::RecordingPacket;
 constexpr int AV_ERR_OK = 0, AVCODEC_BUFFER_FLAGS_EOS = 1;
+constexpr int LOG_APP = 0, LOG_INFO = 1;
+int inputLogs = 0;
+int OH_LOG_Print(int, int, unsigned int, const char *, const char *, ...) { inputLogs++; return 0; }
 struct OH_AVCodecBufferAttr { int64_t pts = 0; int32_t size = 0, offset = 0; uint32_t flags = 0; };
 struct OH_AVBuffer { std::vector<uint8_t> bytes; OH_AVCodecBufferAttr attr; };
 struct EncodedInput { std::vector<uint8_t> bytes; OH_AVCodecBufferAttr attr; };
@@ -38,6 +41,7 @@ using Format = std::unique_ptr<OH_AVFormat, decltype(&OH_AVFormat_Destroy)>;
 const char *OH_MD_KEY_VIDEO_STRIDE = "stride", *OH_MD_KEY_VIDEO_SLICE_HEIGHT = "slice";
 OH_AVFormat *OH_VideoEncoder_GetInputDescription(OH_AVCodec *) { return new OH_AVFormat; }
 bool OH_AVFormat_GetIntValue(OH_AVFormat *, const char *, int *) { return false; }
+const char *OH_AVFormat_DumpInfo(OH_AVFormat *) { return "pixel_format=2"; }
 int32_t OH_AVBuffer_GetCapacity(OH_AVBuffer *buffer) { return static_cast<int32_t>(buffer->bytes.size()); }
 uint8_t *OH_AVBuffer_GetAddr(OH_AVBuffer *buffer) { return buffer->bytes.data(); }
 int OH_AVBuffer_SetBufferAttr(OH_AVBuffer *buffer, OH_AVCodecBufferAttr *attr) { buffer->attr = *attr; return 0; }
@@ -52,6 +56,7 @@ struct Harness {
   struct Buffer { uint32_t index; OH_AVBuffer *value; };
   struct Track {
     bool video = false, inputEnded = false;
+    bool videoInputLogged = false;
     OH_AVCodec *codec = nullptr;
     int width = 0, height = 0, rotation = 0, sampleRate = 48000, channels = 1, stride = 0, sliceHeight = 0;
     int64_t originUs = 1000000, arrivalUs = 0, lastQueuedUs = -1, lastQueuedEndUs = -1, endUs = 0;
@@ -126,6 +131,13 @@ int main() {
     assert(bytes[2] == 16 && bytes[8] == 16 && bytes[16] == 100 && bytes[17] == 200 && bytes[18] == 128);
     assert(codec.submitted[1].attr.flags == AVCODEC_BUFFER_FLAGS_EOS);
     assert(h.retainedBytes_ == 0 && h.retainedPackets_ == 0);
+    assert(track.videoInputLogged && inputLogs == 1);
+    h.CopyVideo(track, packet, &codec.buffers[0]);
+    assert(inputLogs == 1);
+    assert(Harness::PlaneSummary(bytes.data() + 16, 1, 1, 4, 2) == "100..100,avg=100");
+    assert(Harness::PlaneSummary(bytes.data() + 17, 1, 1, 4, 2) == "200..200,avg=200");
+    const uint8_t empty[] = {0, 0, 0, 0};
+    assert(Harness::PlaneSummary(empty, 2, 2, 2) == "0..0,avg=0");
   }
 }
 `);

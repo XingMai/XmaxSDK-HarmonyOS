@@ -13,6 +13,7 @@
 #include <thread>
 #include <unistd.h>
 
+#include "hilog/log.h"
 #include "multimedia/player_framework/native_avbuffer.h"
 #include "multimedia/player_framework/native_avcodec_audiocodec.h"
 #include "multimedia/player_framework/native_avcodec_videoencoder.h"
@@ -99,6 +100,7 @@ public:
     bool outputEnded = false;
     int32_t width = 0, height = 0, rotation = 0, sampleRate = 0, channels = 0;
     int32_t stride = 0, sliceHeight = 0;
+    bool videoInputLogged = false;
     int64_t originUs = 0, arrivalUs = 0, lastQueuedUs = -1, endUs = 0;
     int64_t lastQueuedEndUs = -1;
     size_t pendingBytes = 0;
@@ -270,9 +272,26 @@ private:
     track.pending.push_back(std::move(packet));
   }
 
+  /** Reports aggregate visible-pixel values only; never logs or writes the image itself. */
+  static std::string PlaneSummary(const uint8_t *data, int width, int height, int stride, int step = 1) {
+    uint8_t minimum = 255, maximum = 0;
+    uint64_t sum = 0;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        const uint8_t value = data[static_cast<size_t>(y) * stride + x * step];
+        minimum = std::min(minimum, value);
+        maximum = std::max(maximum, value);
+        sum += value;
+      }
+    }
+    return std::to_string(minimum) + ".." + std::to_string(maximum) + ",avg=" +
+        std::to_string(sum / (static_cast<uint64_t>(width) * height));
+  }
+
   int32_t CopyVideo(Track &track, const RecordingPacket &packet, OH_AVBuffer *buffer) {
+    Format format(nullptr, OH_AVFormat_Destroy);
     if (track.stride == 0) {
-      Format format(OH_VideoEncoder_GetInputDescription(track.codec), OH_AVFormat_Destroy);
+      format.reset(OH_VideoEncoder_GetInputDescription(track.codec));
       if (!format || !OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_VIDEO_STRIDE, &track.stride) ||
           !OH_AVFormat_GetIntValue(format.get(), OH_MD_KEY_VIDEO_SLICE_HEIGHT, &track.sliceHeight)) {
         throw std::runtime_error("Cannot read encoder input alignment");
@@ -299,6 +318,31 @@ private:
         target[paddedYSize + y * track.stride + 2 * x] = packet.data[ySize + offset];
         target[paddedYSize + y * track.stride + 2 * x + 1] = packet.data[ySize + ySize / 4 + offset];
       }
+    }
+
+    // One diagnostic per recording separates empty RTC pixels from encoder input problems.
+    if (!track.videoInputLogged) {
+      const uint8_t *source = packet.data.data();
+      const std::string sourceY = PlaneSummary(source, track.width, track.height, track.width);
+      const std::string sourceU = PlaneSummary(source + ySize, track.width / 2, track.height / 2, track.width / 2);
+      const std::string sourceV = PlaneSummary(source + ySize + ySize / 4,
+          track.width / 2, track.height / 2, track.width / 2);
+      const std::string inputY = PlaneSummary(target, track.width, track.height, track.stride);
+      const std::string inputU = PlaneSummary(target + paddedYSize,
+          track.width / 2, track.height / 2, track.stride, 2);
+      const std::string inputV = PlaneSummary(target + paddedYSize + 1,
+          track.width / 2, track.height / 2, track.stride, 2);
+      const char *description = format ? OH_AVFormat_DumpInfo(format.get()) : nullptr;
+      OH_LOG_Print(LOG_APP, LOG_INFO, 0x584D, "XLabRecorder",
+          "[XLab][Recording] First video input: %{public}d x %{public}d, rotation=%{public}d, "
+          "stride=%{public}d, slice=%{public}d, capacity=%{public}d\n"
+          "[XLab][Recording] I420 Y={%{public}s}, U={%{public}s}, V={%{public}s}\n"
+          "[XLab][Recording] NV12 Y={%{public}s}, U={%{public}s}, V={%{public}s}\n"
+          "[XLab][Recording] Encoder input: %{public}s",
+          track.width, track.height, track.rotation, track.stride, track.sliceHeight,
+          OH_AVBuffer_GetCapacity(buffer), sourceY.c_str(), sourceU.c_str(), sourceV.c_str(),
+          inputY.c_str(), inputU.c_str(), inputV.c_str(), description ? description : "unavailable");
+      track.videoInputLogged = true;
     }
     return static_cast<int32_t>(size);
   }
