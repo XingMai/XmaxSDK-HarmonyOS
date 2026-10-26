@@ -1,5 +1,6 @@
 {
   "string": [
+    { "name": "camera_format", "value": "比例" },
     { "name": "external_capture", "value": "外部采集" },
     { "name": "external_capture_description", "value": "App 自行解码视频和音频，支持 HDR Vivid，通过 Source + Sink 接入生成" },
     { "name": "record_start", "value": "录制" },

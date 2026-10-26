@@ -223,16 +223,80 @@ export class CameraController {
     const format = track?.videoFormat;
     const output = this.frameOutput;
     if (track !== null && format !== undefined && output !== null) {
-      output.configure(
-        format,
-        CAMERA_CAPTURE_FRAME_RATE,
-        this.observeDisplayChange
-      );
+      output.updateOrientation();
       this.synchronizeVideoFormat(
         track,
         output.currentVideoFormat ?? format
       );
     }
+  }
+
+  /**
+   * Updates camera output without replacing capture resources, the track, or its view bindings.
+   *
+   * @param videoFormat The new output dimensions, frame rate, and encoding settings.
+   *
+   * @returns The local stream retaining its camera track.
+   */
+  async updateVideoFormat(
+    videoFormat: RealtimeVideoFormat
+  ): Promise<RealtimeMediaStream> {
+    const track: RealtimeVideoTrack | null = this.activeTrack;
+    const previous: RealtimeVideoFormat | undefined = track?.videoFormat;
+    const output: CameraFrameOutput | null = this.frameOutput;
+    if (track === null || previous === undefined || output === null || this.captureSession === null) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Local camera preview is not started'
+      );
+    }
+
+    const resolved: RealtimeVideoFormat = this.resolveVideoFormat(videoFormat);
+    if (resolved.fps > CAMERA_CAPTURE_FRAME_RATE) {
+      throw new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Camera output frame rate must not exceed 30 fps'
+      );
+    }
+
+    this.acceptsFrames = false;
+    try {
+      output.configure(
+        resolved,
+        CAMERA_CAPTURE_FRAME_RATE,
+        this.observeDisplayChange,
+        true
+      );
+      this.synchronizeVideoFormat(
+        track,
+        resolved
+      );
+    } catch (error) {
+      try {
+        output.configure(
+          previous,
+          CAMERA_CAPTURE_FRAME_RATE,
+          this.observeDisplayChange,
+          true
+        );
+        this.synchronizeVideoFormat(
+          track,
+          previous
+        );
+      } catch (rollbackError) {
+        this.errorListener(XmaxError.from(rollbackError));
+        throw XmaxError.from(error);
+      }
+
+      this.acceptsFrames = true;
+      throw XmaxError.from(error);
+    }
+
+    this.acceptsFrames = true;
+    return new RealtimeMediaStream(
+      StreamId.LOCAL,
+      track
+    );
   }
 
   /** Starts internal RTC microphone capture on connection without local playback. */
@@ -499,7 +563,8 @@ export class CameraController {
         output.configure(
           videoFormat,
           CAMERA_CAPTURE_FRAME_RATE,
-          this.observeDisplayChange
+          this.observeDisplayChange,
+          this.activeTrack !== null
         );
         const outputFormat: RealtimeVideoFormat = output.currentVideoFormat ?? videoFormat;
 
@@ -640,7 +705,9 @@ export class CameraController {
     format: RealtimeVideoFormat
   ): void {
     const previous: RealtimeVideoFormat | undefined = track.videoFormat;
-    if (previous?.width === format.width && previous.height === format.height && previous.fps === format.fps) {
+    if (previous?.width === format.width && previous.height === format.height && previous.fps === format.fps &&
+      previous.minimumBitrate === format.minimumBitrate && previous.maximumBitrate === format.maximumBitrate &&
+      previous.encoderPreference === format.encoderPreference) {
       return;
     }
 

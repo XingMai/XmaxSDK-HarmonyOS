@@ -495,6 +495,44 @@ export class XmaxRealtimeManager implements XmaxRealtimeManaging {
     );
   }
 
+  /** The camera's local output format, or undefined for other input sources. */
+  get currentCameraVideoFormat(): RealtimeVideoFormat | undefined {
+    const track: RealtimeVideoTrack | null = this.mediaController.currentTrack;
+    return track?.position !== undefined ? track.videoFormat : undefined;
+  }
+
+  /** Updates a ready, disconnected camera stream while retaining its track and view bindings. */
+  updateCameraFormat(
+    videoFormat: RealtimeVideoFormat
+  ): Promise<void> {
+    if (this.currentState.connectionState !== RealtimeConnectionState.READY ||
+      this.currentCameraVideoFormat === undefined) {
+      return Promise.reject(this.reportError(new XmaxError(
+        XmaxErrorCode.INVALID_CONFIGURATION,
+        'Camera preview must be ready before updating its format'
+      )));
+    }
+
+    return this.lifecycleManager.run(
+      RealtimeOperationKind.MEDIA,
+      null,
+      async (token: RealtimeOperationToken): Promise<void> => {
+        this.ensureLocalMediaCanChange();
+        if (this.currentState.connectionState !== RealtimeConnectionState.READY ||
+          this.currentCameraVideoFormat === undefined) {
+          throw new XmaxError(
+            XmaxErrorCode.INVALID_CONFIGURATION,
+            'Camera preview must be ready before updating its format'
+          );
+        }
+
+        token.ensureCurrent();
+        await this.mediaController.updateCameraFormat(videoFormat);
+        token.ensureCurrent();
+      }
+    );
+  }
+
   /** Stops the local camera stream and releases preview resources. */
   stopLocalCameraStream(): Promise<void> {
     return this.lifecycleManager.run(

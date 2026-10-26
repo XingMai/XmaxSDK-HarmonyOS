@@ -16,6 +16,7 @@ import {
   RealtimeMediaFrame,
   RealtimeModels,
   RealtimeState,
+  RealtimeVideoFormat,
   XmaxClient,
   XmaxConfiguration,
   XmaxLoggerOption,
@@ -344,6 +345,9 @@ export class RealtimeViewModel {
       );
       connectingManager = manager;
       this.realtimeManager = manager;
+      this.state.supportedCameraFormats = manager.options.model.resolutionBuckets.map(
+        size => manager.options.model.defaultCameraVideoFormat.resized(size.width, size.height)
+      );
       manager.setUplinkVideoStatisticsListener((statistics: UplinkVideoStatistics | undefined): void => {
         if (this.realtimeManager === manager) {
           this.state.uplinkStatistics = statistics;
@@ -483,10 +487,39 @@ export class RealtimeViewModel {
     );
   }
 
+  async updateCameraFormat(format: RealtimeVideoFormat): Promise<void> {
+    const manager: XmaxRealtimeManaging | null = this.realtimeManager;
+    const current: RealtimeVideoFormat | undefined = manager?.currentCameraVideoFormat;
+    if (manager === null || current === undefined || !this.state.canUpdateCameraFormat ||
+      this.connecting || this.switchingCamera || this.changingLocalMedia || this.generationUpdating) {
+      return;
+    }
+    if (current.width === format.width && current.height === format.height) {
+      return;
+    }
+
+    const revision: number = this.generationRevision;
+    this.state.isCameraFormatUpdating = true;
+    try {
+      await manager.updateCameraFormat(current.resized(format.width, format.height));
+    } catch (error) {
+      if (this.realtimeManager === manager) {
+        this.onMessage?.(this.errorMessage(error));
+      }
+    } finally {
+      if (this.realtimeManager === manager) {
+        this.state.isCameraFormatUpdating = false;
+        if (this.generationRevision !== revision) {
+          this.scheduleGenerationUpdate();
+        }
+      }
+    }
+  }
+
   async switchCamera(): Promise<void> {
     const manager: XmaxRealtimeManaging | null = this.realtimeManager;
     if (manager === null || this.connecting || this.switchingCamera ||
-      this.changingLocalMedia || this.state.isGenerationStarting ||
+      this.changingLocalMedia || this.state.isCameraFormatUpdating || this.state.isGenerationStarting ||
       this.state.localVideoTrack?.position === undefined) {
       return;
     }
@@ -573,6 +606,8 @@ export class RealtimeViewModel {
     }
     this.realtimeManager = null;
     this.state.isQualityChanging = false;
+    this.state.isCameraFormatUpdating = false;
+    this.state.supportedCameraFormats = [];
     this.clearStatistics();
     this.localStream = null;
     this.remoteStream = null;
@@ -633,6 +668,9 @@ export class RealtimeViewModel {
   }
 
   submitPrompt(value: string): void {
+    if (this.state.isCameraFormatUpdating) {
+      return;
+    }
     const prompt: string = value.trim();
     this.state.promptText = prompt;
     if (prompt.length === 0 || this.state.selectedCategoryId !== 'free' ||
@@ -646,7 +684,7 @@ export class RealtimeViewModel {
   }
 
   startMoxGeneration(): void {
-    if (this.state.selectedCategoryId !== 'mox') {
+    if (this.state.selectedCategoryId !== 'mox' || this.state.isCameraFormatUpdating) {
       return;
     }
 
@@ -721,7 +759,7 @@ export class RealtimeViewModel {
   }
 
   selectReference(item: RealtimeReferenceItemState): void {
-    if (item.reference.isAddAction) {
+    if (item.reference.isAddAction || this.state.isCameraFormatUpdating) {
       return;
     }
     if (item.reference.uploadState === ReferenceUploadState.FAILED &&
@@ -839,7 +877,7 @@ export class RealtimeViewModel {
       }
       return;
     }
-    if (this.changingLocalMedia) {
+    if (this.changingLocalMedia || this.state.isCameraFormatUpdating) {
       return;
     }
     void this.applyGenerationUpdates();
@@ -863,6 +901,7 @@ export class RealtimeViewModel {
         const manager: XmaxRealtimeManaging | null = this.realtimeManager;
         const localStream: RealtimeMediaStream | null = this.localStream;
         if (manager === null || localStream === null || this.switchingCamera || this.changingLocalMedia ||
+          this.state.isCameraFormatUpdating ||
           manager.currentState.connectionState === RealtimeConnectionState.CONNECTING ||
           manager.currentState.connectionState === RealtimeConnectionState.DISCONNECTING) {
           return;

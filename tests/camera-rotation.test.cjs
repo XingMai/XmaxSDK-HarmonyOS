@@ -150,3 +150,25 @@ test('configure with display observation disabled ignores rotation and never reg
   }
   assert.equal(f.calls.filter(call => call === 'off').length, 0);
 });
+
+test('explicit camera ratios survive orientation refresh and transpose only when the display rotates', async () => {
+  for (const [width, height] of [[1920, 1080], [1080, 1920], [1408, 1408], [1152, 1536], [1536, 1152]]) {
+    const f = fixture();
+    try {
+      f.output.configure(f.format, 30);
+      const selected = new f.Format(width, height, 24, 100, 6000, 'MaintainQuality');
+      f.output.configure(selected, 30, true, true);
+      assert.deepEqual(f.output.currentVideoFormat, selected);
+      f.output.updateOrientation();
+      assert.deepEqual(f.output.currentVideoFormat, selected);
+      f.rotate(1);
+      assert.deepEqual(f.output.currentVideoFormat, selected.resized(height, width));
+      f.rotate(2);
+      assert.deepEqual(f.output.currentVideoFormat, selected);
+      f.output.updateOrientation();
+      assert.deepEqual(f.output.currentVideoFormat, selected);
+      assert.equal(f.calls.filter(call => call === 'on').length, 1);
+      assert.deepEqual(f.errors, []);
+    } finally { await f.output.release(); }
+  }
+});

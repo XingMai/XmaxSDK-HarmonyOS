@@ -7,6 +7,7 @@ import {
   DefaultTrajectoryEffectRenderer,
   LocalVideoPlaybackState,
   RealtimeQualityLevel,
+  RealtimeVideoFormat,
   TrajectoryEffectRendering,
   VideoContentMode,
   XmaxRealtimeVideoView
@@ -22,6 +23,7 @@ import { RealtimeLoadingView } from './mvvm/view/RealtimeLoadingView';
 import { RealtimeStatisticsPanel, RealtimeStatisticsButton } from './mvvm/view/RealtimeStatisticsPanel';
 import { RealtimeAudioControlsView } from './mvvm/view/RealtimeAudioControlsView';
 import { RealtimeRecordingButton } from './mvvm/view/RealtimeRecordingButton';
+import { RealtimeCameraFormatButton } from './mvvm/view/RealtimeCameraFormatButton';
 import { RealtimePromptInputView } from './mvvm/view/RealtimePromptInputView';
 import { RealtimeReferenceListView } from './mvvm/view/RealtimeReferenceListView';
 import { RealtimeViewModel } from './mvvm/viewmodel/RealtimeViewModel';
@@ -132,7 +134,7 @@ export struct RealtimePage {
   }
 
   private async switchCamera(): Promise<void> {
-    if (this.isCameraSwitchTransitionActive) {
+    if (this.isCameraSwitchTransitionActive || this.state.isCameraFormatUpdating) {
       return;
     }
 
@@ -488,7 +490,7 @@ export struct RealtimePage {
           .position({ right: 8, top: 18 })
           .fontColor('#FFFFFF')
           .backgroundColor(Color.Transparent)
-          .enabled(!this.isCameraSwitchTransitionActive)
+          .enabled(!this.isCameraSwitchTransitionActive && !this.state.isCameraFormatUpdating)
           .accessibilityText(this.text('flip_camera'))
           .onClick((): void => {
             void this.switchCamera();
@@ -589,6 +591,16 @@ export struct RealtimePage {
             onToggle: (): void => { this.toggleStatistics(); }
           })
             .position({ right: 8, top: 192 })
+          if (this.state.supportedCameraFormats.length > 1) {
+            RealtimeCameraFormatButton({
+              state: this.state,
+              isCameraSwitching: this.isCameraSwitchTransitionActive,
+              onSelect: (format: RealtimeVideoFormat): void => {
+                void this.viewModel.updateCameraFormat(format);
+              }
+            })
+              .position({ right: 8, top: 250 })
+          }
         }
       }
       .width('100%')
@@ -716,6 +728,7 @@ export struct RealtimePage {
       }
       .width('100%')
       .padding({ bottom: 12 })
+      .enabled(!this.state.isCameraFormatUpdating)
       .backgroundColor('#0D0D0E')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }

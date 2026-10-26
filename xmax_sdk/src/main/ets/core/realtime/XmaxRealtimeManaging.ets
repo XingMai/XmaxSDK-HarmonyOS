@@ -40,6 +40,9 @@ export interface XmaxRealtimeManaging {
   /** The current realtime connection state. */
   readonly currentState: RealtimeState;
 
+  /** The camera's local output format, or undefined without a camera stream. Uplink quality does not affect it. */
+  readonly currentCameraVideoFormat: RealtimeVideoFormat | undefined;
+
   /** The applied uplink level, or undefined before connection completes or after cleanup begins. */
   readonly uplinkQualityLevel: RealtimeQualityLevel | undefined;
 
@@ -216,6 +219,19 @@ export interface XmaxRealtimeManaging {
     useMicrophone?: boolean,
     observeDisplayChange?: boolean
   ): Promise<RealtimeMediaStream>;
+
+  /**
+   * Updates a ready, disconnected camera stream while retaining its track and view bindings.
+   *
+   * The Promise fulfills after output and track configuration. It rejects for an invalid state or
+   * format, a conflicting or cancelled operation, or configuration failure.
+   *
+   * @param videoFormat The new output dimensions, frame rate, and encoding settings. Dimensions
+   * must satisfy the model's camera constraints.
+   */
+  updateCameraFormat(
+    videoFormat: RealtimeVideoFormat
+  ): Promise<void>;
 
   /**
    * Stops the local camera stream and releases local preview resources.

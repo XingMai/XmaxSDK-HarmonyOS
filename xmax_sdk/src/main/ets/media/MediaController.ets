@@ -315,6 +315,19 @@ export class MediaController implements MediaControlling {
     }
   }
 
+  /**
+   * Updates the active camera output while retaining its track and view bindings.
+   *
+   * @param videoFormat The new output dimensions, frame rate, and encoding settings.
+   */
+  async updateCameraFormat(
+    videoFormat: RealtimeVideoFormat
+  ): Promise<void> {
+    await this.updateCameraSource(
+      (): Promise<RealtimeMediaStream> => this.cameraController.updateVideoFormat(videoFormat)
+    );
+  }
+
   /** Starts the current camera microphone on connection, if enabled. */
   startMicrophoneCapture(): void {
     if (this.activeSource?.controller === this.cameraController) {
@@ -532,7 +545,7 @@ export class MediaController implements MediaControlling {
   }
 
   /**
-   * Switches lenses while the camera source is idle.
+   * Updates capture while the camera source has no conflicting media operation.
    *
    * @param update The camera source update operation.
    *

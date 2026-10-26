@@ -61,6 +61,9 @@ export class CameraFrameOutput {
   /** The clockwise video rotation. */
   private rotation: VideoRotation = VideoRotation.ROTATION_0;
 
+  /** The display orientation associated with the current output dimensions. */
+  private isDisplayLandscape: boolean = false;
+
   // Display observation and resource release state
 
   /** Whether display orientation observation is installed. */
@@ -152,11 +155,13 @@ export class CameraFrameOutput {
    * @param videoFormat The media output or transport format.
    * @param captureFrameRate The capture frame rate, in fps.
    * @param observeDisplayChange Whether output format follows display orientation.
+   * @param preserveDimensions Whether to apply exact dimensions instead of the startup display's orientation.
    */
   configure(
     videoFormat: RealtimeVideoFormat,
     captureFrameRate: number,
-    observeDisplayChange: boolean = true
+    observeDisplayChange: boolean = true,
+    preserveDimensions: boolean = false
   ): void {
     if (this.isReleased) {
       return;
@@ -173,18 +178,56 @@ export class CameraFrameOutput {
     const currentDisplay: display.Display = display.getDefaultDisplaySync();
     const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
     this.configureNative(
-      this.formatForDisplay(
+      preserveDimensions ? videoFormat : this.formatForDisplay(
         videoFormat,
         currentDisplay
       ),
       captureFrameRate,
       rotation
     );
+    this.isDisplayLandscape = this.displayIsLandscape(currentDisplay);
   }
 
   /** The configured camera output format, or null before configuration. */
   get currentVideoFormat(): RealtimeVideoFormat | null {
     return this.videoFormat;
+  }
+
+  /** Updates pixel rotation and swaps output dimensions only when the display changes orientation. */
+  updateOrientation(): void {
+    const format: RealtimeVideoFormat | null = this.videoFormat;
+    if (this.isReleased || format === null) {
+      return;
+    }
+
+    const currentDisplay: display.Display = display.getDefaultDisplaySync();
+    const landscape: boolean = this.displayIsLandscape(currentDisplay);
+    const outputFormat: RealtimeVideoFormat = landscape === this.isDisplayLandscape ? format :
+      format.resized(
+        format.height,
+        format.width
+      );
+    const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
+    if (rotation !== this.rotation || outputFormat.width !== format.width || outputFormat.height !== format.height) {
+      this.configureNative(
+        outputFormat,
+        this.captureFrameRate,
+        rotation
+      );
+    }
+    this.isDisplayLandscape = landscape;
+  }
+
+  /**
+   * Checks the display's current orientation.
+   *
+   * @param currentDisplay The display orientation information.
+   */
+  private displayIsLandscape(
+    currentDisplay: display.Display
+  ): boolean {
+    return currentDisplay.orientation === display.Orientation.LANDSCAPE ||
+      currentDisplay.orientation === display.Orientation.LANDSCAPE_INVERTED;
   }
 
   /**
@@ -201,9 +244,7 @@ export class CameraFrameOutput {
   ): RealtimeVideoFormat {
     const shortSide: number = Math.min(format.width, format.height);
     const longSide: number = Math.max(format.width, format.height);
-    const isLandscape: boolean = currentDisplay.orientation === display.Orientation.LANDSCAPE ||
-      currentDisplay.orientation === display.Orientation.LANDSCAPE_INVERTED;
-    return isLandscape ?
+    return this.displayIsLandscape(currentDisplay) ?
       format.resized(
         longSide,
         shortSide
@@ -258,19 +299,7 @@ export class CameraFrameOutput {
         return;
       }
 
-      const rotation: VideoRotation = this.rotationForDisplay(currentDisplay.rotation * 90);
-      const outputFormat: RealtimeVideoFormat = this.formatForDisplay(
-        videoFormat,
-        currentDisplay
-      );
-      if (rotation !== this.rotation || outputFormat.width !== videoFormat.width ||
-        outputFormat.height !== videoFormat.height) {
-        this.configureNative(
-          outputFormat,
-          this.captureFrameRate,
-          rotation
-        );
-      }
+      this.updateOrientation();
     } catch (error) {
       this.logError(
         XmaxLogger.localized(

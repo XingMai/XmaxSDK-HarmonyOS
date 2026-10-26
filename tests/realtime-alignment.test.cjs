@@ -39,6 +39,17 @@ function managerFixture(modelName = 'x2.0-sla') {
       this.endedListener = endedListener;
     }
     get currentVideoFormat() { return this.currentTrack?.videoFormat; }
+    async updateCameraFormat(format) {
+      (calls.cameraFormats ??= []).push(format);
+      if (this.formatGate) await this.formatGate.promise;
+      if (this.formatError) throw this.formatError;
+      format.validate();
+      const { MediaService } = load('service/media/MediaService.ets');
+      const { ImageSize } = load('service/media/ImageSize.ets');
+      new MediaService(manager.options.model).resolveMediaSize(new ImageSize(format.width, format.height), 'camera');
+      this.formatListener(format);
+      load('service/realtime/RealtimeVideoTrack.ets').updateRealtimeVideoTrackFormat(this.currentTrack, format);
+    }
     async createLocalCameraStream(format, position) {
       if (this.currentTrack) throw new XmaxError(Code.INVALID_CONFIGURATION, 'Already started');
       this.currentTrack = new Track('video0', format, position);
@@ -168,6 +179,104 @@ function managerFixture(modelName = 'x2.0-sla') {
     runSwitchDelay() { assert.equal(timers.length, 1); timers.shift()(); }
   };
 }
+
+test('camera formats change only from a ready, disconnected camera and preserve its track', async () => {
+  const f = managerFixture(), format = new f.Format(1408, 1408, 24, 100, 6000, 'MaintainQuality');
+  assert.equal(f.manager.currentCameraVideoFormat, undefined);
+  await assert.rejects(f.manager.updateCameraFormat(format), { code: 'INVALID_CONFIGURATION' });
+  f.holdPreview();
+  const local = await f.create();
+  await assert.rejects(f.manager.updateCameraFormat(format), { code: 'INVALID_CONFIGURATION' });
+  assert.equal(f.manager.currentState.connectionState, f.State.PREPARING);
+  f.media.readyHandler();
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  const states = [];
+  f.manager.setStateListener(state => states.push(state.connectionState));
+  for (const size of f.manager.options.model.resolutionBuckets) {
+    const selected = format.resized(size.width, size.height);
+    await f.manager.updateCameraFormat(selected);
+    assert.equal(f.media.currentTrack, local.videoTrack);
+    assert.deepEqual(f.manager.currentCameraVideoFormat, selected);
+    assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  }
+  assert.deepEqual(f.calls.sessions, []);
+  assert.deepEqual(f.calls.starts, []);
+  assert.ok(states.every(state => state === f.State.READY));
+  await f.manager.close();
+  assert.equal(f.manager.currentCameraVideoFormat, undefined);
+
+  const external = { videoFormat: format, hasAudio: false, async start() {}, async stop() {} };
+  await f.manager.createExternalVideoStream(external);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(f.manager.currentCameraVideoFormat, undefined);
+  await assert.rejects(f.manager.updateCameraFormat(format), { code: 'INVALID_CONFIGURATION' });
+  await f.manager.close();
+});
+
+for (const phase of ['connecting', 'connected', 'generating', 'disconnecting']) {
+  test(`camera format changes are rejected while realtime is ${phase}`, async () => {
+    const f = managerFixture(), local = await f.create(), format = new f.Format(1408, 1408, 30);
+    let gate, pending, cleanup;
+    if (phase === 'connecting' || phase === 'disconnecting') {
+      gate = f.holdSession();
+      pending = outcome(f.manager.connect(local));
+      await settle();
+      if (phase === 'disconnecting') cleanup = f.manager.disconnect();
+    } else if (phase === 'connected') {
+      await f.manager.connect(local);
+    } else {
+      await f.manager.startGeneration(local, new f.Context('test'));
+    }
+    const previous = local.videoTrack.videoFormat;
+    await assert.rejects(f.manager.updateCameraFormat(format), { code: 'INVALID_CONFIGURATION' });
+    assert.equal(f.calls.cameraFormats, undefined);
+    assert.equal(local.videoTrack.videoFormat, previous);
+    if (gate) { gate.resolve(); await pending; await cleanup; }
+    await f.manager.close();
+  });
+}
+
+test('camera format operations exclude connect, generation, lens switches and duplicate updates', async () => {
+  const f = managerFixture(), local = await f.create(), gate = deferred();
+  f.media.formatGate = gate;
+  const pending = f.manager.updateCameraFormat(new f.Format(1408, 1408, 30));
+  for (const request of [() => f.manager.connect(local),
+    () => f.manager.startGeneration(local, new f.Context('test')), () => f.manager.switchCamera(),
+    () => f.manager.updateCameraFormat(new f.Format(1920, 1080, 30))]) {
+    await assert.rejects(request(), { code: 'INVALID_CONFIGURATION' });
+  }
+  assert.equal(f.calls.cameraFormats.length, 1);
+  assert.equal(f.calls.sessions.length, 0);
+  assert.equal(f.calls.switches, 0);
+  gate.resolve(); await pending;
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  await f.manager.close();
+});
+
+test('camera format failures preserve READY and closing cancels pending format updates before releasing media', async () => {
+  const f = managerFixture(), local = await f.create(), original = local.videoTrack.videoFormat;
+  f.media.formatError = new f.XmaxError(f.Code.MEDIA_ERROR, 'format unavailable');
+  await assert.rejects(f.manager.updateCameraFormat(new f.Format(1408, 1408, 30)), /format unavailable/);
+  assert.equal(f.manager.currentState.connectionState, f.State.READY);
+  assert.equal(local.videoTrack.videoFormat, original);
+  f.media.formatError = null;
+  const gate = deferred();
+  f.media.formatGate = gate;
+  const pending = outcome(f.manager.updateCameraFormat(new f.Format(1408, 1408, 30)));
+  let closed = false;
+  const close = f.manager.close().then(() => { closed = true; });
+  await settle();
+  assert.equal(closed, false);
+  gate.resolve(); await close;
+  assert.equal((await pending).error.code, 'CANCELLED');
+  assert.equal(f.manager.currentCameraVideoFormat, undefined);
+  assert.equal(f.manager.currentState.connectionState, f.State.IDLE);
+  f.media.formatGate = null;
+  const next = await f.create();
+  assert.notEqual(next.videoTrack, local.videoTrack);
+  assert.equal(next.videoTrack.videoFormat.width, 1080);
+  await f.manager.close();
+});
 
 test('manager delegates unified media registration and removal without starting a session', async () => {
   const f = managerFixture(), listener = () => {};
@@ -612,7 +721,7 @@ test('camera switching is rejected while generation startup is still pending', a
   assert.equal((await starting).error.code, 'CANCELLED');
 });
 
-test('camera specifications require disconnect, stop and create; old streams become invalid', async () => {
+test('replacing a camera stream still requires disconnect, stop and create; old streams become invalid', async () => {
   const f = managerFixture(), local = await f.create();
   const firstRemote = await f.manager.startGeneration(local, new f.Context('test'));
   assert.equal(f.manager.replaceLocalCameraStream, undefined);
@@ -1097,6 +1206,71 @@ function exampleFixture(modelName = 'x2.0-sla') {
     useManager(manager) { nextManager = manager; }
   };
 }
+
+test('XLab exposes five camera formats and preserves fps and encoding settings when selecting a ratio', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({}); await settle();
+  assert.deepEqual(vm.state.supportedCameraFormats.map(format => [format.width, format.height]),
+    [[1920, 1080], [1080, 1920], [1408, 1408], [1152, 1536], [1536, 1152]]);
+  assert.equal(vm.state.canUpdateCameraFormat, true);
+  const track = vm.localStream.videoTrack;
+  const original = new f.Format(1080, 1920, 24, 1500, 7000, 'MaintainQuality');
+  f.load('service/realtime/RealtimeVideoTrack.ets').updateRealtimeVideoTrackFormat(track, original);
+  await vm.updateCameraFormat(new f.Format(1408, 1408, 30));
+  assert.deepEqual(track.videoFormat, original.resized(1408, 1408));
+  assert.equal(vm.localStream.videoTrack, track);
+  assert.equal(vm.state.localVideoTrack, track);
+  assert.equal(vm.state.isCameraFormatUpdating, false);
+  assert.deepEqual(f.calls.sessions, []);
+  const updates = f.calls.cameraFormats.length;
+  await vm.updateCameraFormat(new f.Format(1408, 1408, 30));
+  assert.equal(f.calls.cameraFormats.length, updates);
+  await vm.disconnect();
+  assert.deepEqual(vm.state.supportedCameraFormats, []);
+});
+
+test('XLab ignores generation and lens clicks while a camera format update is pending', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({}); await settle();
+  f.media.formatGate = deferred();
+  const pending = vm.updateCameraFormat(new f.Format(1408, 1408, 30));
+  assert.equal(vm.state.isCameraFormatUpdating, true);
+  assert.equal(vm.state.canUpdateCameraFormat, false);
+  await vm.updateCameraFormat(new f.Format(1920, 1080, 30));
+  await vm.switchCamera();
+  vm.state.selectedCategoryId = 'free';
+  vm.submitPrompt('ignored while changing ratio');
+  vm.state.selectedCategoryId = 'mox';
+  vm.startMoxGeneration();
+  vm.selectReference({ reference: { id: 'reference', categoryId: 'charx', remoteUrl: 'reference.png' } });
+  assert.equal(vm.state.selectedReferenceId, '');
+  assert.equal(f.calls.switches, 0);
+  assert.equal(f.calls.cameraFormats.length, 1);
+  assert.equal(f.calls.sessions.length, 0);
+  f.media.formatGate.resolve(); await pending;
+  assert.equal(vm.state.canUpdateCameraFormat, true);
+  await f.manager.startGeneration(vm.localStream, new f.Context('test'));
+  await vm.updateCameraFormat(new f.Format(1920, 1080, 30));
+  assert.equal(f.calls.cameraFormats.length, 1);
+  assert.equal(vm.state.canUpdateCameraFormat, false);
+  await vm.disconnect();
+});
+
+test('XLab ignores an obsolete camera format completion after page closure', async () => {
+  const f = exampleFixture(), vm = f.viewModel, messages = [];
+  vm.onMessage = message => messages.push(message);
+  await vm.connect({}); await settle();
+  const gate = deferred();
+  f.media.formatGate = gate;
+  const pending = vm.updateCameraFormat(new f.Format(1408, 1408, 30));
+  const close = vm.disconnect();
+  assert.equal(vm.state.isCameraFormatUpdating, false);
+  gate.resolve(); await pending; await close;
+  assert.equal(vm.state.localVideoTrack, null);
+  assert.equal(vm.state.connectionState, f.State.IDLE);
+  assert.deepEqual(messages, []);
+  assert.deepEqual(f.calls.sessions, []);
+});
 
 test('XLab records only while generating, attaches the unified receiver on demand and saves once', async () => {
   const f = exampleFixture(), vm = f.viewModel;

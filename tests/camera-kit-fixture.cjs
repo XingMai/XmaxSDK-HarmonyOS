@@ -64,10 +64,17 @@ function createCameraKitFixture(calls = [], options = {}) {
             calls.push(['camera-frame-rate', min, max]);
           }
         },
-        configure(format, fps) {
-          this.currentVideoFormat = options.landscape ?
+        configure(format, fps, _observeDisplayChange, preserveDimensions = false) {
+          this.currentVideoFormat = options.landscape && !preserveDimensions ?
             { width: Math.max(format.width, format.height), height: Math.min(format.width, format.height), fps: format.fps } : format;
           calls.push(['camera', this.currentVideoFormat.width, this.currentVideoFormat.height, fps]);
+        },
+        updateOrientation() {
+          if (options.landscape && this.currentVideoFormat) {
+            this.currentVideoFormat = { ...this.currentVideoFormat,
+              width: Math.max(this.currentVideoFormat.width, this.currentVideoFormat.height),
+              height: Math.min(this.currentVideoFormat.width, this.currentVideoFormat.height) };
+          }
         },
         async release() { calls.push(['camera-output-release']); }
       };

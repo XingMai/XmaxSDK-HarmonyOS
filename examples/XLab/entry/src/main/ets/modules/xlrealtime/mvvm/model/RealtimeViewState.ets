@@ -1,4 +1,4 @@
-import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoTrack } from '@xmax/sdk';
+import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoFormat, RealtimeVideoTrack } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
 import { RealtimeRecordingState } from '../../recording/RealtimeRecordingState';
@@ -62,6 +62,8 @@ export class RealtimeViewState {
   uplinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
   downlinkQualityLevel: RealtimeQualityLevel | undefined = undefined;
   isQualityChanging: boolean = false;
+  supportedCameraFormats: RealtimeVideoFormat[] = [];
+  isCameraFormatUpdating: boolean = false;
   recordingState: RealtimeRecordingState = RealtimeRecordingState.IDLE;
   isLocalPreviewLoading: boolean = true;
   isGenerationStarting: boolean = false;
@@ -94,6 +96,12 @@ export class RealtimeViewState {
   get canAdjustQuality(): boolean {
     return this.connectionState === RealtimeConnectionState.GENERATING &&
       !this.isGenerationStarting && !this.isQualityChanging;
+  }
+
+  get canUpdateCameraFormat(): boolean {
+    return this.connectionState === RealtimeConnectionState.READY &&
+      this.localVideoTrack?.position !== undefined && !this.isLocalPreviewLoading &&
+      !this.isGenerationStarting && !this.isCameraFormatUpdating;
   }
 
   referenceList(categoryId: string): RealtimeReferenceListState {

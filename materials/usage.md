@@ -712,13 +712,39 @@ this configuration, close the old manager and create another one.
 
 ## Switch cameras or change capture specifications
 
-Camera output follows the current display orientation: the short side is the
-width in portrait, and the long side is the width in landscape. For example,
+On initial creation, camera output follows the current display orientation: the
+short side is the width in portrait, and the long side is the width in landscape. For example,
 `1080 × 1920` becomes `1920 × 1080`, with the frame rate unchanged. CameraKit
 prefers 16:9 YUV capture profiles, starting at `1920 × 1080` and trying smaller
 profiles until one supports 30 fps. If none does, it falls back to 4:3 profiles
 starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
 Native rotation and cropping still produce the model's required input dimensions.
+
+`updateCameraFormat(format)` changes a camera's output while keeping its stream,
+track, preview bindings, camera position, and microphone setting. It is available
+only in `READY`, before connecting or after disconnection completes. The call
+rejects during preparation, connection, generation, disconnection, or another
+realtime operation. Output frame rates must not exceed 30 fps.
+
+```ts
+const current = realtime.currentCameraVideoFormat;
+if (realtime.currentState.connectionState === RealtimeConnectionState.READY && current !== undefined) {
+  // X2.1 supports this square format; retain the current fps and encoding settings.
+  await realtime.updateCameraFormat(current.resized(1408, 1408));
+}
+```
+
+The chosen width and height are applied exactly, even when their orientation
+differs from the display. Subsequent display rotations transpose those dimensions
+rather than resetting the chosen ratio. Camera switching and connection preserve
+the selection. Invalid formats leave the preview unchanged; configuration failures
+attempt to restore the previous format. Queued frames with old dimensions are
+discarded. `currentCameraVideoFormat` returns the actual local camera format, or
+`undefined` for other sources; transmission quality changes do not affect it.
+
+XLab's X2.1 camera page exposes a **Ratio** menu for `16:9`, `9:16`, `1:1`, `3:4`,
+and `4:3`. The menu is disabled outside `READY` and during camera switching.
+Generation controls and camera flipping are disabled while a ratio update is pending.
 
 `XmaxVideoView` and `XmaxRealtimeVideoView` observe the orientation of their
 window. When camera input flips between portrait and landscape during
@@ -785,30 +811,12 @@ const switchedStream = await realtime.switchCamera();
 this.localVideoTrack = switchedStream.videoTrack;
 ```
 
-`replaceLocalCameraStream()` has been removed. To change resolution or frame rate,
-recreate the local stream after disconnecting, then start a new session:
+`replaceLocalCameraStream()` has been removed. Use `updateCameraFormat()` to
+change dimensions or frame rate without recreating the local stream. If realtime
+is connected, disconnect first and wait for `READY`. A stream stopped with
+`stopLocalCameraStream()` is still invalid and must not be reused.
 
-```ts
-import { CameraPosition, RealtimeVideoFormat } from '@xmax/sdk';
-
-await realtime.disconnect();
-this.remoteVideoTrack = undefined;
-await realtime.stopLocalCameraStream();
-this.localVideoTrack = undefined;
-
-const resizedStream = await realtime.createLocalCameraStream(
-  new RealtimeVideoFormat(1080, 1920, 30),
-  CameraPosition.FRONT
-);
-this.localVideoTrack = resizedStream.videoTrack;
-const resizedRemoteStream = await realtime.startGeneration(
-  resizedStream,
-  new RealtimeContext('视频中角色替换成参考图中角色', referenceImageUrl)
-);
-this.remoteVideoTrack = resizedRemoteStream.videoTrack;
-```
-
-The old local stream is no longer valid after stopping it. X2.1 camera requests must
+X2.1 camera requests must
 match one of its five supported resolutions exactly; unsupported camera dimensions
 are rejected rather than rounded to a bucket. Images and videos retain their media
 aspect ratio and select the closest generation canvas. Use the returned track's

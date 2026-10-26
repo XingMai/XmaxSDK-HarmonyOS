@@ -86,6 +86,15 @@ export interface MediaControlling extends InteractionControlling {
   /** Updates camera capture and track format for display orientation; other sources are unchanged. */
   updateCameraOrientation(): void;
 
+  /**
+   * Updates the active camera output while retaining its track and view bindings.
+   *
+   * @param videoFormat The new output dimensions, frame rate, and encoding settings.
+   */
+  updateCameraFormat(
+    videoFormat: RealtimeVideoFormat
+  ): Promise<void>;
+
   /** Starts the current camera microphone on connection, if enabled. */
   startMicrophoneCapture(): void;
 
