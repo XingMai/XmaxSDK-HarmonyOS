@@ -102,7 +102,7 @@ test('public quality levels and adaptive configuration retain compatible default
   const { RealtimeQualityLevel: Level } = f.load('stream/quality/RealtimeQualityLevel.ets');
   const { RealtimeConfiguration } = f.load('core/realtime/RealtimeConfiguration.ets');
   const { RealtimeModels, RealtimeModel } = f.load('service/realtime/RealtimeModel.ets');
-  const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
+  const model = RealtimeModels.realtime(RealtimeModel.X2_1);
   assert.deepEqual([Level.L1, Level.L2, Level.L3, Level.L4, Level.L5], [1, 2, 3, 4, 5]);
   assert.equal(new RealtimeConfiguration(model).isAdaptiveQualityEnabled, true);
   assert.equal(new RealtimeConfiguration(model, false).isAdaptiveQualityEnabled, false);

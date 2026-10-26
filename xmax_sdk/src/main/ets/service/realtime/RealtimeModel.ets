@@ -18,8 +18,8 @@ export enum RealtimeModel {
   /** The X2.0 model. */
   X2_0 = 'x2.0',
 
-  /** The X2.0 SLA model. */
-  X2_0_SLA = 'x2.0-sla'
+  /** The X2.1 model. */
+  X2_1 = 'x2.0-sla'
 }
 
 /** A realtime model's name, session API URL, input constraints, and default media format. */
@@ -44,7 +44,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return [];
-      case RealtimeModel.X2_0_SLA:
+      case RealtimeModel.X2_1:
         return [
           new ImageSize(
             1024,
@@ -68,7 +68,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return 1280000;
-      case RealtimeModel.X2_0_SLA:
+      case RealtimeModel.X2_1:
         return 2100000;
     }
   }
@@ -86,7 +86,7 @@ export class ModelDefinition {
     switch (this.name) {
       case RealtimeModel.X2_0:
         return 30;
-      case RealtimeModel.X2_0_SLA:
+      case RealtimeModel.X2_1:
         return 30;
     }
   }
@@ -100,7 +100,7 @@ export class ModelDefinition {
           1472,
           this.defaultFrameRate
         );
-      case RealtimeModel.X2_0_SLA:
+      case RealtimeModel.X2_1:
         return new RealtimeVideoFormat(
           1024,
           1920,
@@ -117,7 +117,7 @@ export class ModelDefinition {
   constructor(
     name: RealtimeModel
   ) {
-    if (name !== RealtimeModel.X2_0 && name !== RealtimeModel.X2_0_SLA) {
+    if (name !== RealtimeModel.X2_0 && name !== RealtimeModel.X2_1) {
       throw new XmaxError(
         XmaxErrorCode.INVALID_CONFIGURATION,
         `Unsupported realtime model: ${name}`

@@ -164,15 +164,17 @@ Camera, video and image inputs are available for both models.
 | `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 1,280,000 | 30 | 832 × 1472 |
 | `x2.0-sla` | 1024 × 1920 or 1920 × 1024 | 2,100,000 | 30 | 1024 × 1920 |
 
+Use `RealtimeModel.X2_1` for X2.1. Its backend model ID remains `x2.0-sla`.
+
 ```ts
 import { ImageSize, RealtimeMediaSource } from '@xmax/sdk';
 
-const model = RealtimeModels.realtime(RealtimeModel.X2_0_SLA);
+const model = RealtimeModels.realtime(RealtimeModel.X2_1);
 const realtime = client.createRealtimeManager(new RealtimeConfiguration(model));
 const localStream = await realtime.createLocalImageStream(imageFilePath);
 
 // SDK preparation and generation already apply these rules automatically.
-const mediaService = client.createMediaService(RealtimeModel.X2_0_SLA);
+const mediaService = client.createMediaService(RealtimeModel.X2_1);
 const mediaSize = mediaService.resolveMediaSize(new ImageSize(3840, 2160), RealtimeMediaSource.IMAGE);
 // mediaSize: 1920 × 1080
 const generationSize = mediaService.resolveGenerationSize(mediaSize);
@@ -209,8 +211,8 @@ use the processed local media size, independently of the return frame dimensions
 methods above for local media, generation canvases, and return frames respectively.
 These frame limits do not limit memory needed to decode the original file.
 
-The former `x2.0-pro` model is replaced by `x2.0-sla`. XLab migrates a saved Pro
-selection to SLA and keeps all three media entries available.
+The former `x2.0-pro` model is replaced by X2.1 (`x2.0-sla`). XLab migrates a saved Pro
+selection to X2.1 and keeps all three media entries available.
 
 ## Service environments
 
@@ -698,7 +700,7 @@ manager. The default is `true`.
 
 ```ts
 const realtime = client.createRealtimeManager(new RealtimeConfiguration(
-  RealtimeModels.realtime(RealtimeModel.X2_0_SLA),
+  RealtimeModels.realtime(RealtimeModel.X2_1),
   false
 ));
 ```
