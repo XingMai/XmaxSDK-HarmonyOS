@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { loadEts } = require('./ets-loader.cjs');
 const { createCameraKitFixture } = require('./camera-kit-fixture.cjs');
@@ -49,6 +50,16 @@ test('all models including SLA inherit the client production environment', () =>
   const f = fixture();
   assert.equal(f.Models.realtime(f.Model.X2_1).baseURL, undefined);
   assert.equal(f.Models.realtime(f.Model.X2_0).baseURL, undefined);
+});
+
+test('model display names are independent of the server identifiers', () => {
+  const f = fixture();
+  for (const [name, displayName] of [[f.Model.X2_0, 'X2.0'], [f.Model.X2_1, 'X2.1']]) {
+    const model = f.Models.realtime(name);
+    assert.equal(model.displayName, displayName);
+    assert.equal(model.name, name);
+  }
+  assert.equal(f.Model.X2_1, 'x2.0-sla');
 });
 
 test('realtime managers and storage use the configured production environment without early key validation', () => {
@@ -265,14 +276,17 @@ test('SLA rejects unsupported camera input before capture but accepts non-bucket
 test('XLab lists supported models and migrates a persisted Pro selection to SLA', () => {
   const f = fixture();
   let selected;
-  const load = loadEts({ '@xmax/sdk': { RealtimeModel: f.Model } }, {
+  const load = loadEts({ '@xmax/sdk': { RealtimeModel: f.Model, RealtimeModels: f.Models } }, {
     AppStorage: { get: () => selected, set: (_key, value) => { selected = value; } },
     PersistentStorage: { persistProp: (_key, value) => { selected ??= value; } }
   });
   const { XLabModelSelection: selection } = load(path.resolve(__dirname,
     '../examples/XLab/entry/src/main/ets/modules/xlrealtime/config/XLabModelSelection.ets'));
   assert.deepEqual(selection.OPTIONS.map(option => option.model), ['x2.0', 'x2.0-sla']);
-  assert.deepEqual(selection.OPTIONS.map(option => option.title), ['X2.0', 'X2.1']);
+  assert.deepEqual(selection.OPTIONS.map(option => option.displayName), ['X2.0', 'X2.1']);
+  for (const option of selection.OPTIONS) {
+    assert.equal(option.displayName, f.Models.realtime(option.model).displayName);
+  }
   assert.deepEqual(selection.OPTIONS.map(option => option.symbol), ['RealtimeModel.X2_0', 'RealtimeModel.X2_1']);
   for (const [saved, expected] of [['x2.0', 'x2.0'], ['x2.0-sla', 'x2.0-sla'],
     ['x2.0-pro', 'x2.0-sla'], ['unknown', 'x2.0'], [undefined, 'x2.0']]) {
@@ -282,6 +296,14 @@ test('XLab lists supported models and migrates a persisted Pro selection to SLA'
   selected = 'x2.0-pro';
   selection.initialize();
   assert.equal(selected, 'x2.0-sla');
+});
+
+test('XLab model selection and latest-model metric both use the display name', () => {
+  const source = fs.readFileSync(path.resolve(__dirname,
+    '../examples/XLab/entry/src/main/ets/pages/Index.ets'), 'utf8');
+  assert.match(source, /Text\(option\.displayName\)/);
+  assert.match(source, /label: this\.text\('latest_model'\), value: XLabModelSelection\.OPTIONS\[XLabModelSelection\.OPTIONS\.length - 1\]\.displayName/);
+  assert.doesNotMatch(source, /\.model\.toUpperCase\(\)/);
 });
 
 for (const name of ['x2.0', 'x2.0-sla']) {

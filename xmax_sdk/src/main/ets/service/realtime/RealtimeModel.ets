@@ -22,11 +22,21 @@ export enum RealtimeModel {
   X2_1 = 'x2.0-sla'
 }
 
-/** A realtime model's name, session API URL, input constraints, and default media format. */
+/** A realtime model's identity, session API URL, input constraints, and default media format. */
 export class ModelDefinition {
 
   /** The model name sent to the server. */
   readonly name: RealtimeModel;
+
+  /** The model's display name. */
+  get displayName(): string {
+    switch (this.name) {
+      case RealtimeModel.X2_0:
+        return 'X2.0';
+      case RealtimeModel.X2_1:
+        return 'X2.1';
+    }
+  }
 
   /**
    * The model's session API URL; undefined inherits the client environment without changing storage

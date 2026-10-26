@@ -1,13 +1,13 @@
-import { RealtimeModel } from '@xmax/sdk';
+import { RealtimeModel, RealtimeModels } from '@xmax/sdk';
 
 export class XLabModelOption {
   readonly model: RealtimeModel;
-  readonly title: string;
+  readonly displayName: string;
   readonly symbol: string;
 
-  constructor(model: RealtimeModel, title: string, symbol: string) {
+  constructor(model: RealtimeModel, symbol: string) {
     this.model = model;
-    this.title = title;
+    this.displayName = RealtimeModels.realtime(model).displayName;
     this.symbol = symbol;
   }
 }
@@ -18,12 +18,10 @@ export class XLabModelSelection {
   static readonly OPTIONS: XLabModelOption[] = [
     new XLabModelOption(
       RealtimeModel.X2_0,
-      'X2.0',
       'RealtimeModel.X2_0'
     ),
     new XLabModelOption(
       RealtimeModel.X2_1,
-      'X2.1',
       'RealtimeModel.X2_1'
     )
   ];

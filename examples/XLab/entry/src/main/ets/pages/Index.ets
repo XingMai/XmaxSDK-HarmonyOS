@@ -184,7 +184,7 @@ struct ModelRegistryCard {
               .fontColor('#8EF0C8')
 
             Column() {
-              Text(option.title.toUpperCase())
+              Text(option.displayName)
                 .fontSize(13 * FEED_FONT_SCALE)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#F0F2F5')
@@ -870,7 +870,7 @@ struct Index {
           Row({ space: 8 }) {
             RuntimeMetric({ label: this.text('runtime'), value: 'HarmonyOS' })
             RuntimeMetric({ label: this.text('min_api'), value: '18+' })
-            RuntimeMetric({ label: this.text('latest_model'), value: XLabModelSelection.OPTIONS[XLabModelSelection.OPTIONS.length - 1].model.toUpperCase() })
+            RuntimeMetric({ label: this.text('latest_model'), value: XLabModelSelection.OPTIONS[XLabModelSelection.OPTIONS.length - 1].displayName })
           }
           .width('100%')
           .margin({ top: 12 })
