@@ -43,7 +43,7 @@ function fixture({ device = { distributionOSVersion: ' 5.1.0 ', productModel: ' 
   const { RealtimeVideoFormat } = load('service/realtime/RealtimeVideoFormat.ets');
   const { RealtimeContext: Context } = load('service/realtime/RealtimeContext.ets');
   return { load, RuntimeInfo, RoomEvent, Context, requests, get destroyed() { return destroyed; },
-    format: new RealtimeVideoFormat(1024, 1920, 30) };
+    format: new RealtimeVideoFormat(1080, 1920, 30) };
 }
 
 test('runtime is a lazy shared snapshot; SDK version matches the HAR package', () => {
@@ -78,7 +78,7 @@ test('OS information falls back to the full OS name if distribution information 
 test('all room events include the same top-level runtime and preserve SLA size and business fields', () => {
   const f = fixture(), task = 'task-test?os=harmonyos', user = 'user';
   const context = new f.Context('prompt', 'reference.png');
-  const params = { model: 'default', size: [1024, 1920], prompt: 'prompt', ref_image_path: 'reference.png',
+  const params = { model: 'default', size: [1080, 1920], prompt: 'prompt', ref_image_path: 'reference.png',
     detection: false, face_replace: false };
   const cases = [
     [f.RoomEvent.start(user, task, f.format, context), { event: 'start', params, user_id: user, uid: task }],

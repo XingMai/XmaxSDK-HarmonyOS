@@ -515,14 +515,38 @@ for (const action of ['disconnect', 'close']) {
   });
 }
 
-test('SLA image generation separates media, canvas and return sizes through the real room signaling chain', async t => {
+for (const [width, height] of [[1920, 1080], [1080, 1920], [1408, 1408], [1152, 1536], [1536, 1152]]) {
+  test(`X2.1 ${width}x${height} camera canvas reaches start and condition-update signals unchanged`, async t => {
+    const f = fixture(t);
+    const { RealtimeVideoFormat } = f.load('service/realtime/RealtimeVideoFormat.ets');
+    const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
+    const format = new RealtimeVideoFormat(width, height, 30);
+    const local = await f.manager.createLocalCameraStream(format);
+    const pending = outcome(f.manager.startGeneration(local, new RealtimeContext('first')));
+    await settle();
+    const start = f.messages.find(message => message.event === 'start');
+    assert.ok(start);
+    assert.deepEqual(start.params.size, [width, height]);
+    assert.deepEqual(local.videoTrack.videoFormat, format);
+    f.sei(start.uid); await settle(); f.frame();
+    assert.equal((await pending).error, undefined);
+    await f.manager.startGeneration(new RealtimeContext('second'));
+    const changed = f.messages.at(-1);
+    assert.equal(changed.event, 'change_condition');
+    assert.equal(changed.uid, start.uid);
+    assert.deepEqual(changed.params.size, [width, height]);
+    assert.deepEqual(local.videoTrack.videoFormat, format);
+  });
+}
+
+test('X2.1 image generation separates media, canvas and return sizes through the real room signaling chain', async t => {
   const f = fixture(t);
   const { RealtimeContext } = f.load('service/realtime/RealtimeContext.ets');
   const local = await f.manager.createLocalImageStream('image');
   const pending = outcome(f.manager.startGeneration(local, new RealtimeContext('first'), true));
   await settle();
   const message = f.messages.find(m => m.event === 'start');
-  assert.deepEqual(message.params.size, [1024, 1920]);
+  assert.deepEqual(message.params.size, [1080, 1920]);
   assert.deepEqual(message.params.target_size, [972, 1728]);
   assert.equal(message.params.padding, 'contain');
   assert.equal(message.params.face_replace, true);
@@ -536,7 +560,7 @@ test('SLA image generation separates media, canvas and return sizes through the 
   await f.manager.startGeneration(new RealtimeContext('second'), false);
   const changed = f.messages.at(-1);
   assert.equal(changed.event, 'change_condition');
-  assert.deepEqual(changed.params.size, [1024, 1920]);
+  assert.deepEqual(changed.params.size, [1080, 1920]);
   assert.equal(changed.params.padding, 'contain');
   assert.equal(changed.params.face_replace, false);
   assert.equal(changed.params.target_size, undefined);

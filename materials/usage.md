@@ -162,7 +162,7 @@ Camera, video and image inputs are available for both models.
 | Model | Generation canvas | Local media pixel limit | Default FPS | Default camera |
 | --- | --- | --- | --- | --- |
 | `x2.0` | 600,000–1,280,000 pixels, width and height aligned to 32 | 1,280,000 | 30 | 832 × 1472 |
-| `x2.0-sla` | 1024 × 1920 or 1920 × 1024 | 2,100,000 | 30 | 1024 × 1920 |
+| `x2.0-sla` | 1920 × 1080, 1080 × 1920, 1408 × 1408, 1152 × 1536, or 1536 × 1152 | 2,100,000 | 30 | 1080 × 1920 |
 
 Use `RealtimeModel.X2_1` for X2.1. Its backend model ID remains `x2.0-sla`.
 
@@ -178,7 +178,7 @@ const mediaService = client.createMediaService(RealtimeModel.X2_1);
 const mediaSize = mediaService.resolveMediaSize(new ImageSize(3840, 2160), RealtimeMediaSource.IMAGE);
 // mediaSize: 1920 × 1080
 const generationSize = mediaService.resolveGenerationSize(mediaSize);
-// generationSize: 1920 × 1024
+// generationSize: 1920 × 1080
 const targetSize = mediaService.resolveTargetSize(mediaSize, mediaSize);
 // targetSize: 1920 × 1080
 ```
@@ -714,7 +714,7 @@ this configuration, close the old manager and create another one.
 
 Camera output follows the current display orientation: the short side is the
 width in portrait, and the long side is the width in landscape. For example,
-`1024 × 1920` becomes `1920 × 1024`, with the frame rate unchanged. CameraKit
+`1080 × 1920` becomes `1920 × 1080`, with the frame rate unchanged. CameraKit
 prefers 16:9 YUV capture profiles, starting at `1920 × 1080` and trying smaller
 profiles until one supports 30 fps. If none does, it falls back to 4:3 profiles
 starting at `1920 × 1440`. A 16:9 capture corresponds to 9:16 in portrait.
@@ -797,7 +797,7 @@ await realtime.stopLocalCameraStream();
 this.localVideoTrack = undefined;
 
 const resizedStream = await realtime.createLocalCameraStream(
-  new RealtimeVideoFormat(1024, 1920, 30),
+  new RealtimeVideoFormat(1080, 1920, 30),
   CameraPosition.FRONT
 );
 this.localVideoTrack = resizedStream.videoTrack;
@@ -808,10 +808,11 @@ const resizedRemoteStream = await realtime.startGeneration(
 this.remoteVideoTrack = resizedRemoteStream.videoTrack;
 ```
 
-The old local stream is no longer valid after stopping it. Input dimensions follow
-the selected model's pixel bounds and 32-pixel alignment. Use the returned track's
-`videoFormat` to inspect the resolved dimensions; for example, `1024 × 1920` is
-retained for `x2.0-sla` and reduced to `800 × 1536` for `x2.0`.
+The old local stream is no longer valid after stopping it. X2.1 camera requests must
+match one of its five supported resolutions exactly; unsupported camera dimensions
+are rejected rather than rounded to a bucket. Images and videos retain their media
+aspect ratio and select the closest generation canvas. Use the returned track's
+`videoFormat` to inspect the resolved local dimensions.
 
 ## Upload encoding configuration
 
@@ -822,7 +823,7 @@ and `encoderPreference`. These settings apply to camera, video and image streams
 import { RealtimeVideoFormat, RealtimeVideoEncoderPreference } from '@xmax/sdk';
 
 const format = new RealtimeVideoFormat(
-  1024, 1920, 30,
+  1080, 1920, 30,
   1500, 6000,
   RealtimeVideoEncoderPreference.MAINTAIN_FRAMERATE
 );

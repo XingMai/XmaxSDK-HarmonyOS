@@ -47,12 +47,24 @@ export class ModelDefinition {
       case RealtimeModel.X2_1:
         return [
           new ImageSize(
-            1024,
+            1920,
+            1080
+          ),
+          new ImageSize(
+            1080,
             1920
           ),
           new ImageSize(
-            1920,
-            1024
+            1408,
+            1408
+          ),
+          new ImageSize(
+            1152,
+            1536
+          ),
+          new ImageSize(
+            1536,
+            1152
           )
         ];
     }
@@ -102,7 +114,7 @@ export class ModelDefinition {
         );
       case RealtimeModel.X2_1:
         return new RealtimeVideoFormat(
-          1024,
+          1080,
           1920,
           this.defaultFrameRate
         );

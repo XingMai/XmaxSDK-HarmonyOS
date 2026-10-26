@@ -29,9 +29,14 @@ test('images and videos preserve ratio within the model pixel budget, independen
       assert.deepEqual(service.resolveMediaSize(result, source), result);
     }
   }
-  assert.deepEqual(service.resolveGenerationSize(new Size(1920, 1080)), new Size(1920, 1024));
-  assert.deepEqual(service.resolveGenerationSize(new Size(1080, 1920)), new Size(1024, 1920));
-  assert.deepEqual(service.resolveGenerationSize(new Size(640, 480)), new Size(1920, 1024));
+  for (const [width, height, canvasWidth, canvasHeight] of [
+    [1920, 1080, 1920, 1080], [1080, 1920, 1080, 1920],
+    [1024, 1920, 1080, 1920], [1920, 1024, 1920, 1080],
+    [640, 480, 1536, 1152], [1200, 1600, 1152, 1536],
+    [1200, 1500, 1152, 1536], [800, 800, 1408, 1408]
+  ]) {
+    assert.deepEqual(service.resolveGenerationSize(new Size(width, height)), new Size(canvasWidth, canvasHeight));
+  }
 });
 
 test('media does not inherit generation minimum area or 32 alignment and only camera validates fixed buckets', () => {
@@ -42,10 +47,11 @@ test('media does not inherit generation minimum area or 32 alignment and only ca
       assert.deepEqual(service.resolveMediaSize(new Size(w, h), source), new Size(width, height));
     }
   }
-  for (const size of [new Size(1024, 1920), new Size(1920, 1024)]) {
+  for (const size of [new Size(1920, 1080), new Size(1080, 1920), new Size(1408, 1408),
+    new Size(1152, 1536), new Size(1536, 1152)]) {
     assert.deepEqual(service.resolveMediaSize(size, 'camera'), size);
   }
-  for (const size of [new Size(1080, 1920), new Size(1920, 1080), new Size(2048, 3840)]) {
+  for (const size of [new Size(1024, 1920), new Size(1920, 1024), new Size(2048, 3840)]) {
     assert.throws(() => service.resolveMediaSize(size, 'camera'), { code: 'INVALID_CONFIGURATION' });
   }
   const x2Fixture = fixture('x2.0'), x2 = x2Fixture.service;

@@ -161,7 +161,7 @@ function managerFixture(modelName = 'x2.0-sla') {
       load('service/realtime/RealtimeVideoTrack.ets').updateRealtimeVideoTrackFormat(track, next);
       return next;
     },
-    create: () => manager.createLocalCameraStream(new Format(1024, 1920, 30), CameraPosition.FRONT),
+    create: () => manager.createLocalCameraStream(new Format(1080, 1920, 30), CameraPosition.FRONT),
     holdSession() { sessionGate = deferred(); return sessionGate; },
     holdGeneration() { autoConfirm = false; },
     holdPreview() { holdPreview = true; },
@@ -285,7 +285,7 @@ for (const endDuringStart of [false, true]) {
 }
 
 test('default camera formats follow the manager model and reach generation signaling unchanged', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1080, 1920, 30]]) {
     const f = managerFixture(name);
     const local = await f.manager.createLocalCameraStream(undefined, 'back');
     assert.deepEqual(local.videoTrack.videoFormat, new f.Format(width, height, fps));
@@ -367,7 +367,7 @@ test('one-call generation connects on demand, reuses its remote track and suppor
   assert.equal(f.calls.starts.length, 1);
   assert.equal(f.calls.updates[0].context.prompt, 'updated');
   assert.equal(f.calls.starts[0].format, local.videoTrack.videoFormat);
-  assert.equal(f.calls.starts[0].format.width, 1024);
+  assert.equal(f.calls.starts[0].format.width, 1080);
   assert.equal(typeof f.manager.stopGeneration, 'undefined');
   await f.manager.disconnect();
   await assert.rejects(f.manager.startGeneration(local), { code: 'INVALID_CONFIGURATION' });
@@ -793,14 +793,14 @@ test('camera controller uses CameraKit external frames and preserves its track w
     load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   let readyCount = 0;
   camera.setPreviewReadyListener(() => readyCount++);
-  const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT);
+  const local = await camera.createLocalCameraStream(new RealtimeVideoFormat(1080, 1920, 30), CameraPosition.FRONT);
   assert.ok(calls.some(call => call[0] === 'external-video'));
   assert.deepEqual(calls.find(call => call[0] === 'camera-frame-output'),
     ['camera-frame-output', 1920, 1440]);
   assert.deepEqual(calls.find(call => call[0] === 'camera-frame-rate'),
     ['camera-frame-rate', 30, 30]);
   assert.ok(calls.filter(call => call[0] === 'camera-query-frame-rates').every(call => call[1]));
-  assert.deepEqual(calls.find(call => call[0] === 'camera'), ['camera', 1024, 1920, 30]);
+  assert.deepEqual(calls.find(call => call[0] === 'camera'), ['camera', 1080, 1920, 30]);
   const frame = { timestampUs: 123 };
   cameraKit.emit(frame);
   assert.deepEqual(pushedFrames, [frame]);
@@ -850,7 +850,7 @@ test('camera capture falls back to the largest compatible 4:3 profile when 16:9 
     load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
 
   await camera.createLocalCameraStream(
-    new RealtimeVideoFormat(1024, 1920, 30),
+    new RealtimeVideoFormat(1080, 1920, 30),
     CameraPosition.FRONT
   );
 
@@ -918,7 +918,7 @@ function cameraFailureFixture(options = {}, rtcError) {
   new (load('service/media/MediaService.ets').MediaService)(
     load('service/realtime/RealtimeModel.ets').RealtimeModels.realtime('x2.0-sla')));
   return { camera, calls, start: () => camera.createLocalCameraStream(
-    new RealtimeVideoFormat(1024, 1920, 30), CameraPosition.FRONT) };
+    new RealtimeVideoFormat(1080, 1920, 30), CameraPosition.FRONT) };
 }
 
 test('camera rejects genuinely unsupported frame rates as media errors and releases each session', async () => {
@@ -1425,7 +1425,7 @@ test('XLab resets paused video when replacing the file and detaches callback on 
 });
 
 test('XLab uses model camera defaults for both models without an interpolation size override', async () => {
-  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1024, 1920, 30]]) {
+  for (const [name, width, height, fps] of [['x2.0', 832, 1472, 30], ['x2.0-sla', 1080, 1920, 30]]) {
     const f = exampleFixture(name);
     await f.viewModel.connect({});
     await settle();
@@ -2108,7 +2108,7 @@ test('SDK camera rotation keeps CONNECTED sessions and leaves local preview avai
 
 test('generation synchronizes camera dimensions before connecting without cancelling its own operation', async () => {
   const f = managerFixture(), local = await f.create();
-  const landscape = new f.Format(1920, 1024, 30);
+  const landscape = new f.Format(1920, 1080, 30);
   f.media.updateCameraOrientation = () => f.rotateCamera(landscape);
   await f.manager.startGeneration(local, new f.Context('current orientation'));
   assert.equal(f.manager.currentState.connectionState, f.State.GENERATING);
@@ -2135,25 +2135,25 @@ test('camera applies oriented output before connect and rejects queued frames fr
     pushLocalVideoFrame: frame => events.push(['push', frame.format.width, frame.format.height])
   }, new MediaService(RealtimeModels.realtime('x2.0-sla')), error => errors.push(error),
   format => events.push(['signal', format.width, format.height]));
-  const local = await camera.createLocalCameraStream(new Format(1024, 1920, 30), 'front');
+  const local = await camera.createLocalCameraStream(new Format(1080, 1920, 30), 'front');
   try {
-    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1024, fps: 30 });
+    assert.deepEqual(local.videoTrack.videoFormat, { width: 1920, height: 1080, fps: 30 });
     const observed = [];
     Registry.attach(local.videoTrack, 'view', 'fit', () => {}, () => {}, undefined,
       () => observed.push(local.videoTrack.videoFormat));
     events.length = 0;
-    kit.outputs[0].currentVideoFormat = new Format(1024, 1920, 30);
-    kit.emit({ format: { width: 1920, height: 1024 } });
+    kit.outputs[0].currentVideoFormat = new Format(1080, 1920, 30);
+    kit.emit({ format: { width: 1920, height: 1080 } });
     assert.deepEqual(events, []);
-    kit.emit({ format: { width: 1024, height: 1920 } });
-    assert.deepEqual(events, [['encode', 1024, 1920], ['signal', 1024, 1920], ['push', 1024, 1920]]);
+    kit.emit({ format: { width: 1080, height: 1920 } });
+    assert.deepEqual(events, [['encode', 1080, 1920], ['signal', 1080, 1920], ['push', 1080, 1920]]);
     assert.equal(observed.length, 2);
-    assert.equal(observed[1].width, 1024);
-    kit.emit({ format: { width: 1024, height: 1920 } });
+    assert.equal(observed[1].width, 1080);
+    kit.emit({ format: { width: 1080, height: 1920 } });
     assert.equal(events.length, 4); // No duplicate encoding/signaling for subsequent frames.
     events.length = 0;
     camera.updateOrientation(); // Read the current display before another frame is delivered.
-    assert.deepEqual(events, [['encode', 1920, 1024], ['signal', 1920, 1024]]);
+    assert.deepEqual(events, [['encode', 1920, 1080], ['signal', 1920, 1080]]);
     assert.equal(local.videoTrack.videoFormat.width, 1920);
     assert.equal(observed.at(-1).width, 1920);
     camera.updateOrientation();
