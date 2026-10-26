@@ -1,5 +1,5 @@
 //
-//  XmaxRealtimeVideoView.ets
+//  XmaxRealtimeDualVideo.ets
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -13,14 +13,14 @@ import { VideoContentMode } from '../../foundation/media/video/VideoContentMode'
 import { RealtimeVideoTrack } from '../../service/realtime/RealtimeVideoTrack';
 import { DefaultTrajectoryEffectRenderer } from '../trajectory/DefaultTrajectoryEffectRenderer';
 import { TrajectoryEffectRendering } from '../trajectory/TrajectoryEffectRendering';
-import { XmaxVideoView } from './XmaxVideoView';
+import { XmaxRealtimeVideo } from './XmaxRealtimeVideo';
 
 /**
  * A video container preserving local preview and fading in remote video after its first rendered
  * frame.
  */
 @Component
-export struct XmaxRealtimeVideoView {
+export struct XmaxRealtimeDualVideo {
 
   /** The local preview track. */
   @Prop localTrack?: RealtimeVideoTrack = undefined;
@@ -92,7 +92,7 @@ export struct XmaxRealtimeVideoView {
   /** Builds the video or interaction component tree. */
   build() {
     Stack() {
-      XmaxVideoView({
+      XmaxRealtimeVideo({
         track: this.localTrack,
         contentMode: this.contentMode,
         isInteractionEnabled: false
@@ -103,7 +103,7 @@ export struct XmaxRealtimeVideoView {
       ForEach(
         this.remoteTrack === undefined ? [] : [this.remoteViewKey],
         (key: number) => {
-        XmaxVideoView({
+        XmaxRealtimeVideo({
           track: this.remoteTrack,
           contentMode: this.contentMode,
           isInteractionEnabled: this.isInteractionEnabled && this.remoteReady,

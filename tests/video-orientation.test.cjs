@@ -59,11 +59,11 @@ test('ArkUI copies and multiple views share track orientation, while stale liste
 
 test('the video component installs window observation on appearance and removes it on replacement/disappearance', () => {
   const f = fixture(), windows = [], changes = [];
-  const { XmaxVideoView } = f.load('rendering/video/XmaxVideoView.ets');
+  const { XmaxRealtimeVideo } = f.load('rendering/video/XmaxRealtimeVideo.ets');
   const a = new f.RealtimeVideoTrack('a'), b = new f.RealtimeVideoTrack('b');
   f.setRealtimeVideoTrackOrientationHandler(a, () => changes.push('a'));
   f.setRealtimeVideoTrackOrientationHandler(b, () => changes.push('b'));
-  const view = new XmaxVideoView();
+  const view = new XmaxRealtimeVideo();
   view.getUIContext = () => ({ getMediaQuery: () => ({ matchMediaSync: expression => {
     assert.equal(expression, '(orientation: landscape)');
     const q = query(); windows.push(q); return q;

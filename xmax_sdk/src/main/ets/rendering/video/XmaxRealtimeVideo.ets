@@ -1,5 +1,5 @@
 //
-//  XmaxVideoView.ets
+//  XmaxRealtimeVideo.ets
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -26,7 +26,7 @@ const PREVIEW_TRANSITION_DURATION: number = 300;
 
 /** A view displaying a local or remote realtime video track. */
 @Component
-export struct XmaxVideoView {
+export struct XmaxRealtimeVideo {
 
   // Video track to display
 

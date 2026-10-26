@@ -10,7 +10,7 @@ import {
   RealtimeVideoFormat,
   TrajectoryEffectRendering,
   VideoContentMode,
-  XmaxRealtimeVideoView
+  XmaxRealtimeDualVideo
 } from '@xmax/sdk';
 import { XLabApplicationLifecycle } from '../../application/XLabApplicationLifecycle';
 import { XLabConfiguration } from './config/XLabConfiguration';
@@ -390,7 +390,7 @@ export struct RealtimePage {
         Stack({ alignContent: Alignment.TopStart }) {
           if (this.state.localVideoTrack !== null) {
             Stack() {
-              XmaxRealtimeVideoView({
+              XmaxRealtimeDualVideo({
                 localTrack: this.state.localVideoTrack,
                 remoteTrack: this.state.remoteVideoTrack ?? undefined,
                 contentMode: this.localContentMode(),

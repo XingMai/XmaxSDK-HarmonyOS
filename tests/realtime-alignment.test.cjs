@@ -770,12 +770,12 @@ test('ArkUI property copies retain opaque track identity, metadata and render/in
 
 test('video view rebinds a changed track, clears frames, and ignores late surface callbacks', () => {
   const f = renderFixture(), events = [];
-  const { XmaxVideoView } = f.load('rendering/video/XmaxVideoView.ets');
+  const { XmaxRealtimeVideo } = f.load('rendering/video/XmaxRealtimeVideo.ets');
   const a = new f.Track('same-id'), b = new f.Track('same-id');
   const bindingA = new f.Binding('rtc', id => events.push(['attachA', id]), id => events.push(['detachA', id]));
   const bindingB = new f.Binding('rtc', id => events.push(['attachB', id]), id => events.push(['detachB', id]));
   f.Registry.register(a, bindingA); f.Registry.register(b, bindingB);
-  const view = new XmaxVideoView(), ready = [];
+  const view = new XmaxRealtimeVideo(), ready = [];
   view.onVideoReadyChanged = value => ready.push(value);
   view.getUIContext = () => ({ getMediaQuery: () => ({ matchMediaSync: () => ({ matches: false, on() {}, off() {} }) }) });
   view.track = a; view.aboutToAppear();
@@ -860,8 +860,8 @@ test('a disconnect from the GENERATING listener prevents returning a stale succe
 
 test('composite view resets on replacement/nil and ignores a removed remote view callback', () => {
   const f = renderFixture();
-  const { XmaxRealtimeVideoView } = f.load('rendering/video/XmaxRealtimeVideoView.ets');
-  const view = new XmaxRealtimeVideoView();
+  const { XmaxRealtimeDualVideo } = f.load('rendering/video/XmaxRealtimeDualVideo.ets');
+  const view = new XmaxRealtimeDualVideo();
   view.remoteTrack = new f.Track('remote'); view.aboutToAppear();
   const oldKey = view.remoteViewKey;
   view.onRemoteVideoReady(oldKey, true);

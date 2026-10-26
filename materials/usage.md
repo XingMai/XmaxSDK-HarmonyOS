@@ -277,13 +277,13 @@ credentials are not embedded in the host application.
 
 ## Render local preview and generated video
 
-Store the tracks in component state and render them with `XmaxRealtimeVideoView`:
+Store the tracks in component state and render them with `XmaxRealtimeDualVideo`:
 
 ```ts
 import {
   RealtimeVideoTrack,
   VideoContentMode,
-  XmaxRealtimeVideoView
+  XmaxRealtimeDualVideo
 } from '@xmax/sdk';
 
 @State private localVideoTrack: RealtimeVideoTrack | undefined = undefined;
@@ -293,7 +293,7 @@ import {
 this.localVideoTrack = localStream.videoTrack;
 
 build() {
-  XmaxRealtimeVideoView({
+  XmaxRealtimeDualVideo({
     localTrack: this.localVideoTrack,
     remoteTrack: this.remoteVideoTrack,
     contentMode: VideoContentMode.FILL
@@ -312,7 +312,7 @@ state is cleared when the remote publisher stops or the session ends.
 Use `VideoContentMode.FIT` to preserve the aspect ratio of image and local video
 inputs. `isInteractionEnabled` controls remote touch interaction; a custom
 `trajectoryRenderer` may be supplied when creating the component. The existing
-`XmaxVideoView` remains available for displaying one track. Both components react
+`XmaxRealtimeVideo` remains available for displaying one track. Both components react
 to track replacements, including streams recreated with different dimensions.
 
 ## Control local video playback
@@ -323,7 +323,7 @@ For a stream created by `createLocalVideoStream`, use the realtime manager's
 example a tap on the video view:
 
 ```ts
-XmaxRealtimeVideoView({
+XmaxRealtimeDualVideo({
   localTrack: this.localVideoTrack,
   remoteTrack: this.remoteVideoTrack,
   contentMode: VideoContentMode.FIT,
@@ -522,8 +522,8 @@ A cancelled operation rejects with `XmaxErrorCode.CANCELLED`.
 
 ## Touch Interaction
 
-During an active generation task, the remote view in `XmaxRealtimeVideoView` (or
-a standalone `XmaxVideoView`) captures multi-touch trajectories
+During an active generation task, the remote view in `XmaxRealtimeDualVideo` (or
+a standalone `XmaxRealtimeVideo`) captures multi-touch trajectories
 over the generated video and submits them to the active task. The host application
 does not need to implement gesture tracking or coordinate conversion.
 
@@ -543,9 +543,9 @@ Trajectory interaction is enabled by default. Disable it when touch input must b
 handled by the surrounding user interface:
 
 ```ts
-import { XmaxVideoView } from '@xmax/sdk';
+import { XmaxRealtimeVideo } from '@xmax/sdk';
 
-XmaxVideoView({
+XmaxRealtimeVideo({
   track: this.remoteVideoTrack,
   contentMode: VideoContentMode.FILL,
   isInteractionEnabled: false
@@ -746,7 +746,7 @@ XLab's X2.1 camera page exposes a **Ratio** menu for `16:9`, `9:16`, `1:1`, `3:4
 and `4:3`. The menu is disabled outside `READY` and during camera switching.
 Generation controls and camera flipping are disabled while a ratio update is pending.
 
-`XmaxVideoView` and `XmaxRealtimeVideoView` observe the orientation of their
+`XmaxRealtimeVideo` and `XmaxRealtimeDualVideo` observe the orientation of their
 window. When camera input flips between portrait and landscape during
 `GENERATING`, the SDK stops the current generation task while keeping the RTC
 connection and remote track, waits 500 ms for capture to settle, then restarts
@@ -1056,12 +1056,12 @@ await manager.startGeneration({ restart: true });
 
 静态生成参数只通过 `startGeneration(options.extraParams)` 传入，并需要同时提供 `context`；`RealtimeContext` 只包含提示词、参考图和人脸检测配置。SDK 独立缓存静态生成参数，省略 `context` 时可通过 `{ restart: true }` 复用缓存条件；切回常规生成时显式传入 `context`、省略 `extraParams`，并指定 `restart: true`。瞬动与连动均可通过 `RealtimeContext.referencePath` 传参考图。
 
-`XmaxVideoView` 与 `XmaxRealtimeVideoView` 支持 `onInteractionChanged`，按有效触点整体通知 `began`、`ended`、`cancelled`；多指交互在末指抬起后才通知结束。`isVideoVisible` 默认 `true`，设为 `false` 可立即隐藏视频画面（组合组件仅隐藏远端画面），保持视频渲染、轨迹绘制和交互绑定，不改变视频容器尺寸。需要原图兜底时，由接入页面在视频组件下方绘制图片；SDK 不接收或绘制业务原图。此前的 `stillImage`、`showsStillImage` 参数已移除，改为由页面管理原图并通过 `isVideoVisible` 控制视频显隐。
+`XmaxRealtimeVideo` 与 `XmaxRealtimeDualVideo` 支持 `onInteractionChanged`，按有效触点整体通知 `began`、`ended`、`cancelled`；多指交互在末指抬起后才通知结束。`isVideoVisible` 默认 `true`，设为 `false` 可立即隐藏视频画面（组合组件仅隐藏远端画面），保持视频渲染、轨迹绘制和交互绑定，不改变视频容器尺寸。需要原图兜底时，由接入页面在视频组件下方绘制图片；SDK 不接收或绘制业务原图。此前的 `stillImage`、`showsStillImage` 参数已移除，改为由页面管理原图并通过 `isVideoVisible` 控制视频显隐。
 
 静态任务收到当前服务端发来的、任务 ID 匹配的 `video_started`，或匹配当前任务的 SEI 后返回。视频可能要收到拖拽轨迹才开始输出，因此不要求先收到视频 SEI 才允许发送交互。启动信令只确认任务可接收交互，不代表视频已就绪；SDK 仍在匹配新任务 SEI 后绑定结果流。请通过 `onVideoReadyChanged` 判断画面是否可见；进入交互页面时可以先 `connect(localStream)`，首次拖拽时再调用 `startGeneration()`。
 
-任务准备或重建期间可保持 `XmaxVideoView.isInteractionEnabled` 开启，让本地轨迹持续跟手绘制。没有已确认任务时，SDK 直接丢弃交互采样，不缓存或补发；任务确认后发送后续实时采样。视频是否显示应单独通过 `isVideoVisible` 控制。默认关闭松手续发时，若首次短拖在任务确认前已结束，该次拖拽只有本地轨迹反馈，不会补发到生成任务。
+任务准备或重建期间可保持 `XmaxRealtimeVideo.isInteractionEnabled` 开启，让本地轨迹持续跟手绘制。没有已确认任务时，SDK 直接丢弃交互采样，不缓存或补发；任务确认后发送后续实时采样。视频是否显示应单独通过 `isVideoVisible` 控制。默认关闭松手续发时，若首次短拖在任务确认前已结束，该次拖拽只有本地轨迹反馈，不会补发到生成任务。
 
-`XmaxVideoView` 和 `XmaxRealtimeVideoView` 的 `continuesInteractionAfterRelease` 默认 `false`。开启时，末指松手后仍按 30ms 周期发送最后触点，轨迹绘制和 `ended` 通知仍在实际松手时结束。接入方应在画面保留结束时设回 `false`；新拖拽立即替换旧触点，禁用交互、取消、换轨或卸载会清理续发。该功能发送当前保留的触点，不回放历史轨迹。PetTrack 仅在瞬动期间开启，并与首帧就绪后松手保留 750ms、切回原图的时机同步。
+`XmaxRealtimeVideo` 和 `XmaxRealtimeDualVideo` 的 `continuesInteractionAfterRelease` 默认 `false`。开启时，末指松手后仍按 30ms 周期发送最后触点，轨迹绘制和 `ended` 通知仍在实际松手时结束。接入方应在画面保留结束时设回 `false`；新拖拽立即替换旧触点，禁用交互、取消、换轨或卸载会清理续发。该功能发送当前保留的触点，不回放历史轨迹。PetTrack 仅在瞬动期间开启，并与首帧就绪后松手保留 750ms、切回原图的时机同步。
 
 刷新替换任务时，页面应立即隐藏视频并保留原图，直到生成请求完成且 `onVideoReadyChanged(true)` 到达。SDK 不复用上一任务的渲染就绪记录；匹配新任务后，若 RTC 流曾渲染过画面，会重新订阅远端视频并等待新的原生首帧渲染事件。任务确认和解码完成都不会单独触发画面可见通知。同一任务内重新挂载视图仍可复用该任务已经确认的渲染状态。

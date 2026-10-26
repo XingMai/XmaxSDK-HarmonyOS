@@ -345,20 +345,20 @@ this.remoteVideoTrack = remoteStream.videoTrack;
 ```
 
 The camera uses the selected model's default format. Store the tracks in component
-state and add `XmaxRealtimeVideoView` to your view hierarchy:
+state and add `XmaxRealtimeDualVideo` to your view hierarchy:
 
 ```ts
 import {
   RealtimeVideoTrack,
   VideoContentMode,
-  XmaxRealtimeVideoView
+  XmaxRealtimeDualVideo
 } from '@xmax/sdk';
 
 @State private localVideoTrack: RealtimeVideoTrack | undefined = undefined;
 @State private remoteVideoTrack: RealtimeVideoTrack | undefined = undefined;
 
 build() {
-  XmaxRealtimeVideoView({
+  XmaxRealtimeDualVideo({
     localTrack: this.localVideoTrack,
     remoteTrack: this.remoteVideoTrack,
     contentMode: VideoContentMode.FILL
