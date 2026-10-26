@@ -145,3 +145,23 @@ test('XLab ratio controls use model formats and are disabled during format or ca
   }
   assert.ok(fs.existsSync(path.join(root, 'resources/base/media/realtime_camera_format.svg')));
 });
+
+test('camera preview content mode uses exact frame ratios rather than screen orientation', () => {
+  const sdk = loadEts();
+  const { RealtimeVideoFormat: Format } = sdk('service/realtime/RealtimeVideoFormat.ets');
+  const { RealtimeConnectionState } = sdk('service/realtime/RealtimeState.ets');
+  const { VideoContentMode } = sdk('foundation/media/video/VideoContentMode.ets');
+  const load = loadEts({ '@xmax/sdk': { RealtimeConnectionState, VideoContentMode } }, { Observed: value => value });
+  const root = path.resolve(__dirname, '../examples/XLab/entry/src/main');
+  const { RealtimeViewState } = load(path.join(root, 'ets/modules/xlrealtime/mvvm/model/RealtimeViewState.ets'));
+  const state = new RealtimeViewState([]);
+  assert.equal(state.cameraPreviewContentMode, VideoContentMode.FIT);
+  for (const [width, height, mode] of [[1080, 1920, 'fill'], [1920, 1080, 'fill'], [720, 1280, 'fill'],
+    [1280, 720, 'fill'], [1408, 1408, 'fit'], [1152, 1536, 'fit'], [1536, 1152, 'fit'],
+    [832, 1472, 'fit'], [1024, 1920, 'fit']]) {
+    state.cameraVideoFormat = new Format(width, height, 30);
+    assert.equal(state.cameraPreviewContentMode, mode);
+  }
+  const page = fs.readFileSync(path.join(root, 'ets/modules/xlrealtime/RealtimePage.ets'), 'utf8');
+  assert.match(page, /return this\.hasLocalFile\(\) \? VideoContentMode\.FIT : this\.state\.cameraPreviewContentMode;/);
+});

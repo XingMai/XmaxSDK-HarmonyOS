@@ -1180,6 +1180,7 @@ function exampleFixture(modelName = 'x2.0-sla') {
       RealtimeContext: f.Context, RealtimeMediaStream: f.MediaStream, RealtimeVideoFormat: f.Format,
       XmaxLoggerOption: { ALL: 3 },
       XmaxEnvironment: { CHINA: 'china', GLOBAL: 'global' },
+      VideoContentMode: { FIT: 'fit', FILL: 'fill' },
       RealtimeConfiguration: class {}, RealtimeModels: { realtime() {} }, XmaxConfiguration: class {},
       XmaxClient: class { createRealtimeManager() { return nextManager; } }
     },
@@ -1220,6 +1221,8 @@ test('XLab exposes five camera formats and preserves fps and encoding settings w
   assert.deepEqual(track.videoFormat, original.resized(1408, 1408));
   assert.equal(vm.localStream.videoTrack, track);
   assert.equal(vm.state.localVideoTrack, track);
+  assert.equal(vm.state.cameraVideoFormat, track.videoFormat);
+  assert.equal(vm.state.cameraPreviewContentMode, 'fit');
   assert.equal(vm.state.isCameraFormatUpdating, false);
   assert.deepEqual(f.calls.sessions, []);
   const updates = f.calls.cameraFormats.length;
@@ -1227,6 +1230,23 @@ test('XLab exposes five camera formats and preserves fps and encoding settings w
   assert.equal(f.calls.cameraFormats.length, updates);
   await vm.disconnect();
   assert.deepEqual(vm.state.supportedCameraFormats, []);
+  assert.equal(vm.state.cameraVideoFormat, undefined);
+});
+
+test('XLab camera preview fills only exact 9:16 and 16:9 formats while keeping the same track', async () => {
+  const f = exampleFixture(), vm = f.viewModel;
+  await vm.connect({}); await settle();
+  const track = vm.state.localVideoTrack;
+  assert.equal(vm.state.cameraVideoFormat, track.videoFormat);
+  assert.equal(vm.state.cameraPreviewContentMode, 'fill');
+  for (const [width, height, mode] of [[1408, 1408, 'fit'], [1920, 1080, 'fill'],
+    [1152, 1536, 'fit'], [1536, 1152, 'fit'], [1080, 1920, 'fill']]) {
+    await vm.updateCameraFormat(new f.Format(width, height, 30));
+    assert.equal(vm.state.localVideoTrack, track);
+    assert.equal(vm.state.cameraVideoFormat, track.videoFormat);
+    assert.equal(vm.state.cameraPreviewContentMode, mode);
+  }
+  await vm.disconnect();
 });
 
 test('XLab ignores generation and lens clicks while a camera format update is pending', async () => {

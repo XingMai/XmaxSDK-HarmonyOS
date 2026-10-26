@@ -113,8 +113,7 @@ export struct RealtimePage {
   private realtimeCleanup: Promise<void> | null = null;
 
   private localContentMode(): VideoContentMode {
-    return this.hasLocalFile() || this.isLandscape ?
-      VideoContentMode.FIT : VideoContentMode.FILL;
+    return this.hasLocalFile() ? VideoContentMode.FIT : this.state.cameraPreviewContentMode;
   }
 
   private trajectoryRenderer(): TrajectoryEffectRendering {

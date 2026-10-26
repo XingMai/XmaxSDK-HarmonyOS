@@ -1,4 +1,4 @@
-import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoFormat, RealtimeVideoTrack } from '@xmax/sdk';
+import { DownlinkVideoStatistics, UplinkVideoStatistics, RealtimeNetworkQuality, RealtimeQualityLevel, LocalVideoPlaybackState, RealtimeConnectionState, RealtimeVideoFormat, RealtimeVideoTrack, VideoContentMode } from '@xmax/sdk';
 import { Reference } from '../../reference/Reference';
 import { ReferenceCategory } from '../../reference/ReferenceCategory';
 import { RealtimeRecordingState } from '../../recording/RealtimeRecordingState';
@@ -54,6 +54,7 @@ export class RealtimeViewState {
   isPromptReferenceUploading: boolean = false;
   connectionState: RealtimeConnectionState = RealtimeConnectionState.IDLE;
   localVideoTrack: RealtimeVideoTrack | null = null;
+  cameraVideoFormat: RealtimeVideoFormat | undefined = undefined;
   remoteVideoTrack: RealtimeVideoTrack | null = null;
   localVideoPlaybackState: LocalVideoPlaybackState | undefined = undefined;
   uplinkStatistics: UplinkVideoStatistics | undefined = undefined;
@@ -102,6 +103,13 @@ export class RealtimeViewState {
     return this.connectionState === RealtimeConnectionState.READY &&
       this.localVideoTrack?.position !== undefined && !this.isLocalPreviewLoading &&
       !this.isGenerationStarting && !this.isCameraFormatUpdating;
+  }
+
+  get cameraPreviewContentMode(): VideoContentMode {
+    const format: RealtimeVideoFormat | undefined = this.cameraVideoFormat;
+    const fillsPreview: boolean = format !== undefined &&
+      (format.width * 16 === format.height * 9 || format.width * 9 === format.height * 16);
+    return fillsPreview ? VideoContentMode.FILL : VideoContentMode.FIT;
   }
 
   referenceList(categoryId: string): RealtimeReferenceListState {

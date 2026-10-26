@@ -409,6 +409,7 @@ export class RealtimeViewModel {
           this.state.remoteVideoTrack = this.remoteStream?.videoTrack ?? null;
         }
         this.state.connectionState = state.connectionState;
+        this.state.cameraVideoFormat = manager.currentCameraVideoFormat;
         this.refreshQualityLevels();
         if (state.connectionState === RealtimeConnectionState.CONNECTING) {
           this.pendingGenerationRestart = false;
@@ -450,6 +451,7 @@ export class RealtimeViewModel {
       }
       this.localStream = localStream;
       this.state.localVideoTrack = localStream.videoTrack ?? null;
+      this.state.cameraVideoFormat = manager.currentCameraVideoFormat;
       if (localVideoPath.length > 0 || localImagePath.length > 0) {
         this.state.isLocalPreviewLoading = false;
       }
@@ -502,6 +504,9 @@ export class RealtimeViewModel {
     this.state.isCameraFormatUpdating = true;
     try {
       await manager.updateCameraFormat(current.resized(format.width, format.height));
+      if (this.realtimeManager === manager) {
+        this.state.cameraVideoFormat = manager.currentCameraVideoFormat;
+      }
     } catch (error) {
       if (this.realtimeManager === manager) {
         this.onMessage?.(this.errorMessage(error));
@@ -534,6 +539,7 @@ export class RealtimeViewModel {
       if (this.realtimeManager === manager) {
         this.localStream = stream;
         this.state.localVideoTrack = stream.videoTrack ?? null;
+        this.state.cameraVideoFormat = manager.currentCameraVideoFormat;
         if (manager.currentState.connectionState === RealtimeConnectionState.GENERATING) {
           this.state.remoteVideoTrack = this.remoteStream?.videoTrack ?? null;
         }
@@ -625,6 +631,7 @@ export class RealtimeViewModel {
     this.generationInputMode = GenerationInputMode.REFERENCE;
     this.state.selectedReferenceId = '';
     this.state.localVideoTrack = null;
+    this.state.cameraVideoFormat = undefined;
     this.state.remoteVideoTrack = null;
     this.state.isLocalPreviewLoading = true;
     this.connecting = false;
