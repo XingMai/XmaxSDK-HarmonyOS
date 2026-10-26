@@ -108,7 +108,7 @@ export class RealtimeViewState {
   get cameraPreviewContentMode(): VideoContentMode {
     const format: RealtimeVideoFormat | undefined = this.cameraVideoFormat;
     const fillsPreview: boolean = format !== undefined &&
-      (format.width * 16 === format.height * 9 || format.width * 9 === format.height * 16);
+      format.width * 16 === format.height * 9;
     return fillsPreview ? VideoContentMode.FILL : VideoContentMode.FIT;
   }
 

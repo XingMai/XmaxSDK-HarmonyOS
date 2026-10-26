@@ -1233,13 +1233,13 @@ test('XLab exposes five camera formats and preserves fps and encoding settings w
   assert.equal(vm.state.cameraVideoFormat, undefined);
 });
 
-test('XLab camera preview fills only exact 9:16 and 16:9 formats while keeping the same track', async () => {
+test('XLab camera preview fills only exact 9:16 formats while keeping the same track', async () => {
   const f = exampleFixture(), vm = f.viewModel;
   await vm.connect({}); await settle();
   const track = vm.state.localVideoTrack;
   assert.equal(vm.state.cameraVideoFormat, track.videoFormat);
   assert.equal(vm.state.cameraPreviewContentMode, 'fill');
-  for (const [width, height, mode] of [[1408, 1408, 'fit'], [1920, 1080, 'fill'],
+  for (const [width, height, mode] of [[1408, 1408, 'fit'], [1920, 1080, 'fit'],
     [1152, 1536, 'fit'], [1536, 1152, 'fit'], [1080, 1920, 'fill']]) {
     await vm.updateCameraFormat(new f.Format(width, height, 30));
     assert.equal(vm.state.localVideoTrack, track);
