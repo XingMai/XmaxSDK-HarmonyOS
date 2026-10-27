@@ -228,236 +228,61 @@ Install the dependencies:
 ohpm install
 ```
 
-See [Configure permissions](#configure-permissions) before creating
+See [Configure permissions](./materials/usage.md#configure-permissions) before creating
 a local media stream.
 
 <br>
 
 ## Quick Start
 
-### Configure permissions
-
-For camera-based input, declare the following permissions in the application
-module's `module.json5`:
-
-```json5
-{
-  "module": {
-    "requestPermissions": [
-      {
-        "name": "ohos.permission.INTERNET"
-      },
-      {
-        "name": "ohos.permission.GET_NETWORK_INFO"
-      },
-      {
-        "name": "ohos.permission.CAMERA",
-        "reason": "$string:reason_camera",
-        "usedScene": {
-          "abilities": [
-            "EntryAbility"
-          ],
-          "when": "inuse"
-        }
-      }
-    ]
-  }
-}
-```
-
-Replace `EntryAbility` with the UIAbility that uses XmaxSDK when the application
-uses a different ability name. Define the permission reason in
-`resources/base/element/string.json`:
-
-```json
-{
-  "string": [
-    {
-      "name": "reason_camera",
-      "value": "Camera access is required for realtime video input."
-    }
-  ]
-}
-```
-
-If camera microphone input is enabled (`useMicrophone` set to `true`) or an input source
-contains audio, also declare `ohos.permission.MICROPHONE` with
-an appropriate permission reason and `usedScene` configuration. XmaxSDK checks and
-requests the required runtime permissions when a local media stream is created. If
-permission is unavailable, the SDK reports an `XmaxError`.
-
-Before deploying to a device, configure application signing in DevEco Studio under
-**File > Project Structure > Signing Configs**.
-
-<br>
-
-### Generate and display video
-
-The following ArkTS snippets create a camera stream, start real-time generation,
-and bind the output to an ArkUI video component.
-
-Within an ArkUI component, obtain the `UIAbilityContext` required by the SDK and
-create a realtime manager:
+Use your front camera to turn yourself into a character from a reference image in real time.
 
 ```ts
-import { common } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit'
 import {
-  RealtimeConfiguration,
-  RealtimeModel,
-  RealtimeModels,
-  XmaxClient,
-  XmaxConfiguration
-} from '@xmax/sdk';
-
-const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-
-const client = new XmaxClient(
-  new XmaxConfiguration('YOUR_API_KEY'),
-  context
-);
-
-const realtime = client.createRealtimeManager(
-  new RealtimeConfiguration(
-    RealtimeModels.realtime(RealtimeModel.X2_0)
-  )
-);
-```
-
-Realtime operations return promises and should be invoked from a lifecycle-aware
-component owned by the host application.
-
-Create the input stream and start generation from an async method in that component:
-
-```ts
-import { RealtimeContext } from '@xmax/sdk';
-
-const localStream = await realtime.createLocalCameraStream();
-this.localVideoTrack = localStream.videoTrack;
-
-const remoteStream = await realtime.startGeneration(
-  localStream,
-  new RealtimeContext(
-    '视频中角色替换成参考图中角色',
-    'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg'
-  )
-);
-this.remoteVideoTrack = remoteStream.videoTrack;
-```
-
-The camera uses the selected model's default format. Store the tracks in component
-state and add `XmaxRealtimeDualVideo` to your view hierarchy:
-
-```ts
-import {
-  RealtimeVideoTrack,
-  VideoContentMode,
+  RealtimeConfiguration, RealtimeContext, RealtimeModel, RealtimeModels,
+  RealtimeVideoTrack, XmaxClient, XmaxConfiguration, XmaxEnvironment,
   XmaxRealtimeDualVideo
-} from '@xmax/sdk';
+} from '@xmax/sdk'
 
-@State private localVideoTrack: RealtimeVideoTrack | undefined = undefined;
-@State private remoteVideoTrack: RealtimeVideoTrack | undefined = undefined;
+// Initialize the client
+const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+const client = new XmaxClient(
+  new XmaxConfiguration('<YOUR_XMAX_API_KEY>', XmaxEnvironment.GLOBAL),
+  context
+)
 
-build() {
-  XmaxRealtimeDualVideo({
-    localTrack: this.localVideoTrack,
-    remoteTrack: this.remoteVideoTrack,
-    contentMode: VideoContentMode.FILL
-  })
+// Initialize the realtime manager
+const realtime = client.createRealtimeManager(
+  new RealtimeConfiguration(RealtimeModels.realtime(RealtimeModel.X2_1))
+)
+
+// Create the video view
+// Declare state in the page component and call videoPreview() from build()
+@State localTrack?: RealtimeVideoTrack = undefined
+@State remoteTrack?: RealtimeVideoTrack = undefined
+
+@Builder
+videoPreview() {
+  XmaxRealtimeDualVideo({ localTrack: this.localTrack, remoteTrack: this.remoteTrack })
     .width('100%')
     .height('100%')
 }
+
+// Create a camera stream and bind the preview
+const localStream = await realtime.createLocalCameraStream()
+this.localTrack = localStream.videoTrack
+
+// Once the preview is ready, start generation and display the result
+const remoteStream = await realtime.startGeneration(
+  localStream,
+  new RealtimeContext("视频中角色替换成参考图中角色", "https://cdn.xmax.ai/images/playground/charx/charx_image1.png?v=26&presetVersion=20261022")
+)
+this.remoteTrack = remoteStream.videoTrack
+
+// Run the following when generation is no longer needed
+await realtime.close()
 ```
-
-The component displays a local camera preview until the generated video is ready
-to render, with touch interaction enabled by default.
-
-For streams created by `createLocalVideoStream`, call `pauseLocalVideoStream`,
-`resumeLocalVideoStream`, or `toggleLocalVideoStreamPlayback` on the realtime
-manager from your own button or `onClick` handler. Observe the current `playing`,
-`pause`, or `ended` value with `localVideoPlaybackState` or
-`setLocalVideoPlaybackStateListener`. While paused, the SDK continues sending the
-last input frame and silent audio, and overlays a still image on the generated
-video; the generation task remains active. See the
-[playback control example](materials/usage.md#control-local-video-playback).
-Videos loop by default. Pass `false` as the third argument to
-`createLocalVideoStream(videoPath, undefined, false)` to play once and receive
-`LocalVideoPlaybackState.ENDED` through the same listener on natural completion.
-Local playback and audio/video frame submission then stop, while in-flight remote
-results continue to render. This does not stop the generation task or disconnect
-the session; an active task remains in `GENERATING`.
-
-<br>
-
-For app-owned capture or decoding, implement `RealtimeExternalVideoSource` and
-pass it to `createExternalVideoStream`. See [external video input](materials/usage.md#external-video-input)
-for the Source + Sink contract and optional PCM audio. XLab's External Capture card
-demonstrates app-owned video and audio decoding, including HDR Vivid to SDR
-conversion, through this API.
-
-### Listen for events
-
-After creating `realtime`, register the listeners you need before creating the
-input stream or starting generation.
-
-| Listener | Purpose |
-| --- | --- |
-| `setStateListener` | Observe preparation, preview readiness, connection, generation and failure reasons. |
-| `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
-| `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
-
-Use `setUplinkQualityLevel` and `setDownlinkQualityLevel` to select transmission
-levels during generation. Automatic adaptation is enabled by default and can be
-disabled when creating the manager. See the
-[quality control guide](materials/usage.md#adaptive-transmission-quality).
-
-Camera preview enters `READY` after a valid frame and view binding. Disconnect
-returns to `READY` when local media remains available; closing returns to `IDLE`.
-Normal termination, orientation changes and failures are carried in `state.reason`.
-
-For example, monitor state changes and errors:
-
-```ts
-realtime.setStateListener((state) => {
-  console.info(`State: ${state.connectionState}`);
-  const error = state.reason?.error;
-  if (error !== undefined) {
-    console.error(`Error: ${error.code} ${error.message}`);
-  }
-});
-```
-
-<br>
-
-### Resource Cleanup
-
-- **`disconnect()` — Stop Remote Generation**
-
-  Ends the remote session while keeping the local camera stream and preview
-  active. Use this when ending the online session but staying on the current
-  screen. You can start a new session later using the same local stream:
-
-  ```ts
-  await realtime.disconnect();
-  this.remoteVideoTrack = undefined;
-  ```
-
-- **`close()` — Full Teardown & Release**
-
-  Ends the remote session, stops local media capture, and releases all engine
-  resources. Use this when leaving or dismissing the generation screen:
-
-  ```ts
-  await realtime.close();
-  ```
-
-> **Note:** These methods are alternatives, not sequential steps. When exiting a
-> screen, call `close()` directly—there is no need to call `disconnect()` first.
-
-<br>
-
-> [!TIP]
-> For complete usage examples, including image and video inputs, model capabilities,
-> reference images, touch interaction, and logging, see the [usage guide](./materials/usage.md).
 
 <br>
 

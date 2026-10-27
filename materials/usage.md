@@ -6,6 +6,7 @@ and `localStream`, and the component's local and remote track state. File paths
 refer to files supplied by your app. Run realtime operations from a lifecycle-aware
 component and handle rejected promises.
 
+- [Configure permissions](#configure-permissions)
 - [Create an input stream](#create-an-input-stream)
 - [External video input](#external-video-input)
 - [Model capabilities](#model-capabilities)
@@ -23,6 +24,62 @@ component and handle rejected promises.
 - [Configure SDK logging](#configure-sdk-logging)
 - [Generation startup timing](#generation-startup-timing)
 - [Runtime information and task IDs](#runtime-information-and-task-ids)
+
+<br>
+
+## Configure permissions
+
+For camera-based input, declare the following permissions in the application
+module's `module.json5`:
+
+```json5
+{
+  "module": {
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      },
+      {
+        "name": "ohos.permission.CAMERA",
+        "reason": "$string:reason_camera",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ]
+  }
+}
+```
+
+Replace `EntryAbility` with the UIAbility that uses XmaxSDK when the application
+uses a different ability name. Define the permission reason in
+`resources/base/element/string.json`:
+
+```json
+{
+  "string": [
+    {
+      "name": "reason_camera",
+      "value": "Camera access is required for realtime video input."
+    }
+  ]
+}
+```
+
+If camera microphone input is enabled (`useMicrophone` set to `true`) or an input source
+contains audio, also declare `ohos.permission.MICROPHONE` with
+an appropriate permission reason and `usedScene` configuration. XmaxSDK checks and
+requests the required runtime permissions when a local media stream is created. If
+permission is unavailable, the SDK reports an `XmaxError`.
+
+Before deploying to a device, configure application signing in DevEco Studio under
+**File > Project Structure > Signing Configs**.
 
 <br>
 
